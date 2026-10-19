@@ -2,7 +2,9 @@
  * server.ts — Express server for AssetRadar. Serves the React app (Vite middleware in
  * development, dist/ in production) and the /api/market/* endpoints: price snapshot
  * (Indodax, Yahoo Finance, gold-api.com), sentiment + news (Google News, optional Gemini),
- * OHLC history for the alternative chart, 30-day correlation and the combined news feed.
+ * OHLC history for the alternative chart, 30-day correlation, the combined news feed, a
+ * server-push price stream (SSE, optional Finnhub real-time trades), financial statements,
+ * the IDX calendar, Indonesia macro data and the AI Advisor.
  * All upstream data is cached in memory; API keys stay on the server.
  */
 import 'dotenv/config';
@@ -78,6 +80,15 @@ import {
   type StatementPeriod,
 } from './src/utils/statements.ts';
 import { secCikFor } from './src/config/secCik.ts';
+import {
+  applyTrade,
+  Backoff,
+  diffTicks,
+  isThrottleStatus,
+  refreshIntervalMs,
+  STREAM_BASE_MS,
+  tradesToFlush,
+} from './src/utils/priceStream.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
   mergeSeries,
@@ -626,9 +637,18 @@ const YAHOO_ASSETS = ASSETS.filter((a) => a.yahooSymbol && !a.indodaxPair && a.s
 // Exchange rates needed only to convert market caps to USD (not shown as assets)
 const FX_HELPERS = ['KRW=X', 'HKD=X'];
 
-/** Cache 15 s while the asset's market is open (near real time), 5 min while closed. */
+/**
+ * Quote cache lifetime: while price-stream clients are connected, ±5 s for priority assets of an
+ * open market and 15 s for the rest (slower while Yahoo rate-limits); 15 s without stream
+ * clients; 5 min while the market is closed.
+ */
 function yahooCacheMs(asset: Asset, nowMs = Date.now()): number {
-  return isExchangeOpen(asset.exchange, nowMs) ? 15_000 : 5 * 60_000;
+  return refreshIntervalMs({
+    open: isExchangeOpen(asset.exchange, nowMs),
+    priority: priceStream.priority.has(asset.symbol),
+    streaming: priceStream.clients.size > 0,
+    backoffFactor: yahooBackoff.factor,
+  });
 }
 
 interface SparkSeries {
@@ -649,7 +669,11 @@ async function fetchYahooSpark(symbols: string[], range: string, interval: strin
         .join(',')}&range=${range}&interval=${interval}`;
       try {
         const res = await fetchWithTimeout(url, {}, 8000);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          noteYahooResult(false, res.status);
+          throw new Error(`HTTP ${res.status}`);
+        }
+        noteYahooResult(true);
         const json = await res.json();
         for (const r of json?.spark?.result ?? []) {
           const resp = r?.response?.[0];
@@ -661,6 +685,7 @@ async function fetchYahooSpark(symbols: string[], range: string, interval: strin
           });
         }
       } catch (err) {
+        if (!(err instanceof Error && err.message.startsWith('HTTP'))) noteYahooResult(false);
         console.warn(`[Yahoo] spark batch failed (${batch.length} symbols):`, err instanceof Error ? err.message : err);
       }
     })
@@ -753,7 +778,7 @@ async function getYahooTicks(): Promise<Record<string, PriceTick>> {
   const stale = YAHOO_ASSETS.filter((a) => {
     if (a.symbol === 'SAR/IDR') return false; // derived from USD/IDR below
     const c = yahooCache.get(a.symbol);
-    return !c || c.expiresAt <= now;
+    return !c || c.expiresAt <= now + 1500;
   });
   if (stale.length > 0) {
     const series = await fetchYahooSpark(
@@ -793,7 +818,9 @@ async function getYahooTicks(): Promise<Record<string, PriceTick>> {
     if (w) weekly.set('SAR/IDR', w);
   }
   for (const a of YAHOO_ASSETS) {
-    const cached = yahooCache.get(a.symbol)?.data;
+    const yahooTick = yahooCache.get(a.symbol)?.data;
+    const live = finnhub.overlay.get(a.symbol);
+    const cached = live && yahooTick && live.updatedAt > yahooTick.updatedAt && isExchangeOpen(a.exchange, now) ? live : yahooTick;
     const w = weekly.get(a.symbol);
     ticks[a.symbol] = cached
       ? { ...cached, isMarketOpen: marketOpenFor(a.symbol, now), changePct7d: w?.d7, changePct30d: w?.d30 }
@@ -810,6 +837,244 @@ async function getYahooTicks(): Promise<Record<string, PriceTick>> {
   }
   return ticks;
 }
+
+// ---- Price stream (Server-Sent Events) -----------------------------------------------------
+// One price loop for every viewer: Yahoo quotes of open markets refresh every ±5 s for priority
+// assets (Quick Chart, and what viewers have on screen, in the watchlist or portfolio) and 3×
+// slower for the rest; closed markets every 5 min. Only changed quotes are pushed. Yahoo errors
+// (429/5xx) slow the loop down automatically (see Backoff in src/utils/priceStream.ts).
+
+interface StreamClient {
+  id: string;
+  res: express.Response;
+  /** Last quote sent to this client per symbol (for the diff). */
+  sent: Record<string, PriceTick>;
+}
+
+const priceStream = {
+  clients: new Set<StreamClient>(),
+  /** Client id → symbols it has on screen (watchlist, portfolio, detail page, IDX rows). */
+  focus: new Map<string, { symbols: string[]; at: number }>(),
+  priority: new Set<string>(ASSETS.filter((a) => a.quick).map((a) => a.symbol)),
+  running: false,
+  lastDemandAt: 0,
+};
+
+const yahooBackoff = new Backoff();
+const FOCUS_TTL_MS = 10 * 60_000;
+
+function recomputePriority(): void {
+  const now = Date.now();
+  const next = new Set<string>(ASSETS.filter((a) => a.quick).map((a) => a.symbol));
+  for (const [id, f] of priceStream.focus) {
+    if (now - f.at > FOCUS_TTL_MS) {
+      priceStream.focus.delete(id);
+      continue;
+    }
+    for (const s of f.symbols) next.add(s);
+  }
+  priceStream.priority = next;
+}
+
+function noteYahooResult(ok: boolean, status?: number): void {
+  if (ok) {
+    if (yahooBackoff.success()) console.log(`[Yahoo] recovering: refresh interval ×${yahooBackoff.factor}`);
+  } else if (status === undefined || isThrottleStatus(status)) {
+    if (yahooBackoff.failure()) console.warn(`[Yahoo] ${status ?? 'network error'}: slowing down, refresh interval ×${yahooBackoff.factor}`);
+  }
+}
+
+/** Universe stocks (outside the core loop) that some connected client has on screen. */
+function focusUniverseAssets(clientId?: string): Asset[] {
+  const out = new Map<string, Asset>();
+  for (const [id, f] of priceStream.focus) {
+    if (clientId && id !== clientId) continue;
+    for (const s of f.symbols) {
+      const a = getAssetBySymbol(s);
+      if (a?.universe && a.yahooSymbol) out.set(a.symbol, a);
+    }
+  }
+  return [...out.values()].slice(0, 240);
+}
+
+/** Every quote the stream serves: Yahoo assets, spot gold and focused universe stocks. */
+async function buildStreamTicks(): Promise<Record<string, PriceTick>> {
+  const ticks: Record<string, PriceTick> = { ...(await getYahooTicks()) };
+  const universe = focusUniverseAssets();
+  if (universe.length) Object.assign(ticks, await getQuotesFor(universe).catch(() => ({})));
+  const usd = ticks['USD/IDR']?.price;
+  try {
+    ticks['XAU/USD'] = await getGoldTick(Number.isFinite(usd) ? (usd as number) : 0);
+  } catch {
+    // Gold keeps its last pushed price on the client
+  }
+  await addMarketCaps(ticks).catch(() => {});
+  return ticks;
+}
+
+function ticksForClient(all: Record<string, PriceTick>, client: StreamClient): Record<string, PriceTick> {
+  const own = new Set(focusUniverseAssets(client.id).map((a) => a.symbol));
+  const out: Record<string, PriceTick> = {};
+  for (const [sym, t] of Object.entries(all)) {
+    if (getAssetBySymbol(sym)?.universe && !own.has(sym)) continue;
+    out[sym] = t;
+  }
+  return out;
+}
+
+function pushPrices(all: Record<string, PriceTick>, event: 'prices' | 'snapshot' = 'prices', only?: StreamClient): void {
+  const now = Date.now();
+  for (const client of only ? [only] : priceStream.clients) {
+    const mine = ticksForClient(all, client);
+    const changed = event === 'snapshot' ? mine : diffTicks(client.sent, mine);
+    const keys = Object.keys(changed);
+    if (event === 'prices' && keys.length === 0) continue;
+    for (const k of keys) client.sent[k] = changed[k];
+    client.res.write(`event: ${event}\ndata: ${JSON.stringify({ ticks: changed, serverTime: now, idxMarketOpen: isIdxMarketOpen(now), feeds: streamFeeds() })}\n\n`);
+  }
+}
+
+function streamFeeds() {
+  return { yahooIntervalSec: (STREAM_BASE_MS * yahooBackoff.factor) / 1000, finnhub: finnhub.state };
+}
+
+async function streamTick(): Promise<void> {
+  if (priceStream.running || priceStream.clients.size === 0) return;
+  priceStream.running = true;
+  try {
+    recomputePriority();
+    pushPrices(await buildStreamTicks());
+  } catch (err) {
+    console.warn('[Stream] tick failed:', err instanceof Error ? err.message : err);
+  } finally {
+    priceStream.running = false;
+  }
+}
+
+setInterval(() => {
+  streamTick().catch(() => {});
+}, 1000);
+
+// ---- Finnhub real-time trades (optional, only with FINNHUB_API_KEY) -----------------------------
+// Free plan: personal use, one WebSocket per key, up to 50 symbols. Used for the US stocks only
+// (crypto and Rupiah pairs have no matching Finnhub feed). The key never leaves the server.
+
+const FINNHUB_MAX_SYMBOLS = 50;
+const finnhub = {
+  state: (process.env.FINNHUB_API_KEY ? 'idle' : 'off') as 'off' | 'idle' | 'connecting' | 'live',
+  ws: null as WebSocket | null,
+  attempts: 0,
+  retryTimer: null as ReturnType<typeof setTimeout> | null,
+  /** Finnhub symbol → app symbol. */
+  symbols: new Map<string, string>(
+    ASSETS.filter((a) => a.group === 'usStock' && a.yahooSymbol)
+      .slice(0, FINNHUB_MAX_SYMBOLS)
+      .map((a) => [(a.yahooSymbol as string).replace('-', '.'), a.symbol] as [string, string])
+  ),
+  latest: new Map<string, { price: number; time: number }>(),
+  lastSent: new Map<string, number>(),
+  overlay: new Map<string, PriceTick>(),
+};
+
+function connectFinnhub(): void {
+  const key = process.env.FINNHUB_API_KEY;
+  if (!key || finnhub.ws || typeof WebSocket === 'undefined') return;
+  finnhub.state = 'connecting';
+  let ws: WebSocket;
+  try {
+    ws = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(key)}`);
+  } catch {
+    scheduleFinnhubRetry();
+    return;
+  }
+  finnhub.ws = ws;
+  ws.onopen = () => {
+    finnhub.state = 'live';
+    finnhub.attempts = 0;
+    console.log(`[Finnhub] connected, ${finnhub.symbols.size} US stocks subscribed`);
+    for (const sym of finnhub.symbols.keys()) ws.send(JSON.stringify({ type: 'subscribe', symbol: sym }));
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(String(ev.data));
+      if (msg?.type !== 'trade' || !Array.isArray(msg.data)) return;
+      for (const t of msg.data) {
+        const app = finnhub.symbols.get(t?.s);
+        const price = Number(t?.p);
+        const time = Number(t?.t);
+        if (!app || !Number.isFinite(price) || price <= 0 || !Number.isFinite(time)) continue;
+        const prev = finnhub.latest.get(app);
+        if (!prev || time >= prev.time) finnhub.latest.set(app, { price, time });
+      }
+    } catch {
+      // Ignore malformed frames
+    }
+  };
+  ws.onerror = () => {
+    // The event can carry the connection URL (with the key), so it is not logged
+    console.warn('[Finnhub] connection error');
+  };
+  ws.onclose = () => {
+    finnhub.ws = null;
+    if (finnhub.state !== 'off') finnhub.state = 'idle';
+    scheduleFinnhubRetry();
+  };
+}
+
+function scheduleFinnhubRetry(): void {
+  if (finnhub.retryTimer || priceStream.clients.size === 0) return;
+  const delay = Math.min(5 * 60_000, 5000 * 2 ** finnhub.attempts);
+  finnhub.attempts += 1;
+  finnhub.retryTimer = setTimeout(() => {
+    finnhub.retryTimer = null;
+    if (priceStream.clients.size > 0) connectFinnhub();
+  }, delay);
+}
+
+function disconnectFinnhub(): void {
+  if (finnhub.retryTimer) clearTimeout(finnhub.retryTimer);
+  finnhub.retryTimer = null;
+  const ws = finnhub.ws;
+  finnhub.ws = null;
+  if (ws) {
+    ws.onclose = null;
+    try {
+      ws.close();
+    } catch {
+      // ignore
+    }
+  }
+  if (finnhub.state !== 'off') finnhub.state = 'idle';
+}
+
+/** Applies the newest Finnhub trades (≤1 per symbol per second) to the cached Yahoo quotes. */
+function flushFinnhubTrades(): Record<string, PriceTick> {
+  const now = Date.now();
+  const out: Record<string, PriceTick> = {};
+  for (const sym of tradesToFlush(finnhub.latest, finnhub.lastSent, now)) {
+    const trade = finnhub.latest.get(sym) as { price: number; time: number };
+    const base = yahooCache.get(sym)?.data;
+    const asset = getAssetBySymbol(sym);
+    finnhub.lastSent.set(sym, trade.time);
+    // Regular session only: the 24 h change is measured against the previous regular close
+    if (!base || !asset || !isExchangeOpen(asset.exchange, now) || trade.time <= base.updatedAt) continue;
+    const t = applyTrade(base, trade, 'Finnhub (real-time)');
+    finnhub.overlay.set(sym, t);
+    out[sym] = t;
+  }
+  return out;
+}
+
+setInterval(() => {
+  if (finnhub.state === 'off') return;
+  if (priceStream.clients.size === 0) {
+    if (finnhub.ws && Date.now() - priceStream.lastDemandAt > 5 * 60_000) disconnectFinnhub();
+    return;
+  }
+  if (!finnhub.ws && !finnhub.retryTimer) connectFinnhub();
+  const changed = flushFinnhubTrades();
+  if (Object.keys(changed).length) pushPrices(changed);
+}, 1000);
 
 // ---- Market caps ----------------------------------------------------------------------
 
@@ -2728,6 +2993,51 @@ async function startServer() {
     res.write(
       `event: snapshot\ndata: ${JSON.stringify({ items: getNewsFeed(), serverTime: Date.now() })}\n\n`
     );
+  });
+
+  // 9b. Live price stream (Server-Sent Events): a snapshot first, then only the changed quotes
+  app.get('/api/market/price-stream', async (req, res) => {
+    const id = String(req.query.client || '').slice(0, 64) || `anon-${Math.random().toString(36).slice(2)}`;
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    res.write('retry: 5000\n\n');
+    const client: StreamClient = { id, res, sent: {} };
+    priceStream.clients.add(client);
+    priceStream.lastDemandAt = Date.now();
+    const heartbeat = setInterval(() => {
+      res.write(`event: ping\ndata: ${JSON.stringify({ serverTime: Date.now(), feeds: streamFeeds() })}\n\n`);
+    }, 20_000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      priceStream.clients.delete(client);
+      priceStream.lastDemandAt = Date.now();
+    });
+    try {
+      recomputePriority();
+      pushPrices(await buildStreamTicks(), 'snapshot', client);
+    } catch (err) {
+      console.warn('[Stream] snapshot failed:', err instanceof Error ? err.message : err);
+    }
+  });
+
+  // 9c. Symbols a stream client has on screen (watchlist, portfolio, detail page, IDX rows)
+  app.post('/api/market/price-focus', (req, res) => {
+    const id = String(req.body?.client || '').slice(0, 64);
+    const raw: unknown[] = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
+    if (!id) {
+      res.status(400).json({ error: 'client required' });
+      return;
+    }
+    const symbols = [...new Set(raw.map(String))].filter((s) => getAssetBySymbol(s)).slice(0, 240);
+    priceStream.focus.set(id, { symbols, at: Date.now() });
+    recomputePriority();
+    // Newly focused symbols are priced on the next loop round (≤1 s)
+    res.status(204).end();
   });
 
   // Vite middleware in development, static dist in production

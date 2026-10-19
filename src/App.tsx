@@ -3,7 +3,7 @@
  * timeframe, watchlist, selected asset), syncs it with the URL hash, and lays out the page
  * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
  */
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { Sun, Moon, Wifi } from 'lucide-react';
 import {
   ASSETS,
@@ -24,10 +24,12 @@ import {
   saveStartInTerminal,
   getSidebarCollapsed,
   saveSidebarCollapsed,
+  getPortfolioTxs,
 } from './utils/storage.ts';
 import {
   MarketDataManager,
   ConnectionState,
+  FeedMode,
 } from './services/marketDataService.ts';
 import { parseHashRoute, buildHashRoute } from './utils/router.ts';
 import { liveHistory } from './utils/movers.ts';
@@ -67,6 +69,7 @@ export default function App() {
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
   });
   const [ticks, setTicks] = useState<Record<string, PriceTick>>({});
+  const [feedMode, setFeedMode] = useState<FeedMode>('polling');
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('live');
   const [timeframe, setTimeframe] = useState<TimeframeInterval>(() =>
@@ -118,6 +121,7 @@ export default function App() {
       onConnectionStateChange: (state) => {
         setConnectionState(state);
       },
+      onFeedModeChange: setFeedMode,
     });
     managerRef.current = manager;
     manager.start();
@@ -230,8 +234,11 @@ export default function App() {
   }, []);
 
   const currentAsset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
-  // Watchlist stocks and the asset on the detail page get priced even outside the core loop
-  useTrackedSymbols([...watchlist, ...(activeTab === 'detail' ? [currentAsset.symbol] : [])]);
+  // Watchlist, portfolio holdings and the asset on the detail page: priced even outside the core
+  // loop, and refreshed first by the server's price stream
+  // (re-read when the tab changes: holdings are edited on the portfolio page)
+  const portfolioSymbols = useMemo(() => [...new Set(getPortfolioTxs().map((t) => t.symbol))], [activeTab]);
+  useTrackedSymbols([...watchlist, ...portfolioSymbols, ...(activeTab === 'detail' ? [currentAsset.symbol] : [])]);
   const isTerminal = activeTab === 'terminal';
 
   // Connection status indicator color & label (green = live, yellow = reconnecting, grey = delayed/offline)
@@ -244,7 +251,9 @@ export default function App() {
 
   const connLabel =
     connectionState === 'live'
-      ? 'Live · Connected'
+      ? feedMode === 'streaming'
+        ? 'Live (streaming)'
+        : 'Live · Polling'
       : connectionState === 'reconnecting'
         ? 'Reconnecting...'
         : connectionState === 'offline'

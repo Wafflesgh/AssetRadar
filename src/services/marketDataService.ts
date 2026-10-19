@@ -1,11 +1,13 @@
 /**
  * marketDataService.ts — Client-side live market data. MarketDataManager streams Indodax
  * crypto prices over the official public WebSocket (with backoff and a REST fallback only
- * while the socket is down), polls Yahoo (JCI, global indices, currencies) every 30 s and gold
- * every 5 min, reports the connection state and keeps an offline price snapshot. Also
- * exports fetch helpers for sentiment, chart history, correlation and the news feed.
- * Views register extra symbols (IDX universe stocks on screen, in the watchlist or portfolio)
- * with trackSymbols(); those are priced on demand every 10 s.
+ * while the socket is down) and receives every other price (stocks, indices, commodities,
+ * currencies, gold) from the server's price stream (SSE, ±5 s, only changed quotes). If the
+ * stream breaks or stalls (>30 s without data or ping) it falls back to REST polling every 10 s
+ * and reconnects with backoff. Reports the connection state and feed mode, keeps an offline
+ * price snapshot, and exports fetch helpers for sentiment, history, correlation and news.
+ * Views register symbols they show (IDX universe stocks, watchlist, portfolio, detail page) with
+ * trackSymbols(); the stream refreshes those first.
  */
 import type { StatementPeriod, StatementRow } from '../utils/statements.ts';
 import {
@@ -24,8 +26,11 @@ import type { CalendarEvent } from '../utils/corporateCalendar.ts';
 import type { MacroPoint, MacroSeries } from '../utils/macro.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
+import { isStreamStalled, reconnectDelayMs } from '../utils/priceStream.ts';
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
+/** How non-crypto prices arrive: pushed by the server stream, or REST polling as the fallback. */
+export type FeedMode = 'streaming' | 'polling';
 
 /**
  * Fetches a live price endpoint. Offline copies served by the service worker are rejected, so
@@ -50,6 +55,7 @@ const PAIR_MAP: Record<string, string> = Object.fromEntries(
 export interface MarketStreamCallbacks {
   onTicksUpdate: (ticks: Record<string, PriceTick>) => void;
   onConnectionStateChange: (state: ConnectionState) => void;
+  onFeedModeChange?: (mode: FeedMode) => void;
 }
 
 /** Owner → symbols outside the core loop that are on screen (IDX universe stocks). */
@@ -74,6 +80,21 @@ function trackedUniverseSymbols(): string[] {
   return [...all];
 }
 
+/** Every symbol a view has on screen (core assets included), for the stream's priority list. */
+function allTrackedSymbols(): string[] {
+  const all = new Set<string>();
+  for (const list of trackedByOwner.values()) for (const sym of list) all.add(sym);
+  return [...all];
+}
+
+function newClientId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  }
+}
+
 export class MarketDataManager {
   private callbacks: MarketStreamCallbacks;
   private ticks: Record<string, PriceTick> = {};
@@ -88,6 +109,15 @@ export class MarketDataManager {
   private isDestroyed = false;
   private wsConnected = false;
   private lastSnapshotSave = 0;
+  private clientId = newClientId();
+  private stream: EventSource | null = null;
+  private streaming = false;
+  private streamAttempts = 0;
+  private streamLastEventAt = 0;
+  private streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private streamWatchdog: ReturnType<typeof setInterval> | null = null;
+  private lastFocusKey = '';
+  private lastFocusSentAt = 0;
 
   constructor(callbacks: MarketStreamCallbacks) {
     this.callbacks = callbacks;
@@ -118,6 +148,7 @@ export class MarketDataManager {
     }
     this.fetchInitialSnapshot();
     this.connectIndodaxWebSocket();
+    this.connectPriceStream();
     this.startPollingTimers();
   }
 
@@ -132,6 +163,8 @@ export class MarketDataManager {
       window.removeEventListener('offline', this.handleOffline);
     }
     this.disconnectWebSocket();
+    this.disconnectPriceStream();
+    this.stopStreamWatchdog();
     this.clearPollingTimers();
   }
 
@@ -159,11 +192,14 @@ export class MarketDataManager {
     this.callbacks.onConnectionStateChange('reconnecting');
     this.fetchInitialSnapshot();
     this.connectIndodaxWebSocket();
+    this.streamAttempts = 0;
+    this.connectPriceStream();
   }
 
   private handleOffline(): void {
     if (this.isDestroyed) return;
     this.disconnectWebSocket();
+    this.disconnectPriceStream();
     this.callbacks.onConnectionStateChange('offline');
   }
 
@@ -172,11 +208,14 @@ export class MarketDataManager {
     if (document.visibilityState === 'hidden') {
       // Disconnect while the tab is hidden
       this.disconnectWebSocket();
+      this.disconnectPriceStream();
       this.clearPollingTimers();
     } else if (document.visibilityState === 'visible') {
       // Reconnect when visible again
       this.fetchInitialSnapshot();
       this.connectIndodaxWebSocket();
+      this.streamAttempts = 0;
+      this.connectPriceStream();
       this.startPollingTimers();
     }
   }
@@ -382,6 +421,104 @@ export class MarketDataManager {
     this.wsConnected = false;
   }
 
+  // ---- Server-push price stream (SSE) -----------------------------------------------------------
+
+  /** Opens the price stream; while it is healthy the Yahoo / gold / quote polling pauses. */
+  private connectPriceStream(): void {
+    if (this.isDestroyed || typeof EventSource === 'undefined' || this.isOffline()) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    this.disconnectPriceStream();
+    const es = new EventSource(`/api/market/price-stream?client=${encodeURIComponent(this.clientId)}`);
+    this.stream = es;
+    const onData = (ev: MessageEvent) => {
+      if (this.isDestroyed || this.stream !== es) return;
+      this.streamLastEventAt = Date.now();
+      try {
+        const data = JSON.parse(String(ev.data));
+        if (data?.ticks && Object.keys(data.ticks).length) this.mergeTicks(data.ticks as Record<string, PriceTick>);
+      } catch {
+        // Ignore malformed events
+      }
+      if (!this.streaming) {
+        this.streaming = true;
+        this.streamAttempts = 0;
+        this.callbacks.onFeedModeChange?.('streaming');
+        if (!this.wsConnected) this.callbacks.onConnectionStateChange('live');
+        this.sendFocus(true);
+      }
+    };
+    es.addEventListener('snapshot', onData as EventListener);
+    es.addEventListener('prices', onData as EventListener);
+    es.addEventListener('ping', (() => {
+      if (this.stream === es) this.streamLastEventAt = Date.now();
+    }) as EventListener);
+    // The browser's own retry is replaced by ours (backoff + polling meanwhile)
+    es.onerror = () => {
+      if (this.stream === es) this.streamFailed();
+    };
+    this.streamLastEventAt = Date.now();
+    if (!this.streamWatchdog) {
+      this.streamWatchdog = setInterval(() => {
+        if (this.stream && isStreamStalled(this.streamLastEventAt, Date.now())) this.streamFailed();
+        // The server forgets focus lists after 10 min: refresh them every 4 min
+        else if (this.streaming && Date.now() - this.lastFocusSentAt > 4 * 60_000) this.sendFocus(true);
+      }, 5000);
+    }
+  }
+
+  /** Stream broken or stalled: fall back to REST polling and retry with backoff. */
+  private streamFailed(): void {
+    this.disconnectPriceStream();
+    if (this.isDestroyed) return;
+    this.callbacks.onFeedModeChange?.('polling');
+    // Catch up right away instead of waiting for the next polling round
+    this.pollYahoo();
+    this.pollGold();
+    const delay = reconnectDelayMs(this.streamAttempts);
+    this.streamAttempts += 1;
+    this.streamRetryTimer = setTimeout(() => {
+      this.streamRetryTimer = null;
+      this.connectPriceStream();
+    }, delay);
+  }
+
+  private disconnectPriceStream(): void {
+    if (this.streamRetryTimer) {
+      clearTimeout(this.streamRetryTimer);
+      this.streamRetryTimer = null;
+    }
+    if (this.stream) {
+      this.stream.onerror = null;
+      this.stream.close();
+      this.stream = null;
+    }
+    this.streaming = false;
+  }
+
+  private stopStreamWatchdog(): void {
+    if (this.streamWatchdog) {
+      clearInterval(this.streamWatchdog);
+      this.streamWatchdog = null;
+    }
+  }
+
+  /** Tells the server which symbols are on screen, so they refresh first (and universe stocks at all). */
+  private sendFocus(force = false): void {
+    if (!this.streaming) return;
+    const symbols = allTrackedSymbols();
+    const key = symbols.sort().join(',');
+    if (!force && key === this.lastFocusKey) return;
+    this.lastFocusKey = key;
+    this.lastFocusSentAt = Date.now();
+    fetch('/api/market/price-focus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client: this.clientId, symbols }),
+    }).catch(() => {
+      // Next change or reconnect sends it again
+    });
+  }
+
   private startPollingTimers(): void {
     this.clearPollingTimers();
 
@@ -392,25 +529,26 @@ export class MarketDataManager {
       }
     }, 10_000);
 
-    // 2. Yahoo Finance polling every 10 seconds (stocks, indices, commodities, currencies);
-    //    the server only refetches symbols whose 15 s cache expired
+    // 2–4 run only while the price stream is down (it pushes the same prices):
+    // 2. Yahoo Finance polling every 10 seconds (stocks, indices, commodities, currencies)
     this.yahooPollTimer = setInterval(() => {
-      this.pollYahoo();
+      if (!this.streaming) this.pollYahoo();
     }, 10_000);
 
     // 3. On-demand quotes for tracked IDX universe stocks every 10 seconds
     this.quotesPollTimer = setInterval(() => {
-      if (trackedUniverseSymbols().length > 0) this.pollTrackedQuotes();
+      if (!this.streaming && trackedUniverseSymbols().length > 0) this.pollTrackedQuotes();
     }, 10_000);
 
     // 4. Spot gold polling every 30 seconds (server caches gold-api.com for 30 s)
     this.goldPollTimer = setInterval(() => {
-      this.pollGold();
+      if (!this.streaming) this.pollGold();
     }, 30_000);
   }
 
   /** Called when the tracked symbol set changes: fetch new symbols right away. */
   public refreshTracked(): void {
+    this.sendFocus();
     const key = trackedUniverseSymbols().sort().join(',');
     if (key === this.lastTrackedKey) return;
     this.lastTrackedKey = key;

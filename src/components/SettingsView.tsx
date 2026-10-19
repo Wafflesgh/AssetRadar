@@ -264,9 +264,21 @@ export function SettingsView({
             <h3 className="font-bold">2. Stocks, indices, commodities &amp; currencies</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
               Quotes, history and annual reports (for the Piotroski F-score) from{' '}
-              <strong>Yahoo Finance</strong>, refreshed every 10–15 seconds while a market is open.
-              Exchange data (including JCI and Indonesian stocks) is <strong>delayed</strong> and
-              only moves during trading hours. Market cap = live price × shares outstanding.
+              <strong>Yahoo Finance</strong>. The server fetches them once for everyone and pushes new
+              prices to your browser (stream): about every 5 seconds for what you have open (Quick
+              Chart, watchlist, portfolio, the detail page), 15 seconds for the rest, and every 5 minutes
+              while a market is closed; it slows down automatically if Yahoo limits requests. If the
+              stream drops, the app polls every 10 seconds ("Live · Polling"). Exchange data
+              (including JCI and Indonesian stocks) is <strong>delayed</strong> and only moves during
+              trading hours. Market cap = live price × shares outstanding.
+            </p>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Optional: when the server has a <code>FINNHUB_API_KEY</code> (free plan, personal use), US
+              stocks get real-time trades from <strong>Finnhub</strong> (source "Finnhub (real-time)"). The
+              key stays on the server.
+            </p>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Financial statements: <strong>SEC EDGAR</strong> filings (US companies) and Yahoo Finance.
             </p>
           </div>
           <div className="space-y-1">
