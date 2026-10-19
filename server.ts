@@ -15,6 +15,8 @@ import {
   ASSETS,
   getAssetBySymbol,
   type PriceTick,
+  type AssetGroup,
+  type PriceCurrency,
   type SparklinePoint,
   type AssetIntelligence,
   type MarketNewsItem,
@@ -25,7 +27,7 @@ import {
 import { correlationMatrixFromSeries, type DatedClose } from './src/utils/correlation.ts';
 import { aggregateCandles } from './src/utils/candles.ts';
 import { convertXauUsdToIdrPerGram } from './src/utils/format.ts';
-import { isIdxMarketOpen } from './src/utils/marketHours.ts';
+import { isExchangeOpen, isIdxMarketOpen } from './src/utils/marketHours.ts';
 import { GEO_TAG, MACRO_TAG, detectGeoAlert, mergeNewsItems, tagHeadline } from './src/utils/newsTags.ts';
 import {
   computeMarketSentiment,
@@ -91,6 +93,10 @@ const NEWS_SOURCES: NewsSource[] = [
   { id: 'cnbcid', url: 'https://www.cnbcindonesia.com/market/rss', sourceName: 'CNBC Indonesia', minIntervalMs: FEED_INTERVAL_MS, maxItems: 40 },
   { id: 'antara', url: 'https://www.antaranews.com/rss/ekonomi-bursa.xml', sourceName: 'ANTARA', minIntervalMs: FEED_INTERVAL_MS, maxItems: 20 },
   { id: 'fxstreet', url: 'https://www.fxstreet.com/rss/news', sourceName: 'FXStreet', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  // Global markets & macro (US, Europe, Asia; rates, currencies)
+  { id: 'cnbc-econ', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258', sourceName: 'CNBC', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  { id: 'cnbc-markets', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', sourceName: 'CNBC', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  { id: 'investing', url: 'https://www.investing.com/rss/news_25.rss', sourceName: 'Investing.com', minIntervalMs: FEED_INTERVAL_MS, maxItems: 20 },
   // World news for sudden war/attack alerts (only conflict headlines are kept from these)
   { id: 'bbcworld', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', sourceName: 'BBC News', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
   { id: 'aljazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml', sourceName: 'Al Jazeera', minIntervalMs: FEED_INTERVAL_MS, maxItems: 25 },
@@ -144,7 +150,7 @@ async function fetchNewsSource(source: NewsSource): Promise<MarketNewsItem[]> {
   return parseRssItems(xml, source.maxItems, { sourceName: source.sourceName })
     .map((item) => {
       const tags = tagHeadline(item.title);
-      if (source.asset) tags.unshift(source.asset.shortName.toUpperCase());
+      if (source.asset) tags.unshift(source.asset.code);
       const geoAlert = detectGeoAlert(item.title) ?? undefined;
       if (geoAlert) tags.push(GEO_TAG);
       return { ...item, id: `${source.id}-${item.id}`, assetTags: [...new Set(tags)], geoAlert };
@@ -182,7 +188,7 @@ async function pollNews(force = false): Promise<void> {
     // The first round is the baseline; only later rounds count as "breaking"
     if (newsHub.initialized && added.length > 0) {
       for (const tag of new Set(added.flatMap((a) => a.assetTags ?? []))) {
-        const asset = ASSETS.find((a) => a.shortName.toUpperCase() === tag);
+        const asset = ASSETS.find((a) => a.code === tag);
         if (asset) intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
         if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
       }
@@ -214,7 +220,7 @@ function getNewsFeed(): MarketNewsItem[] {
 /** Latest headlines tagged with this asset (newest first). */
 async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
   await ensureNewsFresh();
-  const code = asset.shortName.toUpperCase();
+  const code = asset.code;
   return newsHub.items.filter((i) => i.assetTags?.includes(code)).slice(0, NEWS_PER_ASSET);
 }
 
@@ -348,10 +354,14 @@ async function getHistoryCandles(
 const CORRELATION_SYMBOLS: Array<{ yahoo: string; label: string }> = [
   { yahoo: 'BTC-USD', label: 'BTC' },
   { yahoo: 'ETH-USD', label: 'ETH' },
-  { yahoo: 'SOL-USD', label: 'SOL' },
   { yahoo: '^JKSE', label: 'JCI' },
+  { yahoo: '^GSPC', label: 'SPX' },
+  { yahoo: '^NDX', label: 'NDX' },
+  { yahoo: '^N225', label: 'N225' },
+  { yahoo: '^FTSE', label: 'FTSE' },
   { yahoo: 'GC=F', label: 'GOLD' },
-  { yahoo: 'IDR=X', label: 'USD/IDR' },
+  { yahoo: 'IDR=X', label: 'USD' },
+  { yahoo: 'EURIDR=X', label: 'EUR' },
 ];
 const CORRELATION_WINDOW = 30;
 
@@ -514,11 +524,59 @@ async function getIndodaxPrices(): Promise<Record<string, PriceTick>> {
   return result;
 }
 
+/** Open/closed flag for an app symbol, from its exchange's regular session. */
+function marketOpenFor(appSymbol: string, nowMs: number): boolean | undefined {
+  const asset = getAssetBySymbol(appSymbol);
+  return asset && asset.exchange !== 'CRYPTO' ? isExchangeOpen(asset.exchange, nowMs) : undefined;
+}
+
+/** Yahoo stock/index quotes are delayed (≈15 min); FX and futures are close to real time. */
+function isDelayedFeed(appSymbol: string): boolean {
+  const group = getAssetBySymbol(appSymbol)?.group;
+  return group === 'stock' || group === 'index';
+}
+
+// Assets priced from Yahoo Finance (gold uses its own spot source; crypto uses Indodax)
+const YAHOO_ASSETS = ASSETS.filter((a) => a.yahooSymbol && !a.indodaxPair && a.group !== 'gold');
+
+/** Cache 30 s while the asset's market is open (near real time), 5 min while closed. */
+function yahooCacheMs(asset: Asset, nowMs = Date.now()): number {
+  return isExchangeOpen(asset.exchange, nowMs) ? 30_000 : 5 * 60_000;
+}
+
+/** Quotes for every Yahoo-priced asset; failures become "unavailable" ticks. */
+async function getYahooTicks(): Promise<Record<string, PriceTick>> {
+  const now = Date.now();
+  const results = await Promise.allSettled(
+    YAHOO_ASSETS.map((a) =>
+      getYahooQuote(a.yahooSymbol as string, a.symbol, a.group, a.currency, yahooCacheMs(a, now))
+    )
+  );
+  const ticks: Record<string, PriceTick> = {};
+  results.forEach((r, i) => {
+    const a = YAHOO_ASSETS[i];
+    ticks[a.symbol] =
+      r.status === 'fulfilled'
+        ? r.value
+        : {
+            symbol: a.symbol,
+            group: a.group,
+            price: NaN,
+            currency: a.currency,
+            source: 'Yahoo Finance',
+            updatedAt: now,
+            status: 'error',
+            errorMessage: `${a.name} data unavailable`,
+          };
+  });
+  return ticks;
+}
+
 async function getYahooQuote(
   yahooSymbol: string,
   appSymbol: string,
-  group: 'stock' | 'forex' | 'gold',
-  currency: 'PTS' | 'IDR' | 'USD',
+  group: AssetGroup,
+  currency: PriceCurrency,
   cacheMs: number = 60_000
 ): Promise<PriceTick> {
   const now = Date.now();
@@ -526,7 +584,7 @@ async function getYahooQuote(
   if (cached && cached.expiresAt > now) {
     return {
       ...cached.data,
-      isMarketOpen: appSymbol === '^JKSE' ? isIdxMarketOpen(now) : undefined,
+      isMarketOpen: marketOpenFor(appSymbol, now),
     };
   }
 
@@ -589,11 +647,11 @@ async function getYahooQuote(
     high24h,
     low24h,
     sparkline: recentSparkline,
-    isMarketOpen: appSymbol === '^JKSE' ? isIdxMarketOpen(now) : undefined,
+    isMarketOpen: marketOpenFor(appSymbol, now),
     currency,
     source: 'Yahoo Finance',
     updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
-    status: appSymbol === '^JKSE' ? 'delayed' : 'live',
+    status: isDelayedFeed(appSymbol) ? 'delayed' : 'live',
   };
 
   yahooCache.set(appSymbol, {
@@ -860,11 +918,11 @@ async function startServer() {
     const ticks: Record<string, PriceTick> = {};
     const now = Date.now();
 
-    const [indodaxResult, ihsgResult, usdIdrResult] = await Promise.allSettled([
-      getIndodaxPrices(),
-      getYahooQuote('^JKSE', '^JKSE', 'stock', 'PTS', 60_000),
-      getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000),
+    const [indodaxResult, yahooTicks] = await Promise.all([
+      Promise.allSettled([getIndodaxPrices()]).then(([r]) => r),
+      getYahooTicks(),
     ]);
+    Object.assign(ticks, yahooTicks);
 
     if (indodaxResult.status === 'fulfilled') {
       Object.assign(ticks, indodaxResult.value);
@@ -883,37 +941,8 @@ async function startServer() {
       }
     }
 
-    if (ihsgResult.status === 'fulfilled') {
-      ticks['^JKSE'] = ihsgResult.value;
-    } else {
-      ticks['^JKSE'] = {
-        symbol: '^JKSE',
-        group: 'stock',
-        price: NaN,
-        currency: 'PTS',
-        source: 'Yahoo Finance',
-        updatedAt: now,
-        status: 'error',
-        errorMessage: 'JCI data unavailable',
-      };
-    }
-
-    let usdIdrRate = 0;
-    if (usdIdrResult.status === 'fulfilled') {
-      ticks['USD/IDR'] = usdIdrResult.value;
-      usdIdrRate = usdIdrResult.value.price;
-    } else {
-      ticks['USD/IDR'] = {
-        symbol: 'USD/IDR',
-        group: 'forex',
-        price: NaN,
-        currency: 'IDR',
-        source: 'Yahoo Finance',
-        updatedAt: now,
-        status: 'error',
-        errorMessage: 'USD/IDR rate data unavailable',
-      };
-    }
+    const usdIdrPrice = ticks['USD/IDR']?.price;
+    const usdIdrRate = Number.isFinite(usdIdrPrice) ? usdIdrPrice : 0;
 
     try {
       const goldTick = await getGoldTick(usdIdrRate);
@@ -950,21 +979,12 @@ async function startServer() {
     }
   });
 
-  // 3. Yahoo Finance endpoint (for 60s JCI & USD/IDR polling)
+  // 3. Yahoo Finance endpoint: JCI, global indices and currencies (client polls every 30 s)
   app.get('/api/market/yahoo', async (_req, res) => {
     const now = Date.now();
-    const [ihsgResult, usdIdrResult] = await Promise.allSettled([
-      getYahooQuote('^JKSE', '^JKSE', 'stock', 'PTS', 60_000),
-      getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000),
-    ]);
-
-    const ticks: Record<string, PriceTick> = {};
-    if (ihsgResult.status === 'fulfilled') {
-      ticks['^JKSE'] = ihsgResult.value;
-    }
-    if (usdIdrResult.status === 'fulfilled') {
-      ticks['USD/IDR'] = usdIdrResult.value;
-    }
+    const all = await getYahooTicks();
+    // Failed quotes are left out so the client keeps its last good price
+    const ticks = Object.fromEntries(Object.entries(all).filter(([, t]) => t.status !== 'error'));
     res.json({ ticks, serverTime: now, idxMarketOpen: isIdxMarketOpen(now) });
   });
 

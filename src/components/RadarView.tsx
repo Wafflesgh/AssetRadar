@@ -86,16 +86,16 @@ export function RadarView({
             >
               <span>Live Instrument Radar</span>
               <span aria-hidden="true">·</span>
-              <span>6 Assets Tracked</span>
+              <span>{ASSETS.length} Assets Tracked</span>
               <span aria-hidden="true">·</span>
               <span>WIB Time Zone (Asia/Jakarta)</span>
             </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-              Track gold, stocks, and crypto on one radar.
+              Track gold, stocks, crypto and global markets on one radar.
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              Crypto prices update in real time via Indodax, the JCI index &amp; USD/IDR rate come from
-              Yahoo Finance, plus the XAU/USD spot gold price with its Rupiah-per-gram conversion.
+              Crypto prices update in real time via Indodax; JCI, global indices (US, Japan, London,
+              Europe, Asia) and major currencies come from Yahoo Finance, plus spot gold in Rupiah/gram.
             </p>
           </div>
 
@@ -336,7 +336,7 @@ function AssetCard({
   let formattedPrimaryPrice = 'Loading...';
   if (isLoaded && tick) {
     if (asset.currency === 'IDR') {
-      formattedPrimaryPrice = formatRupiah(tick.price, 0);
+      formattedPrimaryPrice = formatRupiah(tick.price);
     } else if (asset.currency === 'PTS') {
       formattedPrimaryPrice = formatPoints(tick.price);
     } else if (asset.currency === 'USD') {
@@ -355,10 +355,8 @@ function AssetCard({
       ? 'Offline – last data'
       : tick.status === 'error'
       ? 'Error'
-      : asset.symbol === '^JKSE'
-        ? tick.isMarketOpen
-          ? 'Delayed · Market open'
-          : 'Delayed · Market closed'
+      : tick.isMarketOpen === false
+        ? 'Market closed · last price'
         : tick.status === 'live'
           ? 'Live'
           : 'Delayed';

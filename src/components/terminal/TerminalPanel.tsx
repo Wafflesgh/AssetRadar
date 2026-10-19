@@ -11,10 +11,11 @@ const idNumber = (digits: number) =>
 const NUM_0 = idNumber(0);
 const NUM_2 = idNumber(2);
 
-/** Compact Terminal price: Rupiah without "Rp" or decimals, other assets with 2 decimals. */
+/** Compact Terminal price: Rupiah without "Rp" (decimals only under 1,000), others 2 decimals. */
 export function formatTerminalPrice(value: number | undefined, asset: AssetConfig): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
-  return asset.currency === 'IDR' ? NUM_0.format(value) : NUM_2.format(value);
+  if (asset.currency === 'IDR') return Math.abs(value) < 1000 ? NUM_2.format(value) : NUM_0.format(value);
+  return NUM_2.format(value);
 }
 
 export function formatTerminalPct(value: number | undefined): string {

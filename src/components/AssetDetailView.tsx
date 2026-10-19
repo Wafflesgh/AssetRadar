@@ -59,12 +59,11 @@ export function AssetDetailView({
       : asset.tvSymbol;
 
   const isGold = asset.group === 'gold';
-  const isJci = asset.symbol === '^JKSE';
   const isLoaded = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
 
   const formatVal = (val: number | undefined) => {
     if (val === undefined || !Number.isFinite(val)) return '—';
-    if (asset.currency === 'IDR') return formatRupiah(val, 0);
+    if (asset.currency === 'IDR') return formatRupiah(val);
     if (asset.currency === 'PTS') return formatPoints(val);
     return formatUsdPerOz(val);
   };
@@ -273,11 +272,11 @@ export function AssetDetailView({
                 className="text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {isJci
-                  ? tick?.isMarketOpen
+                {tick?.isMarketOpen === false
+                  ? 'Last price · Market closed'
+                  : tick?.status === 'delayed'
                     ? 'Delayed data · Market open'
-                    : 'Last closing price · Market closed'
-                  : 'Latest market data'}
+                    : 'Latest market data'}
               </span>
             </div>
           )}
@@ -398,8 +397,8 @@ export function AssetDetailView({
           </div>
         </div>
 
-        {/* Notice for IDX:COMPOSITE on JCI */}
-        {isJci && (
+        {/* Notice for widget symbols that only offer daily/weekly data (JCI, DAX) */}
+        {asset.usesBackupChartFallback && (
           <div
             className="p-3.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 leading-relaxed"
             style={{
@@ -415,9 +414,9 @@ export function AssetDetailView({
               />
               <div>
                 <strong style={{ color: 'var(--text-primary)' }}>
-                  JCI chart note:
+                  {asset.shortName} chart note:
                 </strong>{' '}
-                The TradingView widget (<code className="font-mono-num">IDX:COMPOSITE</code>) only
+                The TradingView widget (<code className="font-mono-num">{asset.tvSymbol}</code>) only
                 provides the <strong>1D (Daily)</strong> and <strong>1W (Weekly)</strong> timeframes.
                 For other timeframes, the alternative Yahoo Finance chart (delayed data) is used
                 automatically.

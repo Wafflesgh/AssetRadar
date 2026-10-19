@@ -1,5 +1,5 @@
 /**
- * MarketPanels.tsx — Terminal MONITOR table (all assets, price flash, click/1–6 to select)
+ * MarketPanels.tsx — Terminal MONITOR table (all assets, price flash, click/1–9 to select)
  * and HEATMAP grid (color intensity by 24h % change).
  */
 import { useEffect, useRef, useState } from 'react';
@@ -62,7 +62,7 @@ export function MonitorPanel({
       id="panel-monitor"
       className={className}
       title="Monitor"
-      subtitle="Click a row or press 1–6"
+      subtitle="Click a row or press 1–9"
       highlighted={highlighted}
       bodyClassName="overflow-x-auto"
     >
@@ -101,7 +101,7 @@ export function MonitorPanel({
                 </td>
                 <td className="px-2 py-1.5 font-bold whitespace-nowrap" style={{ color: 'var(--t-amber)' }}>
                   {selected ? '▸ ' : ''}
-                  {asset.shortName.toUpperCase()}
+                  {asset.code}
                 </td>
                 {usable ? (
                   <>
@@ -131,7 +131,7 @@ export function MonitorPanel({
                       {formatWibStamp(tick.updatedAt)}
                     </td>
                     <td className="px-2 py-1.5 hidden md:table-cell uppercase" style={{ color: 'var(--t-muted)' }}>
-                      {tick.fromSnapshot ? 'SAVED' : tick.status}
+                      {tick.fromSnapshot ? 'SAVED' : tick.isMarketOpen === false ? 'CLOSED' : tick.status}
                     </td>
                   </>
                 ) : (
@@ -167,7 +167,7 @@ function heatColor(pct: number | undefined): string {
 export function HeatmapPanel({ ticks, selectedSymbol, onSelect, highlighted }: MarketPanelProps) {
   return (
     <TerminalPanel id="panel-heatmap" title="Heatmap" subtitle="24-hour % change" highlighted={highlighted}>
-      <div className="grid grid-cols-3 gap-1 p-1.5 terminal-mono">
+      <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-3 gap-1 p-1.5 terminal-mono">
         {ASSETS.map((asset) => {
           const tick = ticks[asset.symbol];
           const pct = isTickUsable(tick) ? tick.changePct24h : undefined;
@@ -177,7 +177,7 @@ export function HeatmapPanel({ ticks, selectedSymbol, onSelect, highlighted }: M
               key={asset.id}
               type="button"
               onClick={() => onSelect(asset.symbol)}
-              className="h-16 flex flex-col items-center justify-center border"
+              className="h-12 flex flex-col items-center justify-center border"
               style={{
                 backgroundColor: heatColor(pct),
                 borderColor: selected ? 'var(--t-amber)' : 'transparent',
@@ -185,7 +185,7 @@ export function HeatmapPanel({ ticks, selectedSymbol, onSelect, highlighted }: M
               }}
             >
               <span className="text-[11px] font-bold" style={{ color: 'var(--t-text)' }}>
-                {asset.shortName.toUpperCase()}
+                {asset.code}
               </span>
               <span className="text-xs font-bold" style={{ color: 'var(--t-text)' }}>
                 {pct === undefined && tick && !isTickUsable(tick) ? 'N/A' : formatTerminalPct(pct)}

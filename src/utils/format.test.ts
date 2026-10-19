@@ -13,7 +13,9 @@ import {
 test('formatRupiah formats numbers with English separators and no space', () => {
   assert.equal(formatRupiah(1234567), 'Rp1,234,567');
   assert.equal(formatRupiah(15850, 2), 'Rp15,850.00');
-  assert.equal(formatRupiah(-500), '-Rp500');
+  assert.equal(formatRupiah(-5000), '-Rp5,000');
+  assert.equal(formatRupiah(114.031), 'Rp114.03');
+  assert.equal(formatRupiah(114.031, 0), 'Rp114');
   assert.equal(formatRupiah(NaN), '—');
 });
 

@@ -36,7 +36,7 @@ export function ChartPanel({
       id="panel-chart"
       className={className}
       title="Chart"
-      subtitle={`${asset.shortName.toUpperCase()} · ${asset.name}`}
+      subtitle={`${asset.code} · ${asset.name}`}
       highlighted={highlighted}
       right={
         <div role="group" aria-label="Chart timeframe picker" className="flex flex-wrap terminal-mono">
@@ -222,7 +222,7 @@ export function NewsFeedPanel({
   const news = useLiveNews();
   const now = useNow();
   const [filter, setFilter] = useState<FeedFilter>('all');
-  const code = asset.shortName.toUpperCase();
+  const code = asset.code;
   const items = (
     filter === 'asset'
       ? filterNewsByCode(news.items, code)

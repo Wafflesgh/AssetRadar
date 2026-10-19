@@ -72,7 +72,7 @@ export function TerminalView({
   const asset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
   const news = useLiveNews();
   // Sentiment re-scores whenever a new headline about the selected asset arrives
-  const intel = useAssetIntelligence(asset.symbol, latestNewsKey(news, asset.shortName.toUpperCase()));
+  const intel = useAssetIntelligence(asset.symbol, latestNewsKey(news, asset.code));
 
   const focusPanel = useCallback((panel: PanelId, scroll: boolean) => {
     setHighlight(panel);
@@ -93,14 +93,14 @@ export function TerminalView({
     []
   );
 
-  // Number keys 1–6 select an asset in MONITOR order
+  // Number keys 1–9 select an asset in MONITOR order
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const n = Number(e.key);
-      if (Number.isInteger(n) && n >= 1 && n <= ASSETS.length) {
+      if (Number.isInteger(n) && n >= 1 && n <= Math.min(9, ASSETS.length)) {
         setSelectedSymbol(ASSETS[n - 1].symbol);
         focusPanel('monitor', false);
       }

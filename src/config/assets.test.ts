@@ -7,10 +7,13 @@ import {
   DEFAULT_TIMEFRAME,
   getAssetBySymbol,
   isValidTimeframe,
+  getAssetByCode,
 } from './assets.ts';
 
-test('ASSETS contains all 6 required instruments with exact TradingView symbols', () => {
-  assert.equal(ASSETS.length, 6);
+test('ASSETS contains the core instruments with exact TradingView symbols', () => {
+  assert.equal(ASSETS.length, 21);
+  // Codes are unique (Terminal commands and news tags rely on this)
+  assert.equal(new Set(ASSETS.map((a) => a.code)).size, ASSETS.length);
 
   const btc = getAssetBySymbol('BTC/IDR');
   assert.ok(btc);
@@ -60,4 +63,17 @@ test('JCI uses English naming with the legacy-free id', () => {
     TIMEFRAME_OPTIONS.map((t) => t.label),
     ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W']
   );
+});
+
+test('global indices and currencies are configured', () => {
+  for (const code of ['SPX', 'NDX', 'DJI', 'N225', 'FTSE', 'DAX', 'HSI', 'STI', 'DXY']) {
+    assert.ok(getAssetByCode(code), code);
+  }
+  for (const code of ['EUR', 'SGD', 'JPY', 'GBP', 'CNY', 'AUD']) {
+    const a = getAssetByCode(code);
+    assert.equal(a?.symbol, `${code}/IDR`);
+    assert.equal(a?.yahooSymbol, `${code}IDR=X`);
+  }
+  assert.equal(getAssetByCode('ihsg')?.symbol, '^JKSE');
+  assert.equal(getAssetByCode('nikkei')?.exchange, 'TSE');
 });

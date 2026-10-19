@@ -46,9 +46,18 @@ test('getCommandSuggestions returns prefix matches', () => {
   );
   assert.deepEqual(
     getCommandSuggestions('c').map((s) => s.command),
-    ['CORR']
+    ['CNY', 'CNY GP', 'CNY N', 'CORR']
   );
   assert.deepEqual(getCommandSuggestions('ec').map((s) => s.command), ['ECO']);
   assert.ok(getCommandSuggestions('G').some((s) => s.command === 'GOLD GP'));
   assert.ok(getCommandSuggestions('E').length <= 6);
+});
+
+test('parseTerminalCommand understands global indices and currencies', () => {
+  assert.equal((parseTerminalCommand('spx gp') as { symbol: string }).symbol, '^GSPC');
+  assert.equal((parseTerminalCommand('NASDAQ') as { symbol: string }).symbol, '^NDX');
+  assert.equal((parseTerminalCommand('nikkei n') as { symbol: string }).symbol, '^N225');
+  assert.equal((parseTerminalCommand('EUR') as { symbol: string }).symbol, 'EUR/IDR');
+  assert.equal((parseTerminalCommand('jpyidr') as { symbol: string }).symbol, 'JPY/IDR');
+  assert.equal((parseTerminalCommand('DXY') as { symbol: string }).symbol, 'DXY');
 });

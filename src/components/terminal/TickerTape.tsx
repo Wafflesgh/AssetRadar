@@ -26,7 +26,7 @@ export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
           className="inline-flex items-baseline gap-1.5 px-4 text-[11px] whitespace-nowrap hover:underline"
         >
           <span className="font-bold" style={{ color: 'var(--t-amber)' }}>
-            {asset.shortName.toUpperCase()}
+            {asset.code}
           </span>
           <span style={{ color: 'var(--t-text)' }}>
             {usable ? formatTerminalPrice(tick.price, asset) : tick ? 'N/A' : '...'}

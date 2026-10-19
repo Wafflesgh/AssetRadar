@@ -185,7 +185,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
               ))}
               <tr>
                 <td className="pr-4 py-0.5 font-bold" style={{ color: 'var(--t-amber)' }}>
-                  1–6
+                  1–9
                 </td>
                 <td style={{ color: 'var(--t-text)' }}>Shortcut: select an asset by its MONITOR order</td>
               </tr>

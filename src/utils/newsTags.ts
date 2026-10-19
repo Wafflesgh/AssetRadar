@@ -10,7 +10,7 @@ import type { MarketNewsItem } from '../config/assets.ts';
 /** Tag for market-wide news (rates, inflation, central banks) that moves every asset. */
 export const MACRO_TAG = 'MACRO';
 
-// Whole-word patterns per asset code (codes match AssetConfig.shortName.toUpperCase()).
+// Whole-word patterns per asset code (tags match AssetConfig.code).
 const ASSET_PATTERNS: Array<{ tag: string; pattern: RegExp }> = [
   { tag: 'BTC', pattern: /\b(bitcoin|btc)\b/i },
   { tag: 'ETH', pattern: /\b(ethereum|ether|eth)\b/i },
@@ -20,11 +20,26 @@ const ASSET_PATTERNS: Array<{ tag: string; pattern: RegExp }> = [
     pattern: /\b(ihsg|jci|jakarta composite|bursa efek indonesia|bei|idx composite|saham ri)\b/i,
   },
   { tag: 'GOLD', pattern: /\b(gold|emas|xau|xau\/usd|xauusd|logam mulia|bullion)\b/i },
-  { tag: 'USD/IDR', pattern: /\b(rupiah|usd\/idr|usdidr|kurs dolar|dolar as)\b/i },
+  { tag: 'USD', pattern: /\b(rupiah|usd\/idr|usdidr|kurs dolar|dolar as)\b/i },
+  { tag: 'SPX', pattern: /(^|\W)(s&p 500|s&p500|s&p|sp500)(\W|$)|\bwall street\b/i },
+  { tag: 'NDX', pattern: /\b(nasdaq)\b/i },
+  { tag: 'DJI', pattern: /\b(dow jones|the dow|dow industrials)\b/i },
+  { tag: 'N225', pattern: /\b(nikkei|topix|tokyo stocks|japanese stocks)\b/i },
+  { tag: 'FTSE', pattern: /\b(ftse|london stocks|uk stocks)\b/i },
+  { tag: 'DAX', pattern: /\b(dax|german stocks|frankfurt stocks)\b/i },
+  { tag: 'HSI', pattern: /\b(hang seng|hong kong stocks)\b/i },
+  { tag: 'STI', pattern: /\b(straits times index|singapore stocks)\b/i },
+  { tag: 'DXY', pattern: /\b(dollar index|dxy|greenback)\b/i },
+  { tag: 'EUR', pattern: /\b(euro|eur\/usd|eurusd|eur\/idr|ecb)\b/i },
+  { tag: 'SGD', pattern: /\b(singapore dollar|sgd)\b/i },
+  { tag: 'JPY', pattern: /\b(yen|jpy|usd\/jpy|usdjpy|boj|bank of japan)\b/i },
+  { tag: 'GBP', pattern: /\b(sterling|pound sterling|gbp|gbp\/usd|bank of england|boe)\b/i },
+  { tag: 'CNY', pattern: /\b(yuan|renminbi|cny|pboc)\b/i },
+  { tag: 'AUD', pattern: /\b(aussie dollar|australian dollar|aud|aud\/usd|rba)\b/i },
 ];
 
 const MACRO_PATTERN =
-  /\b(fed|fomc|federal reserve|powell|interest rates?|rate (hike|cut)s?|inflation|inflasi|cpi|nonfarm|payrolls|suku bunga|bi rate|bank indonesia|the fed|treasury yields?|recession|resesi|tariffs?|tarif)\b/i;
+  /\b(fed|fomc|federal reserve|powell|interest rates?|rate (hike|cut)s?|inflation|inflasi|cpi|nonfarm|payrolls|suku bunga|bi rate|bank indonesia|the fed|treasury yields?|recession|resesi|tariffs?|tarif|ecb|boj|bank of japan|bank of england|boe|central banks?|bank sentral)\b/i;
 
 /** Returns the asset codes (and MACRO) a headline is about; empty when unrelated. */
 export function tagHeadline(title: string): string[] {
@@ -52,10 +67,14 @@ const GEO_STRIKE =
 const GEO_ACTORS =
   /\b(iran|israel|us|u\.s\.|united states|america|amerika|russia|rusia|ukraine|ukraina|china|tiongkok|taiwan|nato|north korea|korea utara|saudi|houthi|hezbollah|gaza|lebanon|pakistan|india|kyiv|moscow|tehran|beijing)\b/i;
 
+// Questions and speculation ("Why is X preparing for an invasion?") are analysis, not events
+const SPECULATIVE =
+  /\?\s*$|^\s*(why|what if|could|will|can|is|are|should|how|mengapa|kenapa|apakah|akankah|bisakah|bagaimana)\b|\b(may|might|could|threatens? to|warns? of|fears? of|risk of|bisa|berpotensi|ancam|khawatir)\b/i;
+
 /** Detects war / attack headlines that can move markets suddenly. */
 export function detectGeoAlert(title: string): GeoAlertLevel | null {
   if (GEO_EXCLUDE.test(title)) return null;
-  if (GEO_HIGH.test(title)) return 'high';
+  if (GEO_HIGH.test(title)) return SPECULATIVE.test(title) ? 'elevated' : 'high';
   if (GEO_STRIKE.test(title) && GEO_ACTORS.test(title)) return 'elevated';
   return null;
 }

@@ -47,6 +47,8 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
   const altSourceLabel = asset.indodaxPair ? 'Indodax' : 'Yahoo Finance';
   const canUseAlternative = Boolean(asset.indodaxPair || asset.yahooSymbol);
   const showAlternative = source === 'alternative' && canUseAlternative;
+  // Symbols the widget rejects with no fallback symbol can only use the alternative chart
+  const tradingViewAvailable = !(asset.tvWidgetUnsupported && !asset.tvFallbackSymbol);
   const activeTvSymbol = tvSymbol ?? getDefaultTvSymbol(asset);
 
   const toggleSource = () =>
@@ -68,11 +70,12 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
               <>
                 {' '}
                 · chosen automatically
-                {asset.tvWidgetUnsupported ? ' (Rupiah symbols are not available in the TradingView widget)' : ' for this timeframe'}
+                {asset.tvWidgetUnsupported ? ' (not available in the TradingView widget)' : ' for this timeframe'}
               </>
             )}
             {!showAlternative && activeTvSymbol.endsWith('USDT') && <> · prices in USDT</>}
           </span>
+          {tradingViewAvailable && (
           <button
             type="button"
             onClick={toggleSource}
@@ -90,6 +93,7 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
             )}
             <span>{showAlternative ? 'Try TradingView chart' : 'Use alternative chart'}</span>
           </button>
+          )}
         </div>
       )}
 

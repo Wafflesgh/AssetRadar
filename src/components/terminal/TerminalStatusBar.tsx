@@ -1,7 +1,8 @@
-/** TerminalStatusBar.tsx — Terminal top bar: brand, connection state, IDX open/closed and WIB clock. */
+/** TerminalStatusBar.tsx — Terminal top bar: brand, connection state, world market clocks (open/closed) and WIB clock. */
 import { useEffect, useState } from 'react';
 import { ConnectionState } from '../../services/marketDataService.ts';
-import { isIdxMarketOpen } from '../../utils/marketHours.ts';
+import { isExchangeOpen, isIdxMarketOpen } from '../../utils/marketHours.ts';
+import type { ExchangeId } from '../../config/assets.ts';
 
 const CLOCK = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
@@ -17,6 +18,18 @@ const DATE = new Intl.DateTimeFormat('en-GB', {
   month: 'short',
   year: 'numeric',
 });
+
+const localClock = (timeZone: string) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false });
+
+// Major venues: local time, colored green while the regular session is open
+const WORLD_MARKETS: Array<{ label: string; exchange: ExchangeId; clock?: Intl.DateTimeFormat }> = [
+  { label: 'IDX', exchange: 'IDX' },
+  { label: 'NY', exchange: 'NYSE', clock: localClock('America/New_York') },
+  { label: 'LDN', exchange: 'LSE', clock: localClock('Europe/London') },
+  { label: 'TYO', exchange: 'TSE', clock: localClock('Asia/Tokyo') },
+  { label: 'HK', exchange: 'HKEX', clock: localClock('Asia/Hong_Kong') },
+];
 
 const CONNECTION_LABEL: Record<ConnectionState, { text: string; color: string }> = {
   live: { text: 'LIVE', color: 'var(--t-up)' },
@@ -61,13 +74,18 @@ export function TerminalStatusBar({ connectionState }: { connectionState: Connec
           {conn.text}
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <span>
-          <span style={{ color: 'var(--t-muted)' }}>IDX </span>
-          <span className="font-bold" style={{ color: bei ? 'var(--t-up)' : 'var(--t-down)' }}>
-            {bei ? 'OPEN' : 'CLOSED'}
-          </span>
-        </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        {WORLD_MARKETS.map((m) => {
+          const open = m.exchange === 'IDX' ? bei : isExchangeOpen(m.exchange, now);
+          return (
+            <span key={m.label} title={`${m.label} ${open ? 'open' : 'closed'}`}>
+              <span style={{ color: 'var(--t-muted)' }}>{m.label} </span>
+              <span className="font-bold" style={{ color: open ? 'var(--t-up)' : 'var(--t-down)' }}>
+                {m.clock ? m.clock.format(now) : open ? 'OPEN' : 'CLOSED'}
+              </span>
+            </span>
+          );
+        })}
         <span style={{ color: 'var(--t-muted)' }} className="hidden sm:inline">
           {DATE.format(now)}
         </span>

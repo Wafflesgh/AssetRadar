@@ -110,7 +110,7 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
     <TerminalPanel
       id="panel-sentiment"
       title="Sentiment"
-      subtitle={`${asset.shortName.toUpperCase()}${data?.aiPowered ? ' · AI-enhanced' : ''}`}
+      subtitle={`${asset.code}${data?.aiPowered ? ' · AI-enhanced' : ''}`}
       highlighted={highlighted}
       right={!loading && <RetryButton onClick={reload} label="Reload" />}
     >
@@ -167,7 +167,7 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
 
 /** 24h change of the asset behind a news tag, for showing how that asset is moving now. */
 export function tagChange(ticks: Record<string, PriceTick>, tag: string): number | undefined {
-  const asset = ASSETS.find((a) => a.shortName.toUpperCase() === tag);
+  const asset = ASSETS.find((a) => a.code === tag);
   const tick = asset ? ticks[asset.symbol] : undefined;
   return isTickUsable(tick) ? tick.changePct24h : undefined;
 }
@@ -266,12 +266,12 @@ export function AssetNewsPanel({
 }) {
   const news = useLiveNews();
   const now = useNow();
-  const items = filterNewsByCode(news.items, asset.shortName.toUpperCase()).slice(0, 15);
+  const items = filterNewsByCode(news.items, asset.code).slice(0, 15);
   return (
     <TerminalPanel
       id="panel-news"
       title="News"
-      subtitle={`${asset.shortName.toUpperCase()} · original language`}
+      subtitle={`${asset.code} · original language`}
       highlighted={highlighted}
       right={<LiveBadge />}
       bodyClassName="overflow-y-auto max-h-80"

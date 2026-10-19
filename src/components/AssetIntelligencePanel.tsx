@@ -67,7 +67,7 @@ export function AssetIntelligencePanel({
   }, [loadIntelligence]);
 
   // Live headlines for this asset; sentiment re-scores silently when a new one arrives
-  const assetCode = (getAssetBySymbol(symbol)?.shortName ?? '').toUpperCase();
+  const assetCode = getAssetBySymbol(symbol)?.code ?? '';
   const liveNews = useLiveNews();
   const now = useNow();
   const liveItems = filterNewsByCode(liveNews.items, assetCode).slice(0, 8);

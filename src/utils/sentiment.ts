@@ -263,13 +263,14 @@ export function parseRssItems(
       cleanTitle = cleanTitle.slice(0, dashIdx).trim();
     }
 
+    const publishedMs = parseFeedDate(pubDate);
     items.push({
       id: `${items.length}-${pubDate || cleanTitle.slice(0, 16)}`,
       title: cleanTitle,
       link: link.trim(),
       source,
       publishedAt: pubDate ? formatRssDate(pubDate) : 'Latest',
-      publishedAtMs: pubDate && !Number.isNaN(Date.parse(pubDate)) ? Date.parse(pubDate) : undefined,
+      publishedAtMs: publishedMs,
       sentiment: classifyHeadlineSentiment(cleanTitle),
     });
   }
@@ -296,7 +297,7 @@ function decodeHtmlEntities(str: string): string {
 }
 
 function formatRssDate(dateStr: string): string {
-  const parsed = Date.parse(dateStr);
+  const parsed = parseFeedDate(dateStr) ?? NaN;
   if (Number.isNaN(parsed)) return dateStr;
   return (
     new Intl.DateTimeFormat('en-US', {
@@ -309,4 +310,16 @@ function formatRssDate(dateStr: string): string {
       timeZone: 'Asia/Jakarta',
     }).format(new Date(parsed)) + ' WIB'
   );
+}
+
+/**
+ * Parses an RSS pubDate. RFC-822 dates carry their zone; some feeds (e.g. Investing.com) send
+ * "YYYY-MM-DD HH:MM:SS" without one, which is UTC — parse it explicitly so the server's own
+ * time zone never shifts it.
+ */
+export function parseFeedDate(raw: string): number | undefined {
+  if (!raw) return undefined;
+  const bare = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(:\d{2})?)$/.exec(raw.trim());
+  const ms = bare ? Date.parse(`${bare[1]}T${bare[2]}Z`) : Date.parse(raw);
+  return Number.isNaN(ms) ? undefined : ms;
 }

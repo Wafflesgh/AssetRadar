@@ -97,7 +97,7 @@ export function WatchlistView({
             const priceDisplay = !isLoaded
               ? 'Loading...'
               : asset.currency === 'IDR'
-                ? formatRupiah(tick.price, 0)
+                ? formatRupiah(tick.price)
                 : asset.currency === 'PTS'
                   ? formatPoints(tick.price)
                   : formatUsdPerOz(tick.price);

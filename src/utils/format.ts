@@ -18,11 +18,13 @@ const numberFormatterTwo = new Intl.NumberFormat(LOCALE, {
 });
 
 /**
- * Formats a numeric value in Indonesian Rupiah: "Rp1,234,567" (or "Rp15,850.00").
+ * Formats a numeric value in Indonesian Rupiah: "Rp1,234,567" (or "Rp15,850.00"). Without
+ * fractionDigits, small rates such as JPY/IDR (under 1,000) get 2 decimals: "Rp114.03".
  */
-export function formatRupiah(value: number, fractionDigits: 0 | 2 = 0): string {
+export function formatRupiah(value: number, fractionDigits?: 0 | 2): string {
   if (!Number.isFinite(value)) return '—';
-  const formatter = fractionDigits === 2 ? numberFormatterTwo : numberFormatterZero;
+  const digits = fractionDigits ?? (Math.abs(value) < 1000 ? 2 : 0);
+  const formatter = digits === 2 ? numberFormatterTwo : numberFormatterZero;
   const sign = value < 0 ? '-' : '';
   return `${sign}Rp${formatter.format(Math.abs(value))}`;
 }

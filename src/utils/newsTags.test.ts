@@ -14,7 +14,7 @@ import {
 
 test('tagHeadline finds assets in English and Indonesian headlines', () => {
   assert.deepEqual(tagHeadline('Bitcoin and Ether slide as ETF outflows grow'), ['BTC', 'ETH']);
-  assert.deepEqual(tagHeadline('IHSG Anjlok 5%, Rupiah Melemah ke 18.000'), ['JCI', 'USD/IDR']);
+  assert.deepEqual(tagHeadline('IHSG Anjlok 5%, Rupiah Melemah ke 18.000'), ['JCI', 'USD']);
   assert.deepEqual(tagHeadline('Harga emas Antam naik hari ini'), ['GOLD']);
   assert.deepEqual(tagHeadline('Gold rangebound as Fed rate cut bets fade'), ['GOLD', MACRO_TAG]);
   assert.deepEqual(tagHeadline('Solana network upgrade goes live'), ['SOL']);
@@ -118,4 +118,22 @@ test('selectGeoAlert shows the newest recent high alert that was not dismissed',
   assert.deepEqual(alert?.sources, ['BBC', 'Reuters']);
   assert.equal(selectGeoAlert(items, now, new Set(['a', 'b'])), null);
   assert.equal(selectGeoAlert([geo('c', 2, 'elevated')], now), null);
+});
+
+test('tagHeadline covers global indices and currencies', () => {
+  assert.deepEqual(tagHeadline('S&P 500 and Nasdaq hit records as Wall Street rallies'), ['SPX', 'NDX']);
+  assert.deepEqual(tagHeadline('Nikkei slides as yen strengthens after BoJ comments'), [
+    'N225',
+    'JPY',
+    MACRO_TAG,
+  ]);
+  assert.deepEqual(tagHeadline('Sterling and the euro weaken against the greenback'), ['DXY', 'EUR', 'GBP']);
+  assert.deepEqual(tagHeadline('Hang Seng jumps; Straits Times Index flat'), ['HSI', 'STI']);
+});
+
+test('detectGeoAlert treats questions and speculation as elevated, not high', () => {
+  assert.equal(detectGeoAlert('Mengapa Kanada bersiap menghadapi invasi militer AS?'), 'elevated');
+  assert.equal(detectGeoAlert('Could China invade Taiwan next year?'), 'elevated');
+  assert.equal(detectGeoAlert('Analysts warn of full-scale invasion risk'), 'elevated');
+  assert.equal(detectGeoAlert('Russia launches full-scale invasion'), 'high');
 });

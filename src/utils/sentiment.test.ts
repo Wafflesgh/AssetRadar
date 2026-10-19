@@ -6,6 +6,7 @@ import {
   classifyHeadlineSentiment,
   computeMarketSentiment,
   parseRssItems,
+  parseFeedDate,
 } from './sentiment.ts';
 
 test('isIdxMarketOpen correctly identifies IDX trading hours (Mon-Fri 09:00-16:00 WIB)', () => {
@@ -116,4 +117,10 @@ test('parseRssItems strips the Google News source suffix from short titles', () 
     <source url="https://arabnews.com">Arab News</source>
   </item></channel></rss>`;
   assert.equal(parseRssItems(xml)[0].title, 'Egypt enters the war');
+});
+
+test('parseFeedDate treats zone-less feed dates as UTC', () => {
+  assert.equal(parseFeedDate('2026-10-19 06:03:33'), Date.UTC(2026, 9, 19, 6, 3, 33));
+  assert.equal(parseFeedDate('Mon, 19 Oct 2026 13:00:10 +0700'), Date.UTC(2026, 9, 19, 6, 0, 10));
+  assert.equal(parseFeedDate('not a date'), undefined);
 });

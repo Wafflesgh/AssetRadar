@@ -1,11 +1,12 @@
 /**
  * assets.ts — Shared types and the single source of truth for every tracked instrument.
  * Holds the price/news/chart data types used by both server and client, the list of the
- * six monitored assets (TradingView symbols, Yahoo/Indodax data sources, news queries),
+ * monitored assets (crypto, JCI, global indices, gold, major currencies; TradingView
+ * symbols, Yahoo/Indodax data sources, exchange, Terminal code, news queries),
  * asset groups shown on the Radar, and the chart timeframe options.
  */
 
-export type AssetGroup = 'crypto' | 'stock' | 'gold' | 'forex';
+export type AssetGroup = 'crypto' | 'stock' | 'index' | 'gold' | 'forex';
 
 export type PriceCurrency = 'IDR' | 'USD' | 'PTS';
 
@@ -98,9 +99,17 @@ export const TIMEFRAME_OPTIONS: TimeframeOption[] = [
 
 export const DEFAULT_TIMEFRAME: TimeframeInterval = '15';
 
+/** Trading venue, used for open/closed status (see utils/marketHours.ts). */
+export type ExchangeId = 'CRYPTO' | 'IDX' | 'NYSE' | 'TSE' | 'LSE' | 'XETRA' | 'HKEX' | 'SGX' | 'FX';
+
 export interface AssetConfig {
   id: string;
   symbol: string;
+  /** Short uppercase code used by Terminal commands and news tags, e.g. "BTC", "SPX", "EUR". */
+  code: string;
+  /** Extra Terminal command aliases, e.g. ["IHSG"] for JCI. */
+  aliases?: string[];
+  exchange: ExchangeId;
   indodaxPair?: string; // e.g. "btcidr", "ethidr", "solidr"
   yahooSymbol?: string; // e.g. "^JKSE", "IDR=X", "GC=F"
   shortName: string;
@@ -120,15 +129,19 @@ export interface AssetConfig {
   sourceLabel: string;
   unitLabel: string;
   description: string;
-  /** Google News query for the English edition. */
-  newsQuery: string;
-  /** Google News query for the Indonesian edition (articles keep their original language). */
-  newsQueryId: string;
+  /**
+   * Google News queries (English / Indonesian edition). Only the core assets have them, to keep
+   * Google request volume low; other assets get news via keyword tagging of publisher feeds.
+   */
+  newsQuery?: string;
+  newsQueryId?: string;
 }
 
 export const ASSETS: AssetConfig[] = [
   {
     id: 'btc',
+    code: 'BTC',
+    exchange: 'CRYPTO',
     symbol: 'BTC/IDR',
     indodaxPair: 'btcidr',
     yahooSymbol: 'BTC-IDR',
@@ -148,6 +161,8 @@ export const ASSETS: AssetConfig[] = [
   },
   {
     id: 'eth',
+    code: 'ETH',
+    exchange: 'CRYPTO',
     symbol: 'ETH/IDR',
     indodaxPair: 'ethidr',
     yahooSymbol: 'ETH-IDR',
@@ -166,6 +181,8 @@ export const ASSETS: AssetConfig[] = [
   },
   {
     id: 'sol',
+    code: 'SOL',
+    exchange: 'CRYPTO',
     symbol: 'SOL/IDR',
     indodaxPair: 'solidr',
     yahooSymbol: 'SOL-IDR',
@@ -184,6 +201,9 @@ export const ASSETS: AssetConfig[] = [
   },
   {
     id: 'jci',
+    code: 'JCI',
+    aliases: ['IHSG', 'JKSE'],
+    exchange: 'IDX',
     symbol: '^JKSE',
     yahooSymbol: '^JKSE',
     shortName: 'JCI',
@@ -201,6 +221,9 @@ export const ASSETS: AssetConfig[] = [
   },
   {
     id: 'xau',
+    code: 'GOLD',
+    aliases: ['XAU', 'EMAS'],
+    exchange: 'FX',
     symbol: 'XAU/USD',
     yahooSymbol: 'GC=F',
     shortName: 'Gold',
@@ -218,6 +241,9 @@ export const ASSETS: AssetConfig[] = [
   },
   {
     id: 'usdidr',
+    code: 'USD',
+    aliases: ['USDIDR'],
+    exchange: 'FX',
     symbol: 'USD/IDR',
     yahooSymbol: 'IDR=X',
     shortName: 'USD/IDR',
@@ -232,7 +258,100 @@ export const ASSETS: AssetConfig[] = [
     newsQuery: 'Rupiah USD IDR exchange rate Bank Indonesia',
     newsQueryId: 'Kurs Rupiah USD IDR Bank Indonesia Dolar',
   },
+  // ---- Global stock indices (Yahoo Finance, delayed) ----
+  globalIndex('spx', 'SPX', '^GSPC', 'S&P 500', 'NYSE', 'FOREXCOM:SPXUSD', 'US', ['SP500', 'S&P'],
+    'The 500 largest listed US companies, the main benchmark for the US stock market. NYSE/Nasdaq hours: 09:30–16:00 New York time.'),
+  globalIndex('ndx', 'NDX', '^NDX', 'Nasdaq 100', 'NYSE', 'FOREXCOM:NSXUSD', 'US', ['NASDAQ', 'NAS100'],
+    'The 100 largest non-financial companies on the Nasdaq, dominated by technology stocks.'),
+  globalIndex('dji', 'DJI', '^DJI', 'Dow Jones Industrial Average', 'NYSE', 'FOREXCOM:DJI', 'US', ['DOW'],
+    'A price-weighted index of 30 large US blue-chip companies.'),
+  globalIndex('n225', 'N225', '^N225', 'Nikkei 225', 'TSE', 'TVC:NI225', 'Japan', ['NIKKEI', 'JAPAN'],
+    'The main Tokyo Stock Exchange index of 225 Japanese companies. Hours: 09:00–15:30 Tokyo time.'),
+  globalIndex('ftse', 'FTSE', '^FTSE', 'FTSE 100', 'LSE', 'FOREXCOM:UKXGBP', 'UK', ['LONDON', 'UK100'],
+    'The 100 largest companies on the London Stock Exchange. Hours: 08:00–16:30 London time.'),
+  globalIndex('dax', 'DAX', '^GDAXI', 'DAX 40', 'XETRA', 'XETR:DAX', 'Germany', ['GERMANY'],
+    'The 40 largest German companies on the Frankfurt exchange (Xetra), the eurozone benchmark.'),
+  globalIndex('hsi', 'HSI', '^HSI', 'Hang Seng Index', 'HKEX', 'TVC:HSI', 'Hong Kong', ['HANGSENG'],
+    'The main Hong Kong stock index, a gauge of Chinese and Hong Kong large caps.'),
+  globalIndex('sti', 'STI', '^STI', 'Straits Times Index', 'SGX', 'TVC:STI', 'Singapore', ['SINGAPORE'],
+    'The benchmark index of the 30 largest companies on the Singapore Exchange.'),
+  {
+    id: 'dxy',
+    code: 'DXY',
+    aliases: ['DOLLARINDEX'],
+    exchange: 'FX',
+    symbol: 'DXY',
+    yahooSymbol: 'DX-Y.NYB',
+    shortName: 'DXY',
+    name: 'US Dollar Index',
+    group: 'forex',
+    currency: 'PTS',
+    tvSymbol: 'TVC:DXY',
+    tvWidgetUnsupported: true, // TVC:* symbols are "only available on TradingView" in the widget
+    sourceLabel: 'Yahoo Finance',
+    unitLabel: 'Index Points',
+    description:
+      'The value of the US dollar against a basket of six major currencies (EUR, JPY, GBP, CAD, SEK, CHF).',
+  },
+  // ---- Major currencies against the Rupiah ----
+  rupiahPair('eur', 'EUR', 'Euro'),
+  rupiahPair('sgd', 'SGD', 'Singapore Dollar'),
+  rupiahPair('jpy', 'JPY', 'Japanese Yen'),
+  rupiahPair('gbp', 'GBP', 'British Pound'),
+  rupiahPair('cny', 'CNY', 'Chinese Yuan'),
+  rupiahPair('aud', 'AUD', 'Australian Dollar'),
 ];
+
+function globalIndex(
+  id: string,
+  code: string,
+  yahooSymbol: string,
+  name: string,
+  exchange: ExchangeId,
+  tvSymbol: string,
+  region: string,
+  aliases: string[],
+  description: string
+): AssetConfig {
+  return {
+    id,
+    code,
+    aliases,
+    exchange,
+    symbol: yahooSymbol,
+    yahooSymbol,
+    shortName: code,
+    name,
+    group: 'index',
+    currency: 'PTS',
+    tvSymbol,
+    // TVC:* indices are not embeddable ("only available on TradingView"); XETR:DAX is D/W only
+    tvWidgetUnsupported: tvSymbol.startsWith('TVC:') ? true : undefined,
+    usesBackupChartFallback: tvSymbol === 'XETR:DAX' ? true : undefined,
+    sourceLabel: 'Yahoo Finance',
+    unitLabel: `Index Points (${region})`,
+    description,
+  };
+}
+
+function rupiahPair(id: string, code: string, currencyName: string): AssetConfig {
+  return {
+    id: `${id}idr`,
+    code,
+    aliases: [`${code}IDR`],
+    exchange: 'FX',
+    symbol: `${code}/IDR`,
+    yahooSymbol: `${code}IDR=X`,
+    shortName: `${code}/IDR`,
+    name: `${currencyName} to Indonesian Rupiah`,
+    group: 'forex',
+    currency: 'IDR',
+    tvSymbol: `FX_IDC:${code}IDR`,
+    sourceLabel: 'Yahoo Finance',
+    unitLabel: `Rupiah per 1 ${code}`,
+    description: `The ${currencyName} (${code}) exchange rate against the Indonesian Rupiah.`,
+  };
+}
 
 export interface AssetGroupMeta {
   key: AssetGroup;
@@ -252,6 +371,11 @@ export const ASSET_GROUPS: AssetGroupMeta[] = [
     subtitle: 'Indonesia Stock Exchange index (Mon–Fri 09:00–16:00 WIB)',
   },
   {
+    key: 'index',
+    title: 'Global Indices',
+    subtitle: 'US, Japan, London, Germany, Hong Kong and Singapore benchmarks (delayed)',
+  },
+  {
     key: 'gold',
     title: 'Gold',
     subtitle: 'Spot XAU/USD precious metal with Rupiah-per-gram conversion',
@@ -259,12 +383,18 @@ export const ASSET_GROUPS: AssetGroupMeta[] = [
   {
     key: 'forex',
     title: 'Forex',
-    subtitle: 'Reference USD to Rupiah exchange rate',
+    subtitle: 'Major currencies against the Rupiah, plus the US Dollar Index',
   },
 ];
 
 export function getAssetBySymbol(symbol: string): AssetConfig | undefined {
   return ASSETS.find((item) => item.symbol === symbol || item.id === symbol);
+}
+
+/** Finds an asset by its code or an alias (case-insensitive), e.g. "spx", "IHSG", "EUR". */
+export function getAssetByCode(code: string): AssetConfig | undefined {
+  const c = code.trim().toUpperCase();
+  return ASSETS.find((a) => a.code === c || a.aliases?.includes(c));
 }
 
 export function isValidTimeframe(val: string): val is TimeframeInterval {

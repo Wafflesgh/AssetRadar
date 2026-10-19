@@ -1,7 +1,9 @@
 /**
  * terminalCommands.ts — Parser and autocomplete for the Terminal command line
- * (Bloomberg style: "<CODE> <FUNCTION>", e.g. "ETH GP"), plus the HELP command list.
+ * (Bloomberg style: "<CODE> <FUNCTION>", e.g. "ETH GP", "SPX N"), plus the HELP command list.
+ * Asset codes and aliases come from ASSETS (config/assets.ts).
  */
+import { ASSETS, getAssetByCode } from '../config/assets.ts';
 
 export type TerminalPanel = 'monitor' | 'chart' | 'news' | 'heatmap' | 'eco' | 'corr' | 'top';
 
@@ -12,24 +14,9 @@ export type TerminalCommand =
   | { type: 'radar' }
   | { type: 'error'; message: string };
 
-/** Recognized asset codes → app symbol. Order = suggestion order. */
-export const TERMINAL_ASSET_CODES: Array<{ code: string; symbol: string; label: string }> = [
-  { code: 'BTC', symbol: 'BTC/IDR', label: 'Bitcoin' },
-  { code: 'ETH', symbol: 'ETH/IDR', label: 'Ethereum' },
-  { code: 'SOL', symbol: 'SOL/IDR', label: 'Solana' },
-  { code: 'JCI', symbol: '^JKSE', label: 'Jakarta Composite Index' },
-  { code: 'GOLD', symbol: 'XAU/USD', label: 'Spot gold' },
-  { code: 'XAU', symbol: 'XAU/USD', label: 'Spot gold' },
-  { code: 'USD', symbol: 'USD/IDR', label: 'USD/IDR rate' },
-];
-
-// Extra aliases that are accepted but not shown in suggestions (incl. legacy Indonesian codes)
-const EXTRA_ALIASES: Record<string, string> = {
-  IHSG: '^JKSE',
-  JKSE: '^JKSE',
-  EMAS: 'XAU/USD',
-  USDIDR: 'USD/IDR',
-};
+/** Recognized asset codes (aliases are accepted but not suggested). Order = suggestion order. */
+export const TERMINAL_ASSET_CODES: Array<{ code: string; symbol: string; label: string }> =
+  ASSETS.map((a) => ({ code: a.code, symbol: a.symbol, label: a.name }));
 
 const PANEL_COMMANDS: Record<string, { panel: 'heatmap' | 'eco' | 'corr' | 'top'; description: string }> = {
   HM: { panel: 'heatmap', description: '24-hour change heatmap' },
@@ -44,7 +31,7 @@ export interface CommandHelpItem {
 }
 
 export const TERMINAL_HELP: CommandHelpItem[] = [
-  { command: '<CODE>', description: 'Select an asset: BTC, ETH, SOL, JCI, GOLD/XAU, USD' },
+  { command: '<CODE>', description: 'Select an asset, e.g. BTC, JCI, SPX, NDX, N225, FTSE, GOLD, EUR, JPY' },
   { command: '<CODE> GP', description: 'Asset chart, e.g. ETH GP' },
   { command: '<CODE> N', description: 'Asset news, e.g. JCI N' },
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
@@ -57,7 +44,7 @@ function normalize(input: string): string {
 }
 
 function lookupAsset(code: string): string | undefined {
-  return TERMINAL_ASSET_CODES.find((a) => a.code === code)?.symbol ?? EXTRA_ALIASES[code];
+  return getAssetByCode(code)?.symbol;
 }
 
 /** Parses one command line. Returns null for empty input. */
