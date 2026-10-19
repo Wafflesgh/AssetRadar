@@ -1,9 +1,4 @@
-/**
- * App.tsx — Root component: holds the global state (live prices, connection state, theme,
- * timeframe, watchlist, selected asset), syncs it with the URL hash, and lays out the page
- * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
- */
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sun, Moon, Wifi } from 'lucide-react';
 import {
   ASSETS,
@@ -20,8 +15,6 @@ import {
   saveTimeframe,
   getSavedWatchlist,
   saveWatchlist,
-  getStartInTerminal,
-  saveStartInTerminal,
 } from './utils/storage.ts';
 import {
   MarketDataManager,
@@ -33,24 +26,14 @@ import { RadarLogo } from './components/RadarLogo.tsx';
 import { RadarView } from './components/RadarView.tsx';
 import { AssetDetailView } from './components/AssetDetailView.tsx';
 import { WatchlistView } from './components/WatchlistView.tsx';
+import { RiskProfileView } from './components/RiskProfileView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
-import { TerminalView } from './components/terminal/TerminalView.tsx';
-import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
-import { AdvisorView } from './components/AdvisorView.tsx';
-
-// Lazy: the Risk Profile page pulls in recharts, which most visits never need
-const RiskProfileView = lazy(() =>
-  import('./components/RiskProfileView.tsx').then((m) => ({ default: m.RiskProfileView }))
-);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     if (typeof window === 'undefined') return 'radar';
-    // The "Open the app in Terminal mode" option only applies when the URL has no hash
-    if (!window.location.hash && getStartInTerminal()) return 'terminal';
     return parseHashRoute(window.location.hash).tab;
   });
-  const [startInTerminal, setStartInTerminal] = useState<boolean>(() => getStartInTerminal());
   const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
     if (typeof window === 'undefined') return 'BTC/IDR';
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
@@ -187,11 +170,6 @@ export default function App() {
     }
   }, []);
 
-  const handleChangeStartInTerminal = useCallback((enabled: boolean) => {
-    setStartInTerminal(enabled);
-    saveStartInTerminal(enabled);
-  }, []);
-
   const handleRetrySymbol = useCallback((symbol: string) => {
     managerRef.current?.retrySymbol(symbol);
   }, []);
@@ -208,9 +186,8 @@ export default function App() {
   }, []);
 
   const currentAsset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
-  const isTerminal = activeTab === 'terminal';
 
-  // Connection status indicator color & label (green = live, yellow = reconnecting, grey = delayed/offline)
+  // Connection status indicator color & label (hijau = live, kuning = menyambung ulang, abu-abu = tertunda)
   const connColor =
     connectionState === 'live'
       ? 'var(--color-up)'
@@ -220,16 +197,14 @@ export default function App() {
 
   const connLabel =
     connectionState === 'live'
-      ? 'Live · Connected'
+      ? 'Live · Terhubung'
       : connectionState === 'reconnecting'
-        ? 'Reconnecting...'
-        : connectionState === 'offline'
-          ? 'Offline – last data'
-          : 'Delayed';
+        ? 'Menyambung ulang...'
+        : 'Tertunda';
 
   return (
     <div
-      className={`min-h-screen flex flex-col md:pl-64 ${isTerminal ? 'terminal-root' : ''}`}
+      className="min-h-screen flex flex-col md:pl-64"
       style={{
         backgroundColor: 'var(--bg-canvas)',
         color: 'var(--text-primary)',
@@ -245,11 +220,7 @@ export default function App() {
         onToggleThemeQuick={handleToggleThemeQuick}
       />
 
-      {/* Sudden war / attack alert (every page, including Terminal) */}
-      <GeoAlertBanner ticks={ticks} />
-
-      {/* Top Header Bar (Terminal has its own status bar) */}
-      {!isTerminal && (
+      {/* Top Header Bar */}
       <header
         className="sticky top-0 z-10 h-14 md:h-16 px-4 md:px-8 border-b flex items-center justify-between gap-4"
         style={{
@@ -275,12 +246,11 @@ export default function App() {
               /
             </span>
             <span className="truncate">
-              {activeTab === 'radar' && 'Market Radar'}
-              {activeTab === 'detail' && `Asset Detail · ${currentAsset.shortName}`}
-              {activeTab === 'watchlist' && 'Favorite Watchlist'}
-              {activeTab === 'risk' && 'Risk Profile Education'}
-              {activeTab === 'settings' && 'Settings & About'}
-              {activeTab === 'advisor' && 'AI Advisor'}
+              {activeTab === 'radar' && 'Radar Pasar'}
+              {activeTab === 'detail' && `Detail Aset · ${currentAsset.shortName}`}
+              {activeTab === 'watchlist' && 'Watchlist Favorit'}
+              {activeTab === 'risiko' && 'Edukasi Profil Risiko'}
+              {activeTab === 'pengaturan' && 'Pengaturan & Tentang'}
             </span>
           </div>
         </div>
@@ -301,8 +271,8 @@ export default function App() {
             onClick={handleToggleThemeQuick}
             aria-label={
               effectiveTheme === 'dark'
-                ? 'Switch to light theme'
-                : 'Switch to dark theme'
+                ? 'Ganti ke tema terang'
+                : 'Ganti ke tema gelap'
             }
             className="p-2 rounded-lg border transition-colors"
             style={{
@@ -319,29 +289,9 @@ export default function App() {
           </button>
         </div>
       </header>
-      )}
 
       {/* Main Content Area */}
-      <main
-        className={
-          isTerminal
-            ? 'flex-1 w-full min-w-0 pb-14 md:pb-0'
-            : 'flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10'
-        }
-      >
-        {isTerminal && (
-          <TerminalView
-            ticks={ticks}
-            connectionState={connectionState}
-            initialSymbol={selectedSymbol}
-            timeframe={timeframe}
-            onChangeTimeframe={handleChangeTimeframe}
-            onRetrySymbol={handleRetrySymbol}
-            onGoToRadar={() => handleSelectTab('radar')}
-            onGoToAdvisor={() => handleSelectTab('advisor')}
-          />
-        )}
-
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10">
         {activeTab === 'radar' && (
           <RadarView
             ticks={ticks}
@@ -376,33 +326,16 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'risk' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Loading…
-              </p>
-            }
-          >
-            <RiskProfileView
-              onSelectAsset={handleSelectAsset}
-              onGoToAdvisor={() => handleSelectTab('advisor')}
-            />
-          </Suspense>
+        {activeTab === 'risiko' && (
+          <RiskProfileView onSelectAsset={handleSelectAsset} />
         )}
 
-        {activeTab === 'advisor' && (
-          <AdvisorView ticks={ticks} onSelectAsset={handleSelectAsset} />
-        )}
-
-        {activeTab === 'settings' && (
+        {activeTab === 'pengaturan' && (
           <SettingsView
             themePreference={themePreference}
             onChangeThemePreference={handleChangeThemePreference}
             defaultTimeframe={timeframe}
             onChangeDefaultTimeframe={handleChangeTimeframe}
-            startInTerminal={startInTerminal}
-            onChangeStartInTerminal={handleChangeStartInTerminal}
           />
         )}
       </main>
@@ -418,10 +351,10 @@ export default function App() {
       >
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="font-medium">
-            Data is for information only, not investment advice. Charts by TradingView.
+            Data hanya untuk informasi, bukan saran investasi. Grafik oleh TradingView.
           </p>
           <p className="text-[11px]">
-            AssetRadar · Personal Use (Non-Commercial)
+            AssetRadar · Penggunaan Pribadi (Non-Komersial)
           </p>
         </div>
       </footer>

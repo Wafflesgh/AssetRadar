@@ -1,7 +1,3 @@
-/**
- * TradingViewChart.tsx — Embeds the official TradingView Advanced Chart widget (WIB time
- * zone, English locale) with a visible TradingView attribution link.
- */
 import { useEffect, useRef } from 'react';
 import { TimeframeInterval } from '../config/assets.ts';
 
@@ -9,28 +5,18 @@ export interface TradingViewChartProps {
   symbol: string;
   interval: TimeframeInterval;
   theme: 'light' | 'dark';
-  /** Fixed height in pixels (e.g. Terminal panel); without it the standard Detail page height is used. */
+  /** Tinggi tetap dalam piksel (mis. panel Terminal); tanpa ini memakai tinggi standar halaman Detail. */
   height?: number;
-  /** Widget background & grid colors (official widget options), used by Terminal mode. */
-  backgroundColor?: string;
-  gridColor?: string;
 }
 
-export function TradingViewChart({
-  symbol,
-  interval,
-  theme,
-  height,
-  backgroundColor,
-  gridColor,
-}: TradingViewChartProps) {
+export function TradingViewChart({ symbol, interval, theme, height }: TradingViewChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Clear the container whenever symbol, interval or theme changes
+    // Bersihkan container setiap kali symbol, interval, atau theme berubah
     container.innerHTML = '';
 
     const widgetWrapper = document.createElement('div');
@@ -48,12 +34,12 @@ export function TradingViewChart({
     copyrightDiv.style.color = 'var(--text-secondary)';
 
     const attributionLink = document.createElement('a');
-    attributionLink.href = `https://www.tradingview.com/symbols/${encodeURIComponent(symbol.replace(':', '-'))}/`;
+    attributionLink.href = `https://id.tradingview.com/symbols/${encodeURIComponent(symbol.replace(':', '-'))}/`;
     attributionLink.rel = 'noopener nofollow noreferrer';
     attributionLink.target = '_blank';
     attributionLink.className = 'hover:underline font-medium';
     attributionLink.style.color = 'var(--accent-radar)';
-    attributionLink.textContent = `${symbol} chart by TradingView`;
+    attributionLink.textContent = `Grafik ${symbol} oleh TradingView`;
 
     const symbolInfoSpan = document.createElement('span');
     symbolInfoSpan.className = 'font-mono-num text-[11px]';
@@ -74,15 +60,13 @@ export function TradingViewChart({
       timezone: 'Asia/Jakarta',
       theme,
       style: '1',
-      locale: 'en',
+      locale: 'id',
       allow_symbol_change: false,
       hide_side_toolbar: false,
       withdateranges: true,
       save_image: false,
       calendar: false,
       support_host: 'https://www.tradingview.com',
-      ...(backgroundColor ? { backgroundColor } : {}),
-      ...(gridColor ? { gridColor } : {}),
     };
 
     script.textContent = JSON.stringify(widgetConfig);
@@ -97,7 +81,7 @@ export function TradingViewChart({
         container.innerHTML = '';
       }
     };
-  }, [symbol, interval, theme, backgroundColor, gridColor]);
+  }, [symbol, interval, theme]);
 
   return (
     <div

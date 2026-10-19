@@ -1,8 +1,3 @@
-/**
- * AssetDetailView.tsx — Asset detail page: asset switcher, large price with 24h change and
- * range (gold also in Rupiah/gram), watchlist toggle, timeframe buttons, the price chart
- * (TradingView or alternative) and the sentiment + news panel.
- */
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Star, Info, RefreshCw } from 'lucide-react';
 import {
@@ -18,7 +13,7 @@ import {
   formatPoints,
   formatPercent,
 } from '../utils/format.ts';
-import { formatRelativeTime } from '../utils/marketHours.ts';
+import { formatRelativeTimeId } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 
@@ -45,25 +40,25 @@ export function AssetDetailView({
   isWatchlisted,
   onToggleWatchlist,
 }: AssetDetailViewProps) {
-  // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
-  const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
+  const [useFallbackSymbol, setUseFallbackSymbol] = useState(false);
 
   // Reset fallback toggle when switching assets
   useEffect(() => {
-    setUseFallbackSymbol(Boolean(asset.tvWidgetUnsupported));
-  }, [asset.symbol, asset.tvWidgetUnsupported]);
+    setUseFallbackSymbol(false);
+  }, [asset.symbol]);
 
   const activeTvSymbol =
     useFallbackSymbol && asset.tvFallbackSymbol
       ? asset.tvFallbackSymbol
       : asset.tvSymbol;
 
-  const isGold = asset.group === 'gold';
+  const isGold = asset.group === 'emas';
+  const isIhsg = asset.symbol === '^JKSE';
   const isLoaded = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
 
   const formatVal = (val: number | undefined) => {
     if (val === undefined || !Number.isFinite(val)) return '—';
-    if (asset.currency === 'IDR') return formatRupiah(val);
+    if (asset.currency === 'IDR') return formatRupiah(val, 0);
     if (asset.currency === 'PTS') return formatPoints(val);
     return formatUsdPerOz(val);
   };
@@ -97,13 +92,13 @@ export function AssetDetailView({
           }}
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Radar</span>
+          <span>Kembali ke Radar</span>
         </button>
 
         {/* Quick Asset Switcher Tabs */}
         <div
           role="tablist"
-          aria-label="Choose an instrument"
+          aria-label="Pilih Instrumen Aset"
           className="flex flex-wrap items-center gap-1.5"
         >
           {ASSETS.map((item) => {
@@ -137,7 +132,7 @@ export function AssetDetailView({
 
       {/* Asset Header & Live Price Summary Box */}
       <section
-        aria-label={`${asset.name} information`}
+        aria-label={`Informasi ${asset.name}`}
         className="p-5 md:p-6 rounded-xl border space-y-5"
         style={{
           backgroundColor: 'var(--bg-surface)',
@@ -156,11 +151,11 @@ export function AssetDetailView({
               <span aria-hidden="true">·</span>
               <span className="font-mono-num">{asset.symbol}</span>
               <span aria-hidden="true">·</span>
-              <span>Source: {tick?.source || asset.sourceLabel}</span>
+              <span>Sumber: {tick?.source || asset.sourceLabel}</span>
               {tick?.updatedAt && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span>{formatRelativeTime(tick.updatedAt)}</span>
+                  <span>{formatRelativeTimeId(tick.updatedAt)}</span>
                 </>
               )}
             </div>
@@ -192,7 +187,7 @@ export function AssetDetailView({
               fill={isWatchlisted ? 'currentColor' : 'none'}
             />
             <span>
-              {isWatchlisted ? 'Saved to Watchlist' : 'Add to Watchlist'}
+              {isWatchlisted ? 'Tersimpan di Watchlist' : 'Tambah ke Watchlist'}
             </span>
           </button>
         </div>
@@ -209,20 +204,20 @@ export function AssetDetailView({
                   className="text-xs block"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  World Spot Price (USD/oz)
+                  Harga Spot Dunia (USD/oz)
                 </span>
                 <span
                   data-testid="detail-price-primary"
                   className="text-2xl font-mono-num font-bold tabular-nums mt-0.5 block"
                   style={{ color: 'var(--color-gold)' }}
                 >
-                  {isLoaded && tick ? formatUsdPerOz(tick.price) : 'Loading...'}
+                  {isLoaded && tick ? formatUsdPerOz(tick.price) : 'Memuat...'}
                 </span>
                 <span
                   className="text-[11px]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  1 troy oz = 31.1034768 grams
+                  1 troy oz = 31,1034768 gram
                 </span>
               </div>
               <div>
@@ -230,7 +225,7 @@ export function AssetDetailView({
                   className="text-xs block"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Converted Price (Rupiah/gram)
+                  Harga Konversi (Rupiah/gram)
                 </span>
                 <span
                   data-testid="detail-price-secondary"
@@ -238,20 +233,20 @@ export function AssetDetailView({
                 >
                   {isLoaded && tick?.priceIdrPerGram
                     ? `${formatRupiah(tick.priceIdrPerGram, 0)}/gr`
-                    : 'Loading...'}
+                    : 'Memuat...'}
                 </span>
                 <span
                   className="text-[11px]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Formula: (XAU_USD / 31.1034768) × USD_IDR
+                  Rumus: (XAU_USD / 31,1034768) × USD_IDR
                 </span>
               </div>
               <p
                 className="sm:col-span-2 lg:col-span-4 text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Price: spot XAU. 24h change &amp; mini chart: gold futures contract (GC=F).
+                Harga: spot XAU. Perubahan 24j &amp; grafik mini: kontrak futures emas (GC=F).
               </p>
             </>
           ) : (
@@ -260,23 +255,23 @@ export function AssetDetailView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Latest Price ({asset.unitLabel})
+                Harga Terkini ({asset.unitLabel})
               </span>
               <span
                 data-testid="detail-price-primary"
                 className="text-2xl md:text-3xl font-mono-num font-bold tabular-nums mt-0.5 block"
               >
-                {isLoaded && tick ? formatVal(tick.price) : 'Loading...'}
+                {isLoaded && tick ? formatVal(tick.price) : 'Memuat...'}
               </span>
               <span
                 className="text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {tick?.isMarketOpen === false
-                  ? 'Last price · Market closed'
-                  : tick?.status === 'delayed'
-                    ? 'Delayed data · Market open'
-                    : 'Latest market data'}
+                {isIhsg
+                  ? tick?.isMarketOpen
+                    ? 'Data tertunda · Bursa buka'
+                    : 'Harga penutupan terakhir · Pasar tutup'
+                  : 'Data pasar terkini'}
               </span>
             </div>
           )}
@@ -286,7 +281,7 @@ export function AssetDetailView({
               className="text-xs block"
               style={{ color: 'var(--text-secondary)' }}
             >
-              24-Hour Change
+              Perubahan 24 Jam
             </span>
             <span
               className="text-lg font-mono-num font-bold tabular-nums mt-1 block"
@@ -303,7 +298,7 @@ export function AssetDetailView({
               className="text-xs block"
               style={{ color: 'var(--text-secondary)' }}
             >
-              24-Hour Range (High / Low)
+              Rentang 24 Jam (Tertinggi / Terendah)
             </span>
             <span
               className="text-xs md:text-sm font-mono-num font-semibold tabular-nums mt-1.5 block"
@@ -318,7 +313,7 @@ export function AssetDetailView({
       </section>
 
       {/* Chart Controls: Timeframe Selector & Symbol Selector */}
-      <section aria-label="Price chart" className="space-y-3">
+      <section aria-label="Grafik Pergerakan Harga" className="space-y-3">
         <div
           className="p-3.5 rounded-xl border flex flex-col md:flex-row md:items-center md:justify-between gap-3"
           style={{
@@ -326,7 +321,7 @@ export function AssetDetailView({
             borderColor: 'var(--border-subtle)',
           }}
         >
-          {/* Timeframe Buttons (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W) */}
+          {/* Timeframe Buttons (1m, 5m, 15m, 30m, 1J, 4J, 1H, 1M) */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               className="text-xs font-medium mr-1.5"
@@ -336,7 +331,7 @@ export function AssetDetailView({
             </span>
             <div
               role="group"
-              aria-label="Chart timeframe picker"
+              aria-label="Pemilih Timeframe Grafik"
               className="flex flex-wrap items-center gap-1"
             >
               {TIMEFRAME_OPTIONS.map((tf) => {
@@ -369,7 +364,7 @@ export function AssetDetailView({
               className="font-mono-num"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Widget Symbol:{' '}
+              Simbol Widget:{' '}
               <strong style={{ color: 'var(--text-primary)' }}>
                 {activeTvSymbol}
               </strong>
@@ -389,16 +384,16 @@ export function AssetDetailView({
                 <RefreshCw className="w-3 h-3" />
                 <span>
                   {useFallbackSymbol
-                    ? `Use Primary (${asset.tvSymbol})`
-                    : `Use Fallback (${asset.tvFallbackSymbol})`}
+                    ? `Gunakan Utama (${asset.tvSymbol})`
+                    : `Gunakan Cadangan (${asset.tvFallbackSymbol})`}
                 </span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Notice for widget symbols that only offer daily/weekly data (JCI, DAX) */}
-        {asset.usesBackupChartFallback && (
+        {/* Notice for IDX:COMPOSITE on IHSG */}
+        {isIhsg && (
           <div
             className="p-3.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 leading-relaxed"
             style={{
@@ -414,12 +409,12 @@ export function AssetDetailView({
               />
               <div>
                 <strong style={{ color: 'var(--text-primary)' }}>
-                  {asset.shortName} chart note:
+                  Catatan grafik IHSG:
                 </strong>{' '}
-                The TradingView widget (<code className="font-mono-num">{asset.tvSymbol}</code>) only
-                provides the <strong>1D (Daily)</strong> and <strong>1W (Weekly)</strong> timeframes.
-                For other timeframes, the alternative Yahoo Finance chart (delayed data) is used
-                automatically.
+                Widget TradingView (<code className="font-mono-num">IDX:COMPOSITE</code>) hanya
+                menyediakan timeframe <strong>1H (Harian)</strong> dan <strong>1M (Mingguan)</strong>.
+                Untuk timeframe lain, grafik alternatif dari Yahoo Finance (data tertunda) dipakai
+                otomatis.
               </div>
             </div>
             {timeframe !== 'D' && timeframe !== 'W' && (
@@ -432,13 +427,13 @@ export function AssetDetailView({
                   color: '#0B1220',
                 }}
               >
-                Show TradingView 1D
+                Tampilkan TradingView 1H
               </button>
             )}
           </div>
         )}
 
-        {/* Official TradingView widget or the alternative chart (Indodax / Yahoo Finance) */}
+        {/* Widget resmi TradingView atau grafik alternatif (Yahoo Finance) */}
         <PriceChart
           asset={asset}
           tvSymbol={activeTvSymbol}

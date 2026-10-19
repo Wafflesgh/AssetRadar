@@ -1,4 +1,3 @@
-/** correlation.test.ts — Tests for Pearson correlation, date alignment and the matrix shape. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pearson, correlateSeries, correlationMatrixFromSeries } from './correlation.ts';
@@ -14,7 +13,7 @@ test('correlateSeries aligns on shared dates only', () => {
   const crypto = [
     { date: '2026-10-01', close: 100 },
     { date: '2026-10-02', close: 110 },
-    { date: '2026-10-03', close: 105 }, // weekend, missing from the stock series
+    { date: '2026-10-03', close: 105 }, // weekend, tidak ada di saham
     { date: '2026-10-04', close: 99 },
     { date: '2026-10-05', close: 120 },
     { date: '2026-10-06', close: 132 },

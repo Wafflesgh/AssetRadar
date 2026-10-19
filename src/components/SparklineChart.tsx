@@ -1,4 +1,3 @@
-/** SparklineChart.tsx — 24-hour mini area chart (lightweight-charts) shown on price cards. */
 import { useEffect, useRef } from 'react';
 import {
   createChart,
@@ -142,7 +141,7 @@ export function SparklineChart({
           color: 'var(--text-secondary)',
         }}
       >
-        Loading 24h mini chart...
+        Memuat grafik mini 24j...
       </div>
     );
   }
@@ -153,7 +152,7 @@ export function SparklineChart({
       data-testid="sparkline-chart"
       className="w-full overflow-hidden"
       style={{ height: `${height}px` }}
-      aria-label="24-hour price trend chart"
+      aria-label="Grafik tren harga 24 jam"
     />
   );
 }

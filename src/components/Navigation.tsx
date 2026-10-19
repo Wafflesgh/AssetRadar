@@ -1,12 +1,8 @@
-/**
- * Navigation.tsx — App navigation: the fixed desktop sidebar (brand, menu, theme toggle)
- * and the mobile bottom navigation bar. Also defines the NavTab type.
- */
-import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart, SquareTerminal, BrainCircuit } from 'lucide-react';
+import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart } from 'lucide-react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -21,17 +17,13 @@ interface NavItem {
   id: NavTab;
   label: string;
   icon: typeof Radar;
-  /** Shorter label for the mobile bottom bar. */
-  shortLabel?: string;
 }
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'radar', label: 'Radar', icon: Radar },
-  { id: 'terminal', label: 'Terminal', icon: SquareTerminal },
-  { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'risiko', label: 'Profil Risiko', icon: ShieldAlert },
+  { id: 'pengaturan', label: 'Pengaturan', icon: Settings },
 ];
 
 export function SidebarNav({
@@ -43,7 +35,7 @@ export function SidebarNav({
 }: NavigationProps) {
   return (
     <aside
-      aria-label="Main desktop navigation"
+      aria-label="Navigasi Utama Desktop"
       className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:left-0 border-r select-none z-20"
       style={{
         backgroundColor: 'var(--bg-surface)',
@@ -69,14 +61,14 @@ export function SidebarNav({
               className="text-[11px] font-medium block mt-1"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Gold · Stocks · Crypto
+              Emas · Saham · Crypto
             </span>
           </div>
         </button>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-3 py-5 space-y-1" aria-label="Side menu">
+      <nav className="flex-1 px-3 py-5 space-y-1" aria-label="Menu Samping">
         {MAIN_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -122,7 +114,7 @@ export function SidebarNav({
             }}
           >
             <LineChart className="w-4 h-4 shrink-0" />
-            <span>Detail & Chart</span>
+            <span>Detail & Grafik</span>
           </button>
         </div>
       </nav>
@@ -141,7 +133,7 @@ export function SidebarNav({
             borderColor: 'var(--border-subtle)',
             color: 'var(--text-primary)',
           }}
-          aria-label={effectiveTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label={effectiveTheme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
         >
           <span className="flex items-center gap-2">
             {effectiveTheme === 'dark' ? (
@@ -149,13 +141,13 @@ export function SidebarNav({
             ) : (
               <Sun className="w-3.5 h-3.5" style={{ color: 'var(--color-gold)' }} />
             )}
-            <span>{effectiveTheme === 'dark' ? 'Dark' : 'Light'} Mode</span>
+            <span>Mode {effectiveTheme === 'dark' ? 'Gelap' : 'Terang'}</span>
           </span>
-          <span style={{ color: 'var(--text-secondary)' }}>Change</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Ubah</span>
         </button>
 
         <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          Track gold, stocks, and crypto on one radar.
+          Pantau emas, saham, dan crypto dalam satu radar.
         </p>
       </div>
     </aside>
@@ -169,7 +161,7 @@ export function BottomNav({
 }: Pick<NavigationProps, 'activeTab' | 'onSelectTab' | 'watchlistCount'>) {
   return (
     <nav
-      aria-label="Mobile bottom navigation"
+      aria-label="Navigasi Bawah Seluler"
       className="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex items-center justify-around px-1"
       style={{
         backgroundColor: 'var(--bg-surface)',
@@ -202,7 +194,7 @@ export function BottomNav({
                 </span>
               )}
             </div>
-            <span>{item.shortLabel ?? item.label}</span>
+            <span>{item.label}</span>
           </button>
         );
       })}

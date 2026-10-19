@@ -1,4 +1,3 @@
-/** candles.test.ts — Tests for 4-hour candle aggregation and WIB chart-data conversion. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { aggregateCandles, toWibChartData, WIB_OFFSET_SEC } from './candles.ts';

@@ -1,10 +1,6 @@
-/**
- * candles.ts — OHLC candle helpers for the alternative chart: 4-hour aggregation and
- * conversion to lightweight-charts series data shifted to WIB.
- */
 import type { OhlcCandle } from '../config/assets.ts';
 
-/** Merges small candles (e.g. 1 hour) into larger ones (e.g. 4 hours). */
+/** Menggabungkan candle kecil (mis. 1 jam) menjadi candle lebih besar (mis. 4 jam). */
 export function aggregateCandles(candles: OhlcCandle[], bucketSec: number): OhlcCandle[] {
   const out: OhlcCandle[] = [];
   let current: OhlcCandle | null = null;
@@ -24,16 +20,16 @@ export function aggregateCandles(candles: OhlcCandle[], bucketSec: number): Ohlc
   return out;
 }
 
-/** WIB (UTC+7) offset in seconds. lightweight-charts always displays time as UTC. */
+/** Selisih WIB (UTC+7) dalam detik. lightweight-charts selalu menampilkan waktu sebagai UTC. */
 export const WIB_OFFSET_SEC = 7 * 3600;
 
 export interface ChartSeriesData {
   candles: Array<{ time: number; open: number; high: number; low: number; close: number }>;
-  /** Empty when the source has no volume data (e.g. forex). */
+  /** Kosong jika sumber tidak punya data volume (mis. kurs). */
   volumes: Array<{ time: number; value: number; up: boolean }>;
 }
 
-/** Prepares chart data: time is shifted +7 hours so the time axis shows WIB. */
+/** Menyiapkan data grafik: waktu digeser +7 jam agar sumbu waktu tampil dalam WIB. */
 export function toWibChartData(candles: OhlcCandle[]): ChartSeriesData {
   const out: ChartSeriesData = { candles: [], volumes: [] };
   let hasVolume = false;

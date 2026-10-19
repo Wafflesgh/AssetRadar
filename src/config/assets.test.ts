@@ -1,4 +1,3 @@
-/** assets.test.ts — Tests that the asset list, TradingView symbols and timeframes match the spec. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -7,13 +6,10 @@ import {
   DEFAULT_TIMEFRAME,
   getAssetBySymbol,
   isValidTimeframe,
-  getAssetByCode,
 } from './assets.ts';
 
-test('ASSETS contains the core instruments with exact TradingView symbols', () => {
-  assert.equal(ASSETS.length, 21);
-  // Codes are unique (Terminal commands and news tags rely on this)
-  assert.equal(new Set(ASSETS.map((a) => a.code)).size, ASSETS.length);
+test('ASSETS contains all 6 required instruments with exact TradingView symbols', () => {
+  assert.equal(ASSETS.length, 6);
 
   const btc = getAssetBySymbol('BTC/IDR');
   assert.ok(btc);
@@ -52,28 +48,4 @@ test('TIMEFRAME_OPTIONS matches all 8 intervals and default is 15m', () => {
   assert.equal(isValidTimeframe('15'), true);
   assert.equal(isValidTimeframe('D'), true);
   assert.equal(isValidTimeframe('invalid'), false);
-});
-
-test('JCI uses English naming with the legacy-free id', () => {
-  const jci = getAssetBySymbol('jci');
-  assert.ok(jci);
-  assert.equal(jci.symbol, '^JKSE');
-  assert.equal(jci.shortName, 'JCI');
-  assert.deepEqual(
-    TIMEFRAME_OPTIONS.map((t) => t.label),
-    ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W']
-  );
-});
-
-test('global indices and currencies are configured', () => {
-  for (const code of ['SPX', 'NDX', 'DJI', 'N225', 'FTSE', 'DAX', 'HSI', 'STI', 'DXY']) {
-    assert.ok(getAssetByCode(code), code);
-  }
-  for (const code of ['EUR', 'SGD', 'JPY', 'GBP', 'CNY', 'AUD']) {
-    const a = getAssetByCode(code);
-    assert.equal(a?.symbol, `${code}/IDR`);
-    assert.equal(a?.yahooSymbol, `${code}IDR=X`);
-  }
-  assert.equal(getAssetByCode('ihsg')?.symbol, '^JKSE');
-  assert.equal(getAssetByCode('nikkei')?.exchange, 'TSE');
 });

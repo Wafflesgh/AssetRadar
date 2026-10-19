@@ -1,10 +1,3 @@
-/**
- * server.ts — Express server for AssetRadar. Serves the React app (Vite middleware in
- * development, dist/ in production) and the /api/market/* endpoints: price snapshot
- * (Indodax, Yahoo Finance, gold-api.com), sentiment + news (Google News, optional Gemini),
- * OHLC history for the alternative chart, 30-day correlation and the combined news feed.
- * All upstream data is cached in memory; API keys stay on the server.
- */
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
@@ -15,9 +8,6 @@ import {
   ASSETS,
   getAssetBySymbol,
   type PriceTick,
-  type AssetGroup,
-  type PriceCurrency,
-  type ExchangeId,
   type SparklinePoint,
   type AssetIntelligence,
   type MarketNewsItem,
@@ -28,24 +18,7 @@ import {
 import { correlationMatrixFromSeries, type DatedClose } from './src/utils/correlation.ts';
 import { aggregateCandles } from './src/utils/candles.ts';
 import { convertXauUsdToIdrPerGram } from './src/utils/format.ts';
-import { EXCHANGE_HOURS, isExchangeOpen, isIdxMarketOpen } from './src/utils/marketHours.ts';
-import {
-  GEO_TAG,
-  MACRO_TAG,
-  detectGeoAlert,
-  mergeNewsItems,
-  selectGeoAlert,
-  tagHeadline,
-} from './src/utils/newsTags.ts';
-import { alignByDate, type DailyBar } from './src/ai/indicators.ts';
-import { eventStudy, fedStanceSeries, nextMeeting, resolveMeetings } from './src/ai/events.ts';
-import {
-  RISK_PROFILES,
-  buildAssetOutlook,
-  rankOutlooks,
-  type AssetOutlook,
-  type RiskProfile,
-} from './src/ai/outlook.ts';
+import { isIdxMarketOpen } from './src/utils/marketHours.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -71,184 +44,39 @@ const indodaxSparklineCache = new Map<string, CacheEntry<SparklinePoint[]>>();
 const yahooCache = new Map<string, CacheEntry<PriceTick>>();
 const goldCache: { entry: CacheEntry<PriceTick> | null } = { entry: null };
 const intelligenceCache = new Map<string, CacheEntry<AssetIntelligence>>();
+const newsCache = new Map<string, CacheEntry<MarketNewsItem[]>>();
 const historyCache = new Map<string, CacheEntry<OhlcCandle[]>>();
 const correlationCache: { entry: CacheEntry<CorrelationMatrix> | null } = { entry: null };
+const newsFeedCache: { entry: CacheEntry<MarketNewsItem[]> | null } = { entry: null };
 
-// ---------------------------------------------------------------------------------------
-// Live news hub
-// Polls publisher RSS feeds every 60 s and Google News every 2 min (only while someone is
-// watching), tags each headline with the assets it mentions, and pushes new headlines to
-// browsers over Server-Sent Events. Headlines are never translated: Indonesian sources stay
-// in Indonesian, international sources stay in English.
-// ---------------------------------------------------------------------------------------
+const NEWS_CACHE_MS = 10 * 60_000;
 
-type Asset = (typeof ASSETS)[number];
-
-interface NewsSource {
-  id: string;
-  url: string;
-  minIntervalMs: number;
-  maxItems: number;
-  /** Publisher name for direct feeds (keeps full titles); Google News reads it per item. */
-  sourceName?: string;
-  /** Asset the query is about (Google News); direct feeds are tagged by keywords only. */
-  asset?: Asset;
-  /** Conflict search feeds: keep only "high" alerts so ongoing-war coverage does not flood the feed. */
-  highAlertsOnly?: boolean;
+/** Ambil berita Google News Indonesia untuk satu aset (cache 10 menit). */
+async function fetchNewsForAsset(asset: (typeof ASSETS)[number]): Promise<MarketNewsItem[]> {
+  const now = Date.now();
+  const cached = newsCache.get(asset.symbol);
+  if (cached && cached.expiresAt > now) return cached.data;
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+      asset.newsQuery
+    )}&hl=id&gl=ID&ceid=ID:id`;
+    const rssRes = await fetchWithTimeout(rssUrl, {}, 5000);
+    if (!rssRes.ok) return cached?.data ?? [];
+    const xml = await rssRes.text();
+    const items = parseRssItems(xml, 8).map((item) => ({
+      ...item,
+      id: `${asset.id}-${item.id}`,
+      assetTags: [asset.shortName.toUpperCase()],
+    }));
+    newsCache.set(asset.symbol, { data: items, expiresAt: now + NEWS_CACHE_MS });
+    return items;
+  } catch (err) {
+    console.warn(`[Berita] Gagal memuat RSS untuk ${asset.symbol}:`, err);
+    return cached?.data ?? [];
+  }
 }
 
-const FEED_INTERVAL_MS = 60_000;
-const GOOGLE_INTERVAL_MS = 120_000;
-const NEWS_IDLE_AFTER_MS = 5 * 60_000; // stop polling 5 min after the last viewer/request
-const NEWS_FEED_LIMIT = 60;
-const NEWS_PER_ASSET = 10;
-
-const NEWS_SOURCES: NewsSource[] = [
-  // Direct publisher feeds: published within minutes
-  { id: 'coindesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', sourceName: 'CoinDesk', minIntervalMs: FEED_INTERVAL_MS, maxItems: 25 },
-  { id: 'cointelegraph', url: 'https://cointelegraph.com/rss', sourceName: 'Cointelegraph', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
-  { id: 'cnbcid', url: 'https://www.cnbcindonesia.com/market/rss', sourceName: 'CNBC Indonesia', minIntervalMs: FEED_INTERVAL_MS, maxItems: 40 },
-  { id: 'antara', url: 'https://www.antaranews.com/rss/ekonomi-bursa.xml', sourceName: 'ANTARA', minIntervalMs: FEED_INTERVAL_MS, maxItems: 20 },
-  { id: 'fxstreet', url: 'https://www.fxstreet.com/rss/news', sourceName: 'FXStreet', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
-  // Global markets & macro (US, Europe, Asia; rates, currencies)
-  { id: 'cnbc-econ', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258', sourceName: 'CNBC', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
-  { id: 'cnbc-markets', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', sourceName: 'CNBC', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
-  { id: 'investing', url: 'https://www.investing.com/rss/news_25.rss', sourceName: 'Investing.com', minIntervalMs: FEED_INTERVAL_MS, maxItems: 20 },
-  // World news for sudden war/attack alerts (only conflict headlines are kept from these)
-  { id: 'bbcworld', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', sourceName: 'BBC News', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
-  { id: 'aljazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml', sourceName: 'Al Jazeera', minIntervalMs: FEED_INTERVAL_MS, maxItems: 25 },
-  {
-    id: 'gn-geo-en',
-    highAlertsOnly: true,
-    url: `https://news.google.com/rss/search?q=${encodeURIComponent('war OR invasion OR missile OR airstrike OR "declares war" when:1h')}&hl=en-US&gl=US&ceid=US:en`,
-    minIntervalMs: FEED_INTERVAL_MS,
-    maxItems: 40,
-  },
-  {
-    id: 'gn-geo-id',
-    highAlertsOnly: true,
-    url: `https://news.google.com/rss/search?q=${encodeURIComponent('perang OR invasi OR rudal OR "serangan udara" when:1h')}&hl=id&gl=ID&ceid=ID:id`,
-    minIntervalMs: FEED_INTERVAL_MS,
-    maxItems: 30,
-  },
-  // Google News search per asset, Indonesian and English editions, last 24 hours
-  ...ASSETS.flatMap((asset): NewsSource[] => [
-    {
-      id: `gn-id-${asset.id}`,
-      url: `https://news.google.com/rss/search?q=${encodeURIComponent(`${asset.newsQueryId} when:1d`)}&hl=id&gl=ID&ceid=ID:id`,
-      asset,
-      minIntervalMs: GOOGLE_INTERVAL_MS,
-      maxItems: 6,
-    },
-    {
-      id: `gn-en-${asset.id}`,
-      url: `https://news.google.com/rss/search?q=${encodeURIComponent(`${asset.newsQuery} when:1d`)}&hl=en-US&gl=US&ceid=US:en`,
-      asset,
-      minIntervalMs: GOOGLE_INTERVAL_MS,
-      maxItems: 6,
-    },
-  ]),
-];
-
-const newsHub = {
-  items: [] as MarketNewsItem[],
-  lastFetchedAt: new Map<string, number>(),
-  lastPollAt: 0,
-  lastDemandAt: 0,
-  polling: null as Promise<void> | null,
-  initialized: false,
-  clients: new Set<express.Response>(),
-};
-
-async function fetchNewsSource(source: NewsSource): Promise<MarketNewsItem[]> {
-  const res = await fetchWithTimeout(source.url, {}, 6000);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const xml = await res.text();
-  return parseRssItems(xml, source.maxItems, { sourceName: source.sourceName })
-    .map((item) => {
-      const tags = tagHeadline(item.title);
-      if (source.asset) tags.unshift(source.asset.code);
-      const geoAlert = detectGeoAlert(item.title) ?? undefined;
-      if (geoAlert) tags.push(GEO_TAG);
-      return { ...item, id: `${source.id}-${item.id}`, assetTags: [...new Set(tags)], geoAlert };
-    })
-    // keep only market-relevant headlines
-    .filter((item) => (source.highAlertsOnly ? item.geoAlert === 'high' : item.assetTags.length > 0));
-}
-
-/** One polling round over the sources that are due; broadcasts newly seen headlines. */
-async function pollNews(force = false): Promise<void> {
-  if (newsHub.polling) return newsHub.polling;
-  newsHub.polling = (async () => {
-    const now = Date.now();
-    const due = NEWS_SOURCES.filter(
-      (s) => force || now - (newsHub.lastFetchedAt.get(s.id) ?? 0) >= s.minIntervalMs
-    );
-    const results = await Promise.all(
-      due.map(async (s) => {
-        try {
-          const items = await fetchNewsSource(s);
-          newsHub.lastFetchedAt.set(s.id, now);
-          return items;
-        } catch (err) {
-          console.warn(`[News] ${s.id} failed:`, err instanceof Error ? err.message : err);
-          return [];
-        }
-      })
-    );
-    const { items, added } = mergeNewsItems(newsHub.items, results.flat(), Date.now(), {
-      maxItems: 400,
-    });
-    newsHub.items = items;
-    newsHub.lastPollAt = Date.now();
-
-    // The first round is the baseline; only later rounds count as "breaking"
-    if (newsHub.initialized && added.length > 0) {
-      for (const tag of new Set(added.flatMap((a) => a.assetTags ?? []))) {
-        const asset = ASSETS.find((a) => a.code === tag);
-        if (asset) intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
-        if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
-      }
-      broadcastNews('news', added);
-    }
-    newsHub.initialized = true;
-  })().finally(() => {
-    newsHub.polling = null;
-  });
-  return newsHub.polling;
-}
-
-/** Makes sure the hub data is at most one feed interval old (used by REST endpoints). */
-async function ensureNewsFresh(): Promise<void> {
-  newsHub.lastDemandAt = Date.now();
-  if (!newsHub.initialized) await pollNews(true);
-  else if (Date.now() - newsHub.lastPollAt >= FEED_INTERVAL_MS) await pollNews();
-}
-
-function broadcastNews(event: 'news' | 'snapshot', items: MarketNewsItem[]): void {
-  const payload = `event: ${event}\ndata: ${JSON.stringify({ items, serverTime: Date.now() })}\n\n`;
-  for (const client of newsHub.clients) client.write(payload);
-}
-
-function getNewsFeed(): MarketNewsItem[] {
-  return newsHub.items.slice(0, NEWS_FEED_LIMIT);
-}
-
-/** Latest headlines tagged with this asset (newest first). */
-async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
-  await ensureNewsFresh();
-  const code = asset.code;
-  return newsHub.items.filter((i) => i.assetTags?.includes(code)).slice(0, NEWS_PER_ASSET);
-}
-
-// Background loop: keeps polling while browsers are connected or recently asked for news
-setInterval(() => {
-  const active =
-    newsHub.clients.size > 0 || Date.now() - newsHub.lastDemandAt < NEWS_IDLE_AFTER_MS;
-  if (active) pollNews().catch(() => {});
-}, 15_000);
-
-// App timeframe -> Yahoo Finance & Indodax parameters (rangeSec ≈ the Yahoo range)
+// Pemetaan timeframe aplikasi -> parameter Yahoo Finance & Indodax (rangeSec ≈ range Yahoo)
 const DAY_SEC = 86_400;
 const HISTORY_INTERVALS: Record<
   string,
@@ -283,25 +111,25 @@ async function fetchYahooChartRaw(yahooSymbol: string, yahooInterval: string, ra
     yahooSymbol
   )}?interval=${yahooInterval}&range=${range}`;
   const res = await fetchWithTimeout(url, {}, 8000);
-  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} for ${yahooSymbol}`);
+  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} untuk ${yahooSymbol}`);
   const json = await res.json();
   const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`Empty Yahoo Finance data for ${yahooSymbol}`);
+  if (!result) throw new Error(`Data Yahoo Finance kosong untuk ${yahooSymbol}`);
   return result;
 }
 
-/** OHLC candles from Indodax (Rupiah crypto; Yahoo has no BTC-IDR etc. pairs). */
+/** Candle OHLC dari Indodax (crypto Rupiah; Yahoo tidak punya pasangan BTC-IDR dkk.). */
 async function fetchIndodaxCandles(indodaxPair: string, interval: string): Promise<OhlcCandle[]> {
   const cfg = HISTORY_INTERVALS[interval];
-  if (!cfg) throw new Error(`Unknown interval: ${interval}`);
+  if (!cfg) throw new Error(`Interval tidak dikenal: ${interval}`);
   const nowSec = Math.floor(Date.now() / 1000);
   const url = `https://indodax.com/tradingview/history_v2?symbol=${encodeURIComponent(
     indodaxPair.toUpperCase()
   )}&tf=${cfg.indodaxTf}&from=${nowSec - cfg.rangeSec}&to=${nowSec}`;
   const res = await fetchWithTimeout(url, {}, 8000);
-  if (!res.ok) throw new Error(`Indodax HTTP ${res.status} for ${indodaxPair}`);
+  if (!res.ok) throw new Error(`Indodax HTTP ${res.status} untuk ${indodaxPair}`);
   const rows = await res.json();
-  if (!Array.isArray(rows)) throw new Error(`Empty Indodax candle data for ${indodaxPair}`);
+  if (!Array.isArray(rows)) throw new Error(`Data candle Indodax kosong untuk ${indodaxPair}`);
   const candles: OhlcCandle[] = [];
   let lastT = 0;
   for (const row of rows) {
@@ -318,13 +146,13 @@ async function fetchIndodaxCandles(indodaxPair: string, interval: string): Promi
   return candles;
 }
 
-/** OHLC candles for the alternative chart: crypto from Indodax, other assets from Yahoo Finance. */
+/** Candle OHLC untuk grafik alternatif: crypto dari Indodax, aset lain dari Yahoo Finance. */
 async function getHistoryCandles(
   asset: (typeof ASSETS)[number],
   interval: string
 ): Promise<OhlcCandle[]> {
   const cfg = HISTORY_INTERVALS[interval];
-  if (!cfg) throw new Error(`Unknown interval: ${interval}`);
+  if (!cfg) throw new Error(`Interval tidak dikenal: ${interval}`);
   const key = `${asset.symbol}|${interval}`;
   const now = Date.now();
   const cached = historyCache.get(key);
@@ -337,7 +165,7 @@ async function getHistoryCandles(
   }
 
   const yahooSymbol = asset.yahooSymbol;
-  if (!yahooSymbol) throw new Error(`No chart source for ${asset.symbol}`);
+  if (!yahooSymbol) throw new Error(`Tidak ada sumber grafik untuk ${asset.symbol}`);
   const result = await fetchYahooChartRaw(yahooSymbol, cfg.yahooInterval, cfg.range);
   const ts: number[] = result.timestamp || [];
   const q = result.indicators?.quote?.[0] || {};
@@ -371,14 +199,10 @@ async function getHistoryCandles(
 const CORRELATION_SYMBOLS: Array<{ yahoo: string; label: string }> = [
   { yahoo: 'BTC-USD', label: 'BTC' },
   { yahoo: 'ETH-USD', label: 'ETH' },
-  { yahoo: '^JKSE', label: 'JCI' },
-  { yahoo: '^GSPC', label: 'SPX' },
-  { yahoo: '^NDX', label: 'NDX' },
-  { yahoo: '^N225', label: 'N225' },
-  { yahoo: '^FTSE', label: 'FTSE' },
-  { yahoo: 'GC=F', label: 'GOLD' },
-  { yahoo: 'IDR=X', label: 'USD' },
-  { yahoo: 'EURIDR=X', label: 'EUR' },
+  { yahoo: 'SOL-USD', label: 'SOL' },
+  { yahoo: '^JKSE', label: 'IHSG' },
+  { yahoo: 'GC=F', label: 'EMAS' },
+  { yahoo: 'IDR=X', label: 'USD/IDR' },
 ];
 const CORRELATION_WINDOW = 30;
 
@@ -403,7 +227,7 @@ async function getCorrelationMatrix(): Promise<CorrelationMatrix> {
         }
         return series;
       } catch (err) {
-        console.warn(`[Correlation] Failed to load ${yahoo}:`, err);
+        console.warn(`[Korelasi] Gagal memuat ${yahoo}:`, err);
         return [] as DatedClose[];
       }
     })
@@ -418,6 +242,28 @@ async function getCorrelationMatrix(): Promise<CorrelationMatrix> {
   };
   correlationCache.entry = { data, expiresAt: now + 6 * 60 * 60_000 };
   return data;
+}
+
+async function getNewsFeed(): Promise<MarketNewsItem[]> {
+  const now = Date.now();
+  if (newsFeedCache.entry && newsFeedCache.entry.expiresAt > now) return newsFeedCache.entry.data;
+  const lists = await Promise.all(ASSETS.map((a) => fetchNewsForAsset(a)));
+  const byKey = new Map<string, MarketNewsItem>();
+  for (const item of lists.flat()) {
+    const key = item.link || item.title;
+    const existing = byKey.get(key);
+    if (existing) {
+      const tags = new Set([...(existing.assetTags ?? []), ...(item.assetTags ?? [])]);
+      byKey.set(key, { ...existing, assetTags: [...tags] });
+    } else {
+      byKey.set(key, item);
+    }
+  }
+  const feed = [...byKey.values()]
+    .sort((a, b) => (b.publishedAtMs ?? 0) - (a.publishedAtMs ?? 0))
+    .slice(0, 20);
+  newsFeedCache.entry = { data: feed, expiresAt: now + NEWS_CACHE_MS };
+  return feed;
 }
 
 async function fetchWithTimeout(
@@ -471,7 +317,7 @@ async function fetchIndodaxSparkline(pairSymbol: string): Promise<SparklinePoint
       }
     }
     const result = points.slice(-48);
-    // Cache the sparkline for 5 minutes (300_000 ms) per pair
+    // Cache sparkline selama 5 menit (300_000 ms) per pair
     indodaxSparklineCache.set(key, {
       data: result,
       expiresAt: now + 300_000,
@@ -541,59 +387,11 @@ async function getIndodaxPrices(): Promise<Record<string, PriceTick>> {
   return result;
 }
 
-/** Open/closed flag for an app symbol, from its exchange's regular session. */
-function marketOpenFor(appSymbol: string, nowMs: number): boolean | undefined {
-  const asset = getAssetBySymbol(appSymbol);
-  return asset && asset.exchange !== 'CRYPTO' ? isExchangeOpen(asset.exchange, nowMs) : undefined;
-}
-
-/** Yahoo stock/index quotes are delayed (≈15 min); FX and futures are close to real time. */
-function isDelayedFeed(appSymbol: string): boolean {
-  const group = getAssetBySymbol(appSymbol)?.group;
-  return group === 'stock' || group === 'index';
-}
-
-// Assets priced from Yahoo Finance (gold uses its own spot source; crypto uses Indodax)
-const YAHOO_ASSETS = ASSETS.filter((a) => a.yahooSymbol && !a.indodaxPair && a.group !== 'gold');
-
-/** Cache 30 s while the asset's market is open (near real time), 5 min while closed. */
-function yahooCacheMs(asset: Asset, nowMs = Date.now()): number {
-  return isExchangeOpen(asset.exchange, nowMs) ? 30_000 : 5 * 60_000;
-}
-
-/** Quotes for every Yahoo-priced asset; failures become "unavailable" ticks. */
-async function getYahooTicks(): Promise<Record<string, PriceTick>> {
-  const now = Date.now();
-  const results = await Promise.allSettled(
-    YAHOO_ASSETS.map((a) =>
-      getYahooQuote(a.yahooSymbol as string, a.symbol, a.group, a.currency, yahooCacheMs(a, now))
-    )
-  );
-  const ticks: Record<string, PriceTick> = {};
-  results.forEach((r, i) => {
-    const a = YAHOO_ASSETS[i];
-    ticks[a.symbol] =
-      r.status === 'fulfilled'
-        ? r.value
-        : {
-            symbol: a.symbol,
-            group: a.group,
-            price: NaN,
-            currency: a.currency,
-            source: 'Yahoo Finance',
-            updatedAt: now,
-            status: 'error',
-            errorMessage: `${a.name} data unavailable`,
-          };
-  });
-  return ticks;
-}
-
 async function getYahooQuote(
   yahooSymbol: string,
   appSymbol: string,
-  group: AssetGroup,
-  currency: PriceCurrency,
+  group: 'saham' | 'kurs' | 'emas',
+  currency: 'PTS' | 'IDR' | 'USD',
   cacheMs: number = 60_000
 ): Promise<PriceTick> {
   const now = Date.now();
@@ -601,7 +399,7 @@ async function getYahooQuote(
   if (cached && cached.expiresAt > now) {
     return {
       ...cached.data,
-      isMarketOpen: marketOpenFor(appSymbol, now),
+      isMarketOpen: appSymbol === '^JKSE' ? isIdxMarketOpen(now) : undefined,
     };
   }
 
@@ -610,13 +408,13 @@ async function getYahooQuote(
   )}?interval=15m&range=2d`;
   const res = await fetchWithTimeout(url, {}, 8000);
   if (!res.ok) {
-    throw new Error(`Yahoo Finance HTTP ${res.status} for ${yahooSymbol}`);
+    throw new Error(`Yahoo Finance HTTP ${res.status} untuk ${yahooSymbol}`);
   }
 
   const json = await res.json();
   const chartResult = json?.chart?.result?.[0];
   if (!chartResult || !chartResult.meta) {
-    throw new Error(`Empty Yahoo Finance data for ${yahooSymbol}`);
+    throw new Error(`Data Yahoo Finance kosong untuk ${yahooSymbol}`);
   }
 
   const meta = chartResult.meta;
@@ -664,11 +462,11 @@ async function getYahooQuote(
     high24h,
     low24h,
     sparkline: recentSparkline,
-    isMarketOpen: marketOpenFor(appSymbol, now),
+    isMarketOpen: appSymbol === '^JKSE' ? isIdxMarketOpen(now) : undefined,
     currency,
     source: 'Yahoo Finance',
     updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
-    status: isDelayedFeed(appSymbol) ? 'delayed' : 'live',
+    status: appSymbol === '^JKSE' ? 'tertunda' : 'live',
   };
 
   yahooCache.set(appSymbol, {
@@ -695,7 +493,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
   // Get 24h chart & fallback stats from Yahoo Finance GC=F / XAU
   let yahooGold: PriceTick | null = null;
   try {
-    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'gold', 'USD', 300_000);
+    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'emas', 'USD', 300_000);
   } catch {
     yahooGold = null;
   }
@@ -754,7 +552,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
   }
 
   if (!spotPriceUsd || spotPriceUsd <= 0) {
-    throw new Error('Spot gold XAU/USD price is currently unavailable');
+    throw new Error('Harga spot emas XAU/USD tidak tersedia saat ini');
   }
 
   const priceIdrPerGram =
@@ -762,7 +560,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
 
   const goldTick: PriceTick = {
     symbol: 'XAU/USD',
-    group: 'gold',
+    group: 'emas',
     price: spotPriceUsd,
     priceIdrPerGram,
     changePct24h: yahooGold?.changePct24h,
@@ -796,7 +594,7 @@ async function getAssetIntelligence(
 
   const asset = getAssetBySymbol(symbol) ?? ASSETS[0];
 
-  // Real news from Google News (10-minute cache)
+  // Berita nyata dari Google News Indonesia (cache 10 menit)
   const newsItems: MarketNewsItem[] = (await fetchNewsForAsset(asset)).slice(0, 6);
 
   const baseSentiment = computeMarketSentiment({
@@ -843,16 +641,16 @@ async function getAssetIntelligence(
         const headlinesList =
           newsItems.length > 0
             ? newsItems.map((n, i) => `${i + 1}. ${n.title} (${n.source})`).join('\n')
-            : 'No specific news today.';
+            : 'Tidak ada berita spesifik hari ini.';
 
-        const prompt = `Analyze the current market sentiment, in English, for the asset ${asset.name} (${asset.symbol}).
-Current price: ${tick?.price ?? 'N/A'} (${asset.currency}), 24-hour change: ${
+        const prompt = `Analisis sentimen pasar saat ini dalam Bahasa Indonesia untuk aset ${asset.name} (${asset.symbol}).
+Data harga saat ini: ${tick?.price ?? 'N/A'} (${asset.currency}), perubahan 24 jam: ${
           tick?.changePct24h !== undefined ? tick.changePct24h.toFixed(2) + '%' : 'N/A'
         }.
-Latest news:
+Berita terbaru:
 ${headlinesList}
 
-Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), an objective and educational 2-sentence summary (not buy/sell advice), and the 3 main market drivers.`;
+Berikan skor sentimen (0-100), label ("Bullish", "Netral", atau "Bearish"), ringkasan 2 kalimat yang objektif dan edukatif (bukan saran jual/beli), serta 3 faktor penggerak utama.`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3.8-flash',
@@ -887,7 +685,7 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
                 : initialIntelligence.sentimentScore,
             sentimentLabel:
               parsed.sentimentLabel === 'Bullish' ||
-              parsed.sentimentLabel === 'Neutral' ||
+              parsed.sentimentLabel === 'Netral' ||
               parsed.sentimentLabel === 'Bearish'
                 ? (parsed.sentimentLabel as SentimentLabel)
                 : initialIntelligence.sentimentLabel,
@@ -908,7 +706,7 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
           return enriched;
         }
       } catch (err) {
-        console.warn(`[Gemini sentiment error for ${asset.symbol}]:`, err);
+        console.warn(`[Gemini Sentiment Error untuk ${asset.symbol}]:`, err);
       }
       return null;
     })();
@@ -926,290 +724,20 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
   return initialIntelligence;
 }
 
-// ---------------------------------------------------------------------------------------
-// AI outlook engine
-// ~5 years of daily closes per asset (Yahoo; crypto from Indodax in IDR) + US rates and the
-// dollar index, Fed decisions (recorded or inferred), walk-forward backtested logistic model.
-// The latest live price is used as today's bar, so the outlook moves with the market.
-// ---------------------------------------------------------------------------------------
-
-const AI_HISTORY_TTL_MS = 6 * 3600_000;
-const AI_OUTLOOK_TTL_MS = 10 * 60_000;
-const AI_HORIZONS = [20, 60] as const;
-type AiHorizon = (typeof AI_HORIZONS)[number];
-
-const aiHistoryCache = new Map<string, CacheEntry<DailyBar[]>>();
-const aiOutlookCache = new Map<AiHorizon, CacheEntry<AiOutlookPayload>>();
-const aiComputing = new Map<AiHorizon, Promise<AiOutlookPayload>>();
-const aiSummaryCache = new Map<string, CacheEntry<{ text: string; aiPowered: boolean }>>();
-
-interface AiOutlookPayload {
-  generatedAt: number;
-  horizonDays: number;
-  assets: AssetOutlook[];
-  nextFomc: { date: string; daysUntil: number } | null;
-  recentFedDecisions: Array<{ date: string; decision: string; inferred: boolean }>;
-  geoAlertActive: boolean;
-}
-
-/** Local trading-day date (YYYY-MM-DD) for an exchange. */
-function localDate(ms: number, exchange: ExchangeId): string {
-  const tz =
-    exchange === 'CRYPTO' ? 'Asia/Jakarta' : exchange === 'FX' ? 'America/New_York' : EXCHANGE_HOURS[exchange].timeZone;
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
-}
-
-async function fetchYahooDaily(yahooSymbol: string): Promise<DailyBar[]> {
-  const key = `y:${yahooSymbol}`;
-  const cached = aiHistoryCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
-  const ts: number[] = result.timestamp || [];
-  const closes: Array<number | null> = result.indicators?.quote?.[0]?.close || [];
-  const offsetSec = Number(result.meta?.gmtoffset) || 0;
-  const bars: DailyBar[] = [];
-  for (let i = 0; i < ts.length; i++) {
-    const c = closes[i];
-    if (c === null || c === undefined || !Number.isFinite(c) || c <= 0) continue;
-    const date = new Date((Number(ts[i]) + offsetSec) * 1000).toISOString().slice(0, 10);
-    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1].close = Number(c);
-    else bars.push({ date, close: Number(c) });
-  }
-  aiHistoryCache.set(key, { data: bars, expiresAt: Date.now() + AI_HISTORY_TTL_MS });
-  return bars;
-}
-
-async function fetchIndodaxDaily(pair: string): Promise<DailyBar[]> {
-  const key = `i:${pair}`;
-  const cached = aiHistoryCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const nowSec = Math.floor(Date.now() / 1000);
-  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
-  const res = await fetchWithTimeout(url, {}, 10_000);
-  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
-  const rows = await res.json();
-  const bars: DailyBar[] = [];
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const t = Number(row?.Time);
-    const c = Number(row?.Close);
-    if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) continue;
-    const date = localDate(t * 1000, 'CRYPTO');
-    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1].close = c;
-    else bars.push({ date, close: c });
-  }
-  aiHistoryCache.set(key, { data: bars, expiresAt: Date.now() + AI_HISTORY_TTL_MS });
-  return bars;
-}
-
-/** Latest live price for an asset from the price caches (null if unknown). */
-function livePriceFor(asset: Asset): { price: number; at: number } | null {
-  const tick = asset.indodaxPair
-    ? indodaxCache.entry?.data?.[asset.symbol]
-    : yahooCache.get(asset.symbol)?.data; // gold: GC=F futures, matching its history
-  return tick && Number.isFinite(tick.price) && tick.price > 0 ? { price: tick.price, at: tick.updatedAt } : null;
-}
-
-/** Puts the live price in as today's bar (replacing a same-day close) without mutating the cache. */
-function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
-  const live = livePriceFor(asset);
-  if (!live || bars.length === 0) return bars;
-  const date = localDate(live.at, asset.exchange);
-  const last = bars[bars.length - 1];
-  if (date < last.date) return bars;
-  return date === last.date
-    ? [...bars.slice(0, -1), { date, close: live.price }]
-    : [...bars, { date, close: live.price }];
-}
-
-/** Live news mood 0–100 per asset from the news hub (same rule-based score as the panels). */
-function newsScoreFor(asset: Asset): number | null {
-  const news = newsHub.items.filter((i) => i.assetTags?.includes(asset.code)).slice(0, 6);
-  if (news.length === 0) return null;
-  const tick = asset.indodaxPair ? indodaxCache.entry?.data?.[asset.symbol] : yahooCache.get(asset.symbol)?.data;
-  return computeMarketSentiment({
-    assetName: asset.name,
-    symbol: asset.symbol,
-    changePct24h: tick?.changePct24h,
-    price: tick?.price,
-    high24h: tick?.high24h,
-    low24h: tick?.low24h,
-    news,
-  }).score;
-}
-
-async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
-  // Kick off price caches so live bars are available (ignore failures)
-  await Promise.allSettled([getIndodaxPrices(), getYahooTicks(), ensureNewsFresh()]);
-
-  const [tbillBars, yieldBars, dollarBars] = await Promise.all([
-    fetchYahooDaily('^IRX'),
-    fetchYahooDaily('^TNX'),
-    fetchYahooDaily('DX-Y.NYB'),
-  ]);
-  const today = new Date().toISOString().slice(0, 10);
-  const meetings = resolveMeetings(tbillBars, today);
-
-  const candidates = ASSETS.filter((a) => a.indodaxPair || a.yahooSymbol);
-  const outlooks = await Promise.all(
-    candidates.map(async (asset): Promise<AssetOutlook | null> => {
-      try {
-        const raw = asset.indodaxPair
-          ? await fetchIndodaxDaily(asset.indodaxPair)
-          : await fetchYahooDaily(asset.yahooSymbol as string);
-        const bars = withLiveBar(raw, asset);
-        const dates = bars.map((b) => b.date);
-        const macro = {
-          tbill: alignByDate(dates, tbillBars),
-          yield10y: alignByDate(dates, yieldBars),
-          dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
-          fedStance: fedStanceSeries(dates, meetings),
-        };
-        const outlook = buildAssetOutlook({
-          symbol: asset.symbol,
-          code: asset.code,
-          name: asset.name,
-          group: asset.group,
-          bars,
-          macro,
-          horizonDays: horizon,
-          fedReactions: eventStudy(bars, meetings),
-        });
-        return { ...outlook, newsScore: newsScoreFor(asset) };
-      } catch (err) {
-        console.warn(`[AI] ${asset.code} failed:`, err instanceof Error ? err.message : err);
-        return null;
-      }
-    })
-  );
-
-  const next = nextMeeting(today);
-  return {
-    generatedAt: Date.now(),
-    horizonDays: horizon,
-    assets: outlooks.filter((o): o is AssetOutlook => o !== null),
-    nextFomc: next
-      ? { date: next, daysUntil: Math.round((Date.parse(next) - Date.parse(today)) / 86_400_000) }
-      : null,
-    recentFedDecisions: meetings
-      .filter((m) => m.decision && m.date <= today)
-      .slice(-4)
-      .map((m) => ({ date: m.date, decision: m.decision as string, inferred: m.inferred })),
-    geoAlertActive: selectGeoAlert(newsHub.items, Date.now()) !== null,
-  };
-}
-
-/** Cached outlook; recomputes in the background when stale (first call waits). */
-async function getAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
-  const cached = aiOutlookCache.get(horizon);
-  const refresh = () => {
-    if (!aiComputing.has(horizon)) {
-      const job = computeAiOutlook(horizon)
-        .then((data) => {
-          aiOutlookCache.set(horizon, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
-          return data;
-        })
-        .finally(() => aiComputing.delete(horizon));
-      aiComputing.set(horizon, job);
-    }
-    return aiComputing.get(horizon) as Promise<AiOutlookPayload>;
-  };
-  if (cached) {
-    if (cached.expiresAt <= Date.now()) refresh().catch(() => {});
-    return cached.data;
-  }
-  return refresh();
-}
-
-/** Rule-based English summary of the ranked outlook (used when Gemini is not configured). */
-function ruleBasedSummary(payload: AiOutlookPayload, profile: RiskProfile): string {
-  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
-  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(0)}%`);
-  const favorable = ranked.filter((o) => o.verdict === 'favorable');
-  const watch = ranked.filter((o) => o.verdict === 'watch');
-  const weak = ranked.filter((o) => o.verdict === 'unfavorable');
-  const horizon = payload.horizonDays === 20 ? 'about 1 month' : 'about 3 months';
-  const parts: string[] = [];
-  if (favorable.length) {
-    parts.push(
-      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, the strongest statistical setups now are ${favorable
-        .slice(0, 3)
-        .map((o) => `${o.name} (${pct(o.adjustedProbability)} adjusted probability of a gain; in backtests its favorable signals were right ${pct(o.backtest?.signalHitRate)} of the time vs a ${pct(o.backtest?.baseRate)} base rate)`)
-        .join(', ')}.`
-    );
-  } else {
-    parts.push(
-      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, no instrument currently has an active buy setup from a strategy with a proven out-of-sample edge — waiting is a valid choice. The watch list below shows where such a setup is most likely to appear.`
-    );
-  }
-  if (watch.length) parts.push(`Watch list (a strategy with a proven edge exists, but no active buy setup yet): ${watch.slice(0, 4).map((o) => o.name).join(", ")}.`);
-  if (weak.length) parts.push(`Active bearish setups (better avoided for now): ${weak.slice(0, 4).map((o) => o.name).join(", ")}.`);
-  if (payload.nextFomc) {
-    parts.push(
-      `The next Fed decision is on ${payload.nextFomc.date} (${payload.nextFomc.daysUntil} days); rate decisions often move indices, gold and currencies, so expect volatility around it.`
-    );
-  }
-  if (payload.geoAlertActive) parts.push('A geopolitical alert is active, which raises short-term risk.');
-  return parts.join(' ');
-}
-
-async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile) {
-  const key = `${payload.generatedAt}|${payload.horizonDays}|${profile}`;
-  const cached = aiSummaryCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const fallback = { text: ruleBasedSummary(payload, profile), aiPowered: false };
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-    aiSummaryCache.set(key, { data: fallback, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
-    return fallback;
-  }
-  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
-  const facts = ranked.map((o) => ({
-    asset: o.name,
-    verdict: o.verdict,
-    adjustedProbabilityUp: o.adjustedProbability?.toFixed(2),
-    backtestSignalHitRate: o.backtest?.signalHitRate?.toFixed(2),
-    backtestBaseRate: o.backtest?.baseRate?.toFixed(2),
-    volatility: o.stats.volatility?.toFixed(2),
-    return1y: o.stats.return1y?.toFixed(2),
-    topDrivers: o.drivers.slice(0, 2).map((d) => `${d.label} (${d.impact > 0 ? '+' : '-'})`),
-    newsMood: o.newsScore,
-  }));
-  const prompt = `You are a quantitative market analyst. Using ONLY the data below (a walk-forward backtested logistic model of the probability that each instrument rises over the next ${payload.horizonDays} trading days), write 4-6 plain-English sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the probability and backtest hit rate vs base rate), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "This is a statistical screen, not personal financial advice."
-DATA: ${JSON.stringify(facts)}`;
-  try {
-    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
-    const response = await Promise.race([
-      ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-      }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
-    ]);
-    const text = response?.text?.trim();
-    const data = text ? { text, aiPowered: true } : fallback;
-    aiSummaryCache.set(key, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
-    return data;
-  } catch (err) {
-    console.warn('[AI] Gemini summary failed:', err instanceof Error ? err.message : err);
-    return fallback;
-  }
-}
-
 async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // 1. All market snapshot endpoint (Indodax + Yahoo JCI & USD/IDR + Gold XAU/USD)
+  // 1. All market snapshot endpoint (Indodax + Yahoo IHSG & USD/IDR + Gold XAU/USD)
   app.get('/api/market/snapshot', async (_req, res) => {
     const ticks: Record<string, PriceTick> = {};
     const now = Date.now();
 
-    const [indodaxResult, yahooTicks] = await Promise.all([
-      Promise.allSettled([getIndodaxPrices()]).then(([r]) => r),
-      getYahooTicks(),
+    const [indodaxResult, ihsgResult, usdIdrResult] = await Promise.allSettled([
+      getIndodaxPrices(),
+      getYahooQuote('^JKSE', '^JKSE', 'saham', 'PTS', 60_000),
+      getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000),
     ]);
-    Object.assign(ticks, yahooTicks);
 
     if (indodaxResult.status === 'fulfilled') {
       Object.assign(ticks, indodaxResult.value);
@@ -1223,13 +751,42 @@ async function startServer() {
           source: 'Indodax',
           updatedAt: now,
           status: 'error',
-          errorMessage: 'Indodax data unavailable',
+          errorMessage: 'Data Indodax tidak tersedia',
         };
       }
     }
 
-    const usdIdrPrice = ticks['USD/IDR']?.price;
-    const usdIdrRate = Number.isFinite(usdIdrPrice) ? usdIdrPrice : 0;
+    if (ihsgResult.status === 'fulfilled') {
+      ticks['^JKSE'] = ihsgResult.value;
+    } else {
+      ticks['^JKSE'] = {
+        symbol: '^JKSE',
+        group: 'saham',
+        price: NaN,
+        currency: 'PTS',
+        source: 'Yahoo Finance',
+        updatedAt: now,
+        status: 'error',
+        errorMessage: 'Data IHSG tidak tersedia',
+      };
+    }
+
+    let usdIdrRate = 0;
+    if (usdIdrResult.status === 'fulfilled') {
+      ticks['USD/IDR'] = usdIdrResult.value;
+      usdIdrRate = usdIdrResult.value.price;
+    } else {
+      ticks['USD/IDR'] = {
+        symbol: 'USD/IDR',
+        group: 'kurs',
+        price: NaN,
+        currency: 'IDR',
+        source: 'Yahoo Finance',
+        updatedAt: now,
+        status: 'error',
+        errorMessage: 'Data kurs USD/IDR tidak tersedia',
+      };
+    }
 
     try {
       const goldTick = await getGoldTick(usdIdrRate);
@@ -1237,13 +794,13 @@ async function startServer() {
     } catch {
       ticks['XAU/USD'] = {
         symbol: 'XAU/USD',
-        group: 'gold',
+        group: 'emas',
         price: NaN,
         currency: 'USD',
         source: 'Spot XAU',
         updatedAt: now,
         status: 'error',
-        errorMessage: 'Gold data unavailable',
+        errorMessage: 'Data emas tidak tersedia',
       };
     }
 
@@ -1261,17 +818,26 @@ async function startServer() {
       res.json({ ticks, serverTime: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to fetch Indodax data',
+        error: err instanceof Error ? err.message : 'Gagal mengambil data Indodax',
       });
     }
   });
 
-  // 3. Yahoo Finance endpoint: JCI, global indices and currencies (client polls every 30 s)
+  // 3. Yahoo Finance endpoint (for 60s IHSG & USD/IDR polling)
   app.get('/api/market/yahoo', async (_req, res) => {
     const now = Date.now();
-    const all = await getYahooTicks();
-    // Failed quotes are left out so the client keeps its last good price
-    const ticks = Object.fromEntries(Object.entries(all).filter(([, t]) => t.status !== 'error'));
+    const [ihsgResult, usdIdrResult] = await Promise.allSettled([
+      getYahooQuote('^JKSE', '^JKSE', 'saham', 'PTS', 60_000),
+      getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000),
+    ]);
+
+    const ticks: Record<string, PriceTick> = {};
+    if (ihsgResult.status === 'fulfilled') {
+      ticks['^JKSE'] = ihsgResult.value;
+    }
+    if (usdIdrResult.status === 'fulfilled') {
+      ticks['USD/IDR'] = usdIdrResult.value;
+    }
     res.json({ ticks, serverTime: now, idxMarketOpen: isIdxMarketOpen(now) });
   });
 
@@ -1281,7 +847,7 @@ async function startServer() {
       let usdIdrRate = yahooCache.get('USD/IDR')?.data?.price ?? 0;
       if (!usdIdrRate) {
         try {
-          const usdTick = await getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000);
+          const usdTick = await getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000);
           usdIdrRate = usdTick.price;
         } catch {
           usdIdrRate = 0;
@@ -1291,7 +857,7 @@ async function startServer() {
       res.json({ tick, serverTime: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to fetch the gold price',
+        error: err instanceof Error ? err.message : 'Gagal mengambil harga emas',
       });
     }
   });
@@ -1314,22 +880,22 @@ async function startServer() {
       res.json(intelligence);
     } catch (err) {
       res.status(500).json({
-        error: err instanceof Error ? err.message : 'Failed to load sentiment analysis and news',
+        error: err instanceof Error ? err.message : 'Gagal memuat analisis sentimen dan berita',
       });
     }
   });
 
-  // 6. OHLC candles for the alternative chart (Indodax / Yahoo Finance)
+  // 6. Candle OHLC untuk grafik alternatif (Yahoo Finance)
   app.get('/api/market/history', async (req, res) => {
     const symbol = String(req.query.symbol || '');
     const interval = String(req.query.interval || '15');
     const asset = getAssetBySymbol(symbol);
     if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {
-      res.status(400).json({ error: 'Unsupported symbol' });
+      res.status(400).json({ error: 'Simbol tidak didukung' });
       return;
     }
     if (!HISTORY_INTERVALS[interval]) {
-      res.status(400).json({ error: 'Unsupported interval' });
+      res.status(400).json({ error: 'Interval tidak didukung' });
       return;
     }
     try {
@@ -1342,80 +908,31 @@ async function startServer() {
       });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to load chart data',
+        error: err instanceof Error ? err.message : 'Gagal memuat data grafik',
       });
     }
   });
 
-  // 7. 30-day correlation matrix (6-hour cache)
+  // 7. Matriks korelasi 30 hari (cache 6 jam)
   app.get('/api/market/correlation', async (_req, res) => {
     try {
       res.json(await getCorrelationMatrix());
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to compute correlation',
+        error: err instanceof Error ? err.message : 'Gagal menghitung korelasi',
       });
     }
   });
 
-  // 8. Combined news feed for all assets (10-minute cache)
+  // 8. Umpan berita gabungan semua aset (cache 10 menit)
   app.get('/api/market/news-feed', async (_req, res) => {
     try {
-      await ensureNewsFresh();
-      res.json({ items: getNewsFeed(), updatedAt: newsHub.lastPollAt || Date.now() });
+      res.json({ items: await getNewsFeed(), updatedAt: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to load the news feed',
+        error: err instanceof Error ? err.message : 'Gagal memuat umpan berita',
       });
     }
-  });
-
-  // 10. AI outlook: backtested model per asset + personalized summary
-  app.get('/api/ai/outlook', async (req, res) => {
-    const horizon = (Number(req.query.horizon) === 60 ? 60 : 20) as AiHorizon;
-    const profileParam = String(req.query.profile || 'moderate');
-    const profile: RiskProfile = profileParam in RISK_PROFILES ? (profileParam as RiskProfile) : 'moderate';
-    try {
-      const payload = await getAiOutlook(horizon);
-      const summary = await getAiSummary(payload, profile);
-      res.json({ ...payload, profile, summary });
-    } catch (err) {
-      res.status(502).json({
-        error: err instanceof Error ? err.message : 'Failed to compute the AI outlook',
-      });
-    }
-  });
-
-  // 9. Live news stream (Server-Sent Events): a snapshot first, then every new headline
-  app.get('/api/market/news-stream', async (req, res) => {
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no', // ask proxies not to buffer the stream
-    });
-    res.flushHeaders();
-    res.write('retry: 5000\n\n');
-    newsHub.clients.add(res);
-    newsHub.lastDemandAt = Date.now();
-
-    // Heartbeat so the browser can tell a live stream from a stalled proxy
-    const heartbeat = setInterval(() => {
-      res.write(`event: ping\ndata: ${JSON.stringify({ serverTime: Date.now() })}\n\n`);
-    }, 20_000);
-    req.on('close', () => {
-      clearInterval(heartbeat);
-      newsHub.clients.delete(res);
-    });
-
-    try {
-      await ensureNewsFresh();
-    } catch {
-      // Snapshot below still sends whatever the hub has
-    }
-    res.write(
-      `event: snapshot\ndata: ${JSON.stringify({ items: getNewsFeed(), serverTime: Date.now() })}\n\n`
-    );
   });
 
   // Vite middleware in development, static dist in production
@@ -1435,8 +952,6 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AssetRadar server listening on http://localhost:${PORT}`);
-    // Warm up the AI outlook so the first visitor does not wait for 5 years of data
-    setTimeout(() => getAiOutlook(20).catch((err) => console.warn('[AI] warm-up failed:', err)), 3000);
   });
 }
 

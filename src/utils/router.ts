@@ -1,23 +1,14 @@
-/**
- * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
- * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor.
- * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
- * previously shared links keep working.
- */
 import { ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan';
 
 export interface ParsedRoute {
   tab: RouteTab;
   assetSymbol?: string;
 }
 
-// Legacy asset ids from before the English rename
-const LEGACY_ASSET_IDS: Record<string, string> = { ihsg: '^JKSE' };
-
 /**
- * Parses a URL hash string (e.g. "#/radar", "#/asset/btc", "#/settings")
+ * Parses URL hash string (e.g. "#/radar", "#/aset/btc", "#/watchlist", "#/risiko", "#/pengaturan")
  * into a structured route state.
  */
 export function parseHashRoute(hash: string): ParsedRoute {
@@ -28,30 +19,21 @@ export function parseHashRoute(hash: string): ParsedRoute {
   if (cleaned === 'watchlist') {
     return { tab: 'watchlist' };
   }
-  if (cleaned === 'risk' || cleaned === 'risiko') {
-    return { tab: 'risk' };
+  if (cleaned === 'risiko') {
+    return { tab: 'risiko' };
   }
-  if (cleaned === 'settings' || cleaned === 'pengaturan') {
-    return { tab: 'settings' };
+  if (cleaned === 'pengaturan') {
+    return { tab: 'pengaturan' };
   }
-  if (cleaned === 'advisor' || cleaned === 'ai') {
-    return { tab: 'advisor' };
-  }
-  if (cleaned === 'terminal') {
-    return { tab: 'terminal' };
-  }
-  const assetPrefix = ['asset/', 'aset/'].find((p) => cleaned.startsWith(p));
-  if (assetPrefix) {
-    const rawId = decodeURIComponent(cleaned.slice(assetPrefix.length)).trim();
+  if (cleaned.startsWith('aset/')) {
+    const rawId = decodeURIComponent(cleaned.slice('aset/'.length)).trim();
     const matched =
       ASSETS.find(
         (a) =>
           a.id.toLowerCase() === rawId ||
           a.symbol.toLowerCase() === rawId ||
           a.shortName.toLowerCase() === rawId
-      ) ??
-      getAssetBySymbol(LEGACY_ASSET_IDS[rawId] ?? '') ??
-      ASSETS[0];
+      ) ?? ASSETS[0];
     return {
       tab: 'detail',
       assetSymbol: matched.symbol,
@@ -61,7 +43,7 @@ export function parseHashRoute(hash: string): ParsedRoute {
 }
 
 /**
- * Builds the canonical URL hash string for a given tab and asset symbol/id.
+ * Builds canonical URL hash string for a given tab and asset symbol/id.
  */
 export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string {
   switch (tab) {
@@ -69,18 +51,14 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/radar';
     case 'watchlist':
       return '#/watchlist';
-    case 'risk':
-      return '#/risk';
-    case 'settings':
-      return '#/settings';
-    case 'advisor':
-      return '#/advisor';
-    case 'terminal':
-      return '#/terminal';
+    case 'risiko':
+      return '#/risiko';
+    case 'pengaturan':
+      return '#/pengaturan';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];
-      return `#/asset/${asset.id}`;
+      return `#/aset/${asset.id}`;
     }
   }
 }

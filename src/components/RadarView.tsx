@@ -1,8 +1,3 @@
-/**
- * RadarView.tsx — The Radar dashboard: market summary (assets up/down), price cards per
- * group with a 24h sparkline and price flash on change, the live headline tape, and the
- * sentiment + news section.
- */
 import { useState, useEffect, useRef } from 'react';
 import { ArrowUpRight, LineChart, Star, RefreshCw, AlertCircle } from 'lucide-react';
 import {
@@ -17,10 +12,9 @@ import {
   formatPoints,
   formatPercent,
 } from '../utils/format.ts';
-import { formatRelativeTime } from '../utils/marketHours.ts';
+import { formatRelativeTimeId } from '../utils/marketHours.ts';
 import { SparklineChart } from './SparklineChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
-import { NewsTape } from './NewsTape.tsx';
 
 interface RadarViewProps {
   ticks: Record<string, PriceTick>;
@@ -40,7 +34,7 @@ export function RadarView({
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [selectedIntelSymbol, setSelectedIntelSymbol] = useState<string>('BTC/IDR');
 
-  // Tick relative time every 1 second so "updated X seconds ago" stays fresh
+  // Tick relative time every 1 second so "diperbarui X detik lalu" stays fresh
   useEffect(() => {
     const timer = setInterval(() => {
       setNowMs(Date.now());
@@ -67,11 +61,9 @@ export function RadarView({
 
   return (
     <div className="space-y-8">
-      {/* Live headline tape (Bloomberg style) */}
-      <NewsTape className="rounded-xl border" />
       {/* Summary Header Banner */}
       <section
-        aria-label="Market radar summary"
+        aria-label="Ringkasan Radar Pasar"
         className="p-5 md:p-6 rounded-xl border"
         style={{
           backgroundColor: 'var(--bg-surface)',
@@ -84,22 +76,22 @@ export function RadarView({
               className="flex items-center gap-2 text-xs font-medium"
               style={{ color: 'var(--text-secondary)' }}
             >
-              <span>Live Instrument Radar</span>
+              <span>Radar Instrumen Live</span>
               <span aria-hidden="true">·</span>
-              <span>{ASSETS.length} Assets Tracked</span>
+              <span>6 Aset Dipantau</span>
               <span aria-hidden="true">·</span>
-              <span>WIB Time Zone (Asia/Jakarta)</span>
+              <span>Zona Waktu WIB (Asia/Jakarta)</span>
             </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-              Track gold, stocks, crypto and global markets on one radar.
+              Pantau emas, saham, dan crypto dalam satu radar.
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              Crypto prices update in real time via Indodax; JCI, global indices (US, Japan, London,
-              Europe, Asia) and major currencies come from Yahoo Finance, plus spot gold in Rupiah/gram.
+              Harga crypto diperbarui real-time melalui Indodax, indeks IHSG &amp; kurs USD/IDR dari
+              Yahoo Finance, serta harga spot emas XAU/USD beserta konversi Rupiah per gram.
             </p>
           </div>
 
-          {/* Summary Metrics Strip: number of assets up vs down today */}
+          {/* Summary Metrics Strip: Jumlah aset naik vs turun hari ini */}
           <div
             className="grid grid-cols-3 gap-5 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l lg:pl-6 shrink-0"
             style={{ borderColor: 'var(--border-subtle)' }}
@@ -109,7 +101,7 @@ export function RadarView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Assets Up (24h)
+                Aset Naik (24j)
               </span>
               <span
                 data-testid="summary-up-count"
@@ -124,7 +116,7 @@ export function RadarView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Assets Down (24h)
+                Aset Turun (24j)
               </span>
               <span
                 data-testid="summary-down-count"
@@ -139,7 +131,7 @@ export function RadarView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Flat / Other
+                Stabil / Lainnya
               </span>
               <span
                 className="text-xl font-mono-num font-bold tabular-nums mt-0.5 block"
@@ -160,7 +152,7 @@ export function RadarView({
             className="text-xs font-medium mr-1"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Quick Chart &amp; Detail:
+            Buka Grafik &amp; Detail Cepat:
           </span>
           {ASSETS.map((asset) => (
             <button
@@ -178,7 +170,7 @@ export function RadarView({
                 className="w-3.5 h-3.5"
                 style={{
                   color:
-                    asset.group === 'gold'
+                    asset.group === 'emas'
                       ? 'var(--color-gold)'
                       : 'var(--accent-radar)',
                 }}
@@ -236,17 +228,17 @@ export function RadarView({
               id="radar-sentiment-heading"
               className="text-base md:text-lg font-bold tracking-tight"
             >
-              Sentiment Analysis &amp; Market-Moving News
+              Analisis Sentimen &amp; Berita Penggerak Pasar
             </h2>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Pick an instrument to see its market sentiment score and the latest news affecting
-              its price moves.
+              Pilih instrumen untuk melihat skor sentimen pasar dan berita terbaru yang mempengaruhi
+              pergerakan harganya.
             </p>
           </div>
 
           <div
             role="tablist"
-            aria-label="Choose an asset for sentiment and news"
+            aria-label="Pilih Aset untuk Sentimen dan Berita"
             className="flex flex-wrap items-center gap-1.5"
           >
             {ASSETS.map((item) => {
@@ -326,17 +318,17 @@ function AssetCard({
     }
   }, [tick?.price]);
 
-  const isGold = asset.group === 'gold';
+  const isGold = asset.group === 'emas';
   const hasError = tick?.status === 'error';
   const isLoaded = tick !== undefined && !hasError && Number.isFinite(tick.price);
   const changePct = tick?.changePct24h;
   const isPositive = (changePct ?? 0) >= 0;
 
   // Format primary price
-  let formattedPrimaryPrice = 'Loading...';
+  let formattedPrimaryPrice = 'Memuat...';
   if (isLoaded && tick) {
     if (asset.currency === 'IDR') {
-      formattedPrimaryPrice = formatRupiah(tick.price);
+      formattedPrimaryPrice = formatRupiah(tick.price, 0);
     } else if (asset.currency === 'PTS') {
       formattedPrimaryPrice = formatPoints(tick.price);
     } else if (asset.currency === 'USD') {
@@ -350,16 +342,18 @@ function AssetCard({
       : '—';
 
   const statusText = !tick
-    ? 'Loading...'
+    ? 'Memuat...'
     : tick.fromSnapshot
-      ? 'Offline – last data'
+      ? 'Offline – data terakhir'
       : tick.status === 'error'
       ? 'Error'
-      : tick.isMarketOpen === false
-        ? 'Market closed · last price'
+      : asset.symbol === '^JKSE'
+        ? tick.isMarketOpen
+          ? 'Tertunda · Bursa Buka'
+          : 'Tertunda · Pasar tutup'
         : tick.status === 'live'
           ? 'Live'
-          : 'Delayed';
+          : 'Tertunda';
 
   const flashBg =
     flashDirection === 'up'
@@ -400,8 +394,8 @@ function AssetCard({
             }}
             aria-label={
               isWatchlisted
-                ? `Remove ${asset.name} from Watchlist`
-                : `Add ${asset.name} to Watchlist`
+                ? `Hapus ${asset.name} dari Watchlist`
+                : `Tambah ${asset.name} ke Watchlist`
             }
             className="p-2 rounded-lg border transition-colors shrink-0"
             style={{
@@ -435,7 +429,7 @@ function AssetCard({
                 style={{ color: 'var(--color-down)' }}
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Data unavailable</span>
+                <span>Data tidak tersedia</span>
               </div>
               <button
                 type="button"
@@ -448,7 +442,7 @@ function AssetCard({
                 }}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Try again</span>
+                <span>Coba lagi</span>
               </button>
             </div>
           ) : (
@@ -461,7 +455,7 @@ function AssetCard({
                         className="text-[11px] block"
                         style={{ color: 'var(--text-secondary)' }}
                       >
-                        World Spot (USD/oz)
+                        Spot Dunia (USD/oz)
                       </span>
                       <span
                         data-testid={`price-${asset.id}`}
@@ -476,7 +470,7 @@ function AssetCard({
                         className="text-[11px] block"
                         style={{ color: 'var(--text-secondary)' }}
                       >
-                        Converted (IDR/gram)
+                        Konversi (IDR/gram)
                       </span>
                       <span
                         data-testid="price-xau-idr"
@@ -487,11 +481,11 @@ function AssetCard({
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span style={{ color: 'var(--text-secondary)' }}>24h Change</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Perubahan 24j</span>
                     <ChangeText value={changePct} />
                   </div>
                   <p className="text-[10px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
-                    Price: spot XAU. 24h change &amp; mini chart: gold futures contract (GC=F).
+                    Harga: spot XAU. Perubahan 24j &amp; grafik mini: kontrak futures emas (GC=F).
                   </p>
                 </div>
               ) : (
@@ -501,7 +495,7 @@ function AssetCard({
                       className="text-[11px] block"
                       style={{ color: 'var(--text-secondary)' }}
                     >
-                      Price ({asset.unitLabel})
+                      Harga ({asset.unitLabel})
                     </span>
                     <span
                       data-testid={`price-${asset.id}`}
@@ -515,7 +509,7 @@ function AssetCard({
                       className="text-[11px] block"
                       style={{ color: 'var(--text-secondary)' }}
                     >
-                      24h Change
+                      Perubahan 24j
                     </span>
                     <ChangeText value={changePct} />
                   </div>
@@ -540,8 +534,8 @@ function AssetCard({
           >
             <span>
               {tick?.updatedAt
-                ? formatRelativeTime(tick.updatedAt, nowMs)
-                : 'Loading data...'}
+                ? formatRelativeTimeId(tick.updatedAt, nowMs)
+                : 'Memuat data...'}
             </span>
             <span
               className="font-semibold"
@@ -574,7 +568,7 @@ function AssetCard({
           color: 'var(--text-primary)',
         }}
       >
-        <span>{asset.shortName} Detail, Chart &amp; Sentiment</span>
+        <span>Detail, Grafik &amp; Sentimen {asset.shortName}</span>
         <ArrowUpRight className="w-3.5 h-3.5" style={{ color: 'var(--accent-radar)' }} />
       </button>
     </article>

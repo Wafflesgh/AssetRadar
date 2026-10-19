@@ -1,10 +1,3 @@
-/**
- * marketDataService.ts — Client-side live market data. MarketDataManager streams Indodax
- * crypto prices over the official public WebSocket (with backoff and a REST fallback only
- * while the socket is down), polls Yahoo (JCI, global indices, currencies) every 30 s and gold
- * every 5 min, reports the connection state and keeps an offline price snapshot. Also
- * exports fetch helpers for sentiment, chart history, correlation and the news feed.
- */
 import {
   PriceTick,
   AssetIntelligence,
@@ -12,10 +5,10 @@ import {
   CorrelationMatrix,
   MarketNewsItem,
   TimeframeInterval,
-  getAssetBySymbol,
 } from '../config/assets.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
+import { isIdxMarketOpen } from '../utils/marketHours.ts';
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
 
@@ -65,7 +58,7 @@ export class MarketDataManager {
       window.addEventListener('offline', this.handleOffline);
     }
 
-    // Show the last saved prices first (useful when offline)
+    // Tampilkan harga terakhir yang tersimpan lebih dulu (berguna saat offline)
     const snapshot = loadTickSnapshot();
     if (snapshot && Object.keys(snapshot).length > 0) {
       this.ticks = snapshot;
@@ -98,10 +91,10 @@ export class MarketDataManager {
       if (!this.wsConnected) {
         this.connectIndodaxWebSocket();
       }
+    } else if (symbol === '^JKSE' || symbol === 'USD/IDR') {
+      await this.pollYahoo();
     } else if (symbol === 'XAU/USD') {
       await this.pollGold();
-    } else if (getAssetBySymbol(symbol)?.yahooSymbol) {
-      await this.pollYahoo();
     } else {
       await this.fetchInitialSnapshot();
     }
@@ -127,11 +120,11 @@ export class MarketDataManager {
   private handleVisibilityChange(): void {
     if (this.isDestroyed) return;
     if (document.visibilityState === 'hidden') {
-      // Disconnect while the tab is hidden
+      // Putuskan koneksi saat tab tidak terlihat
       this.disconnectWebSocket();
       this.clearPollingTimers();
     } else if (document.visibilityState === 'visible') {
-      // Reconnect when visible again
+      // Sambungkan lagi saat terlihat
       this.fetchInitialSnapshot();
       this.connectIndodaxWebSocket();
       this.startPollingTimers();
@@ -189,7 +182,7 @@ export class MarketDataManager {
     this.ticks = next;
     this.callbacks.onTicksUpdate(this.ticks);
 
-    // Save the latest price snapshot (at most every 5 seconds) for offline mode
+    // Simpan snapshot harga terakhir (maks. tiap 5 detik) untuk mode offline
     const nowMs = Date.now();
     if (nowMs - this.lastSnapshotSave > 5000) {
       this.lastSnapshotSave = nowMs;
@@ -342,17 +335,18 @@ export class MarketDataManager {
   private startPollingTimers(): void {
     this.clearPollingTimers();
 
-    // 1. Indodax REST polling every 10 seconds ONLY while the WebSocket is disconnected
+    // 1. Indodax REST polling tiap 10 detik HANYA saat WebSocket tidak tersambung
     this.indodaxPollTimer = setInterval(() => {
       if (!this.wsConnected) {
         this.pollIndodaxRest();
       }
     }, 10_000);
 
-    // 2. Yahoo Finance polling every 30 seconds (JCI, global indices, currencies)
+    // 2. Yahoo Finance polling every 60 seconds
+    // IHSG only polled during IDX trading hours (Mon-Fri 09:00-16:00 WIB)
     this.yahooPollTimer = setInterval(() => {
       this.pollYahoo();
-    }, 30_000);
+    }, 60_000);
 
     // 3. Gold XAU/USD polling every 5 minutes (300_000 ms)
     this.goldPollTimer = setInterval(() => {
@@ -383,7 +377,7 @@ export class MarketDataManager {
       if (data?.ticks) {
         this.mergeTicks(data.ticks);
         if (!this.wsConnected) {
-          // REST works but the WebSocket is not connected yet: data keeps flowing via polling
+          // REST berhasil tetapi WebSocket belum tersambung: data tetap mengalir via polling
           this.callbacks.onConnectionStateChange('delayed');
         }
       }
@@ -400,8 +394,21 @@ export class MarketDataManager {
       if (!res.ok) return;
       const data = await res.json();
       if (data?.ticks) {
-        // JCI, global indices and currencies; the server caches 30 s while a market is open
-        this.mergeTicks(data.ticks as Record<string, PriceTick>);
+        const incoming: Record<string, PriceTick> = {};
+        if (data.ticks['USD/IDR']) {
+          incoming['USD/IDR'] = data.ticks['USD/IDR'];
+        }
+        // Only update IHSG during market hours or if we don't have a valid IHSG price yet
+        const hasIhsg = Number.isFinite(this.ticks['^JKSE']?.price);
+        if (data.ticks['^JKSE'] && (isIdxMarketOpen() || !hasIhsg)) {
+          incoming['^JKSE'] = data.ticks['^JKSE'];
+        } else if (this.ticks['^JKSE']) {
+          incoming['^JKSE'] = {
+            ...this.ticks['^JKSE'],
+            isMarketOpen: isIdxMarketOpen(),
+          };
+        }
+        this.mergeTicks(incoming);
       }
     } catch {
       // Keep existing tick
@@ -453,22 +460,4 @@ export async function fetchNewsFeed(): Promise<MarketNewsItem[]> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data?.items) ? data.items : [];
-}
-
-/** Response of /api/ai/outlook (see server.ts and src/ai/outlook.ts). */
-export interface AiOutlookResponse {
-  generatedAt: number;
-  horizonDays: number;
-  profile: string;
-  assets: import('../ai/outlook.ts').AssetOutlook[];
-  nextFomc: { date: string; daysUntil: number } | null;
-  recentFedDecisions: Array<{ date: string; decision: string; inferred: boolean }>;
-  geoAlertActive: boolean;
-  summary: { text: string; aiPowered: boolean };
-}
-
-export async function fetchAiOutlook(horizon: number, profile: string): Promise<AiOutlookResponse> {
-  const res = await fetch(`/api/ai/outlook?horizon=${horizon}&profile=${encodeURIComponent(profile)}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
 }

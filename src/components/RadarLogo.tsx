@@ -1,4 +1,3 @@
-/** RadarLogo.tsx — The AssetRadar radar logo as an inline SVG (rings, sweep line and blip). */
 interface RadarLogoProps {
   size?: number;
   className?: string;
