@@ -67,14 +67,43 @@ const GEO_STRIKE =
 const GEO_ACTORS =
   /\b(iran|israel|us|u\.s\.|united states|america|amerika|russia|rusia|ukraine|ukraina|china|tiongkok|taiwan|nato|north korea|korea utara|saudi|houthi|hezbollah|gaza|lebanon|pakistan|india|kyiv|moscow|tehran|beijing)\b/i;
 
+// A real war/escalation names a state or armed force; figurative uses ("declaration of war on
+// the heirs of Negreira") do not. Countries (EN + ID) and military words.
+const GEO_STATE_ACTORS = new RegExp(
+  String.raw`\b(` +
+    [
+      GEO_ACTORS.source.slice(3, -3), // reuse the major actors above
+      'egypt|mesir|jordan|yordania|syria|suriah|iraq|irak|yemen|yaman|qatar|uae|emirates|turkey|turki|kuwait|libya|libia|sudan',
+      'afghanistan|armenia|azerbaijan|georgia|belarus|poland|polandia|finland|baltic|lithuania|latvia|estonia|moldova|serbia|kosovo',
+      'germany|jerman|france|prancis|perancis|britain|inggris|uk|japan|jepang|south korea|korea selatan|philippines|filipina',
+      'vietnam|thailand|myanmar|cambodia|kamboja|malaysia|indonesia|venezuela|colombia|kolombia|mexico|meksiko|canada|kanada',
+      'cuba|kuba|ethiopia|etiopia|eritrea|somalia|congo|kongo|nigeria|niger|mali|chad',
+      'army|armies|military|troops|forces|soldiers|navy|air force|militants?|rebels?|hamas|idf|pentagon|kremlin',
+      'militer|tentara|pasukan|tni|angkatan (darat|laut|udara)|pemberontak|milisi',
+    ].join('|') +
+    String.raw`)\b`,
+  'i'
+);
+
+// Sports & entertainment never trigger alerts (football "wars", "attacks" by strikers...)
+const SPORTS_CONTEXT =
+  /\b(football|soccer|sepak ?bola|bola|futsal|liga|league|laliga|serie a|bundesliga|premier league|champions league|uefa|fifa|piala|world cup|stadium|stadion|bernabeu|camp nou|real madrid|madrid|barcelona|barca|atletico|manchester|man (city|utd|united)|liverpool|chelsea|arsenal|tottenham|juventus|inter milan|ac milan|psg|bayern|dortmund|persib|persija|arema|timnas|pelatih|coach|striker|kiper|goalkeeper|gol|pertandingan|laga|derby|klasemen|bursa transfer|negreira|florentino|perez|nba|nfl|mlb|nhl|f1|formula 1|motogp|grand prix|tennis|tenis|badminton|bulu tangkis|olimpiade|olympics?|boxing|tinju|ufc|wwe|esports?|anime|k-?pop|drakor|selebriti|celebrity)\b/i;
+
+const SPORTS_SOURCES =
+  /(goal\.com|espn|bola\.(net|com)|detiksport|skysports|sky sports|marca|\bas\.com|football|soccer|sport|olahraga|liputan6 bola|kompas bola|tribun ?(sport|bola)|juara\.net|fox sports|bleacher)/i;
+
 // Questions and speculation ("Why is X preparing for an invasion?") are analysis, not events
 const SPECULATIVE =
   /\?\s*$|^\s*(why|what if|could|will|can|is|are|should|how|mengapa|kenapa|apakah|akankah|bisakah|bagaimana)\b|\b(may|might|could|threatens? to|warns? of|fears? of|risk of|bisa|berpotensi|ancam|khawatir)\b/i;
 
 /** Detects war / attack headlines that can move markets suddenly. */
-export function detectGeoAlert(title: string): GeoAlertLevel | null {
+export function detectGeoAlert(title: string, source = ''): GeoAlertLevel | null {
   if (GEO_EXCLUDE.test(title)) return null;
-  if (GEO_HIGH.test(title)) return SPECULATIVE.test(title) ? 'elevated' : 'high';
+  if (SPORTS_CONTEXT.test(title) || SPORTS_SOURCES.test(source)) return null;
+  if (GEO_HIGH.test(title)) {
+    if (!GEO_STATE_ACTORS.test(title)) return null; // figurative "war" with no state or army
+    return SPECULATIVE.test(title) ? 'elevated' : 'high';
+  }
   if (GEO_STRIKE.test(title) && GEO_ACTORS.test(title)) return 'elevated';
   return null;
 }

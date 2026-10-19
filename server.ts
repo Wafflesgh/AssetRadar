@@ -168,7 +168,7 @@ async function fetchNewsSource(source: NewsSource): Promise<MarketNewsItem[]> {
     .map((item) => {
       const tags = tagHeadline(item.title);
       if (source.asset) tags.unshift(source.asset.code);
-      const geoAlert = detectGeoAlert(item.title) ?? undefined;
+      const geoAlert = detectGeoAlert(item.title, item.source) ?? undefined;
       if (geoAlert) tags.push(GEO_TAG);
       return { ...item, id: `${source.id}-${item.id}`, assetTags: [...new Set(tags)], geoAlert };
     })

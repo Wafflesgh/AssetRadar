@@ -73,11 +73,11 @@ test('mergeNewsItems drops old items and caps the list', () => {
 test('detectGeoAlert flags a new war or escalation as high', () => {
   for (const t of [
     'Egypt enters the war',
-    'Country X declares war on neighbour after border clash',
+    'Venezuela declares war on neighbour after border clash',
     'Russia launches full-scale invasion',
     'Troops invade northern province overnight',
-    'Perang pecah di perbatasan, ribuan warga mengungsi',
-    'Militer melancarkan invasi ke wilayah tetangga',
+    'Perang pecah di perbatasan Thailand-Kamboja, ribuan warga mengungsi',
+    'Militer Rusia melancarkan invasi ke wilayah tetangga',
     'Darurat militer diberlakukan setelah kudeta',
   ]) {
     assert.equal(detectGeoAlert(t), 'high', t);
@@ -134,6 +134,23 @@ test('tagHeadline covers global indices and currencies', () => {
 test('detectGeoAlert treats questions and speculation as elevated, not high', () => {
   assert.equal(detectGeoAlert('Mengapa Kanada bersiap menghadapi invasi militer AS?'), 'elevated');
   assert.equal(detectGeoAlert('Could China invade Taiwan next year?'), 'elevated');
-  assert.equal(detectGeoAlert('Analysts warn of full-scale invasion risk'), 'elevated');
+  assert.equal(detectGeoAlert('Analysts warn China could launch a full-scale invasion'), 'elevated');
   assert.equal(detectGeoAlert('Russia launches full-scale invasion'), 'high');
+});
+
+test('detectGeoAlert ignores sports and needs a state or armed force for high alerts', () => {
+  // The real false positive from 19 Oct 2026 (Goal.com, football)
+  assert.equal(
+    detectGeoAlert(
+      'Kisah di balik layar yang tak tersiar pada malam riuh di Bernabeu: pengusiran orang Perez dan deklarasi perang terhadap pewaris Negreira',
+      'Goal.com'
+    ),
+    null
+  );
+  assert.equal(detectGeoAlert('Coach declares war on referees after derby loss', 'ESPN'), null);
+  assert.equal(detectGeoAlert('CEO declares war on rising costs'), null);
+  // Real events still trigger
+  assert.equal(detectGeoAlert('Egypt enters the war', 'Arab News'), 'high');
+  assert.equal(detectGeoAlert('Militer Thailand melancarkan invasi ke perbatasan Kamboja'), 'high');
+  assert.equal(detectGeoAlert('Inter-state war breaks out as troops cross the border'), 'high');
 });
