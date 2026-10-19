@@ -1,36 +1,36 @@
+/**
+ * format.ts — Number formatting helpers (English / en-US separators) for prices and
+ * percentages, plus the XAU/USD → Rupiah-per-gram gold conversion.
+ */
+
 export const TROY_OUNCE_IN_GRAMS = 31.1034768;
 
-const idrFormatterZero = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
+const LOCALE = 'en-US';
+
+const numberFormatterZero = new Intl.NumberFormat(LOCALE, {
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 });
 
-const idrFormatterTwo = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const numberFormatterTwo = new Intl.NumberFormat('id-ID', {
+const numberFormatterTwo = new Intl.NumberFormat(LOCALE, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
 /**
- * Formats a numeric value in Indonesian Rupiah without space after Rp: "Rp1.234.567"
+ * Formats a numeric value in Indonesian Rupiah: "Rp1,234,567" (or "Rp15,850.00"). Without
+ * fractionDigits, small rates such as JPY/IDR (under 1,000) get 2 decimals: "Rp114.03".
  */
-export function formatRupiah(value: number, fractionDigits: 0 | 2 = 0): string {
+export function formatRupiah(value: number, fractionDigits?: 0 | 2): string {
   if (!Number.isFinite(value)) return '—';
-  const formatted =
-    fractionDigits === 2 ? idrFormatterTwo.format(value) : idrFormatterZero.format(value);
-  return formatted.replace(/\s+/g, '');
+  const digits = fractionDigits ?? (Math.abs(value) < 1000 ? 2 : 0);
+  const formatter = digits === 2 ? numberFormatterTwo : numberFormatterZero;
+  const sign = value < 0 ? '-' : '';
+  return `${sign}Rp${formatter.format(Math.abs(value))}`;
 }
 
 /**
- * Formats USD per troy ounce in Indonesian locale: "US$2.745,50"
+ * Formats USD per troy ounce: "US$2,745.50/oz"
  */
 export function formatUsdPerOz(value: number): string {
   if (!Number.isFinite(value)) return '—';
@@ -38,7 +38,7 @@ export function formatUsdPerOz(value: number): string {
 }
 
 /**
- * Formats index points in Indonesian locale: "7.234,56"
+ * Formats index points: "7,234.56"
  */
 export function formatPoints(value: number): string {
   if (!Number.isFinite(value)) return '—';
@@ -46,14 +46,25 @@ export function formatPoints(value: number): string {
 }
 
 /**
- * Formats percentage with sign and 2 decimal places: "+1,25%" or "-0,80%"
+ * Formats a plain number with a fixed number of decimals: "1,234" / "1,234.50"
+ */
+export function formatNumber(value: number, fractionDigits = 0): string {
+  if (!Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat(LOCALE, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(value);
+}
+
+/**
+ * Formats percentage with sign and 2 decimal places: "+1.25%" or "-0.80%"
  */
 export function formatPercent(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   const absFormatted = numberFormatterTwo.format(Math.abs(value));
   if (value > 0) return `+${absFormatted}%`;
   if (value < 0) return `-${absFormatted}%`;
-  return `0,00%`;
+  return `0.00%`;
 }
 
 /**

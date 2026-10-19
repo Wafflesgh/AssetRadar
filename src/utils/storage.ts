@@ -1,3 +1,9 @@
+/**
+ * storage.ts — Every localStorage read/write in the app, always wrapped in try/catch:
+ * theme, default timeframe, watchlist, last price snapshot (offline mode),
+ * start-in-Terminal option, the saved risk-profile result, dismissed geopolitical alerts and
+ * the AI Advisor preferences (risk profile, horizon).
+ */
 import { DEFAULT_TIMEFRAME, isValidTimeframe, TimeframeInterval, PriceTick } from '../config/assets.ts';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -6,9 +12,12 @@ const STORAGE_KEYS = {
   TIMEFRAME: 'assetradar_timeframe',
   THEME: 'assetradar_theme',
   WATCHLIST: 'assetradar_watchlist',
-  TICK_SNAPSHOT: 'assetradar_last_ticks',
+  // v2: group/status values were renamed to English
+  TICK_SNAPSHOT: 'assetradar_last_ticks_v2',
   START_IN_TERMINAL: 'assetradar_start_terminal',
   RISK_RESULT: 'assetradar_risk_result',
+  DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
+  AI_PREFS: 'assetradar_ai_prefs',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -26,7 +35,7 @@ function safeSet(key: string, value: string): void {
       window.localStorage.setItem(key, value);
     }
   } catch {
-    // Abaikan kegagalan penyimpanan (mode privat, kuota penuh, dll.)
+    // Ignore storage failures (private mode, quota exceeded, etc.)
   }
 }
 
@@ -36,11 +45,11 @@ function safeRemove(key: string): void {
       window.localStorage.removeItem(key);
     }
   } catch {
-    // Abaikan
+    // Ignore
   }
 }
 
-/** Snapshot harga terakhir untuk ditampilkan saat offline. */
+/** Last known prices, shown while offline. */
 export function saveTickSnapshot(ticks: Record<string, PriceTick>): void {
   const valid: Record<string, PriceTick> = {};
   for (const [sym, tick] of Object.entries(ticks)) {
@@ -62,7 +71,7 @@ export function loadTickSnapshot(): Record<string, PriceTick> | null {
       return out;
     }
   } catch {
-    // Abaikan snapshot rusak
+    // Ignore a corrupted snapshot
   }
   return null;
 }
@@ -91,7 +100,7 @@ export function getSavedRiskResult(): SavedRiskResult | null {
       return parsed as SavedRiskResult;
     }
   } catch {
-    // Abaikan
+    // Ignore
   }
   return null;
 }
@@ -194,4 +203,42 @@ export function saveWatchlist(symbols: string[]): void {
   } catch {
     // Ignore storage write errors
   }
+}
+
+/** Ids of geopolitical alerts the viewer dismissed (newest last, capped). */
+export function getDismissedAlerts(): string[] {
+  const raw = safeGet(STORAGE_KEYS.DISMISSED_ALERTS);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDismissedAlerts(ids: string[]): void {
+  safeSet(STORAGE_KEYS.DISMISSED_ALERTS, JSON.stringify(ids.slice(-100)));
+}
+
+export interface AiPrefs {
+  profile: 'conservative' | 'moderate' | 'aggressive';
+  horizon: 20 | 60;
+}
+
+/** AI Advisor personalization (risk profile and horizon). */
+export function getAiPrefs(): AiPrefs {
+  const raw = safeGet(STORAGE_KEYS.AI_PREFS);
+  try {
+    const p = raw ? JSON.parse(raw) : null;
+    const profile = ['conservative', 'moderate', 'aggressive'].includes(p?.profile) ? p.profile : 'moderate';
+    const horizon = p?.horizon === 60 ? 60 : 20;
+    return { profile, horizon };
+  } catch {
+    return { profile: 'moderate', horizon: 20 };
+  }
+}
+
+export function saveAiPrefs(prefs: AiPrefs): void {
+  safeSet(STORAGE_KEYS.AI_PREFS, JSON.stringify(prefs));
 }

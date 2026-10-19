@@ -1,4 +1,8 @@
-import { Sun, Moon, Monitor, Clock, Info, Database } from 'lucide-react';
+/**
+ * SettingsView.tsx — Settings & About page: theme choice, default chart timeframe, the
+ * "open in Terminal mode" switch, data sources and the disclaimer.
+ */
+import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal } from 'lucide-react';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
 
@@ -7,6 +11,8 @@ interface SettingsViewProps {
   onChangeThemePreference: (theme: ThemePreference) => void;
   defaultTimeframe: TimeframeInterval;
   onChangeDefaultTimeframe: (interval: TimeframeInterval) => void;
+  startInTerminal: boolean;
+  onChangeStartInTerminal: (enabled: boolean) => void;
 }
 
 export function SettingsView({
@@ -14,24 +20,26 @@ export function SettingsView({
   onChangeThemePreference,
   defaultTimeframe,
   onChangeDefaultTimeframe,
+  startInTerminal,
+  onChangeStartInTerminal,
 }: SettingsViewProps) {
   const themeOptions: { value: ThemePreference; label: string; desc: string; icon: typeof Sun }[] = [
     {
       value: 'light',
-      label: 'Terang',
-      desc: 'Latar cerah (#F7F9FC) untuk visibilitas siang hari',
+      label: 'Light',
+      desc: 'Bright background (#F7F9FC) for daytime visibility',
       icon: Sun,
     },
     {
       value: 'dark',
-      label: 'Gelap',
-      desc: 'Latar radar gelap (#0B1220) nyaman untuk pemantauan grafik',
+      label: 'Dark',
+      desc: 'Dark radar background (#0B1220), comfortable for watching charts',
       icon: Moon,
     },
     {
       value: 'system',
-      label: 'Ikuti sistem',
-      desc: 'Menyesuaikan otomatis dengan pengaturan tema perangkat Anda',
+      label: 'Follow system',
+      desc: 'Adjusts automatically to your device theme setting',
       icon: Monitor,
     },
   ];
@@ -43,16 +51,15 @@ export function SettingsView({
           className="flex items-center gap-2 text-xs font-medium"
           style={{ color: 'var(--text-secondary)' }}
         >
-          <span>Preferensi & Informasi Aplikasi</span>
+          <span>Preferences & App Information</span>
           <span aria-hidden="true">·</span>
-          <span>Tersimpan Otomatis</span>
+          <span>Saved Automatically</span>
         </div>
         <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-          Pengaturan & Tentang AssetRadar
+          Settings & About AssetRadar
         </h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Sesuaikan tampilan tema warna dan interval waktu default untuk grafik candlestick
-          TradingView.
+          Adjust the color theme and the default time interval for the candlestick charts.
         </p>
       </header>
 
@@ -67,10 +74,10 @@ export function SettingsView({
       >
         <div>
           <h2 id="settings-theme-heading" className="text-base font-bold">
-            Tema Tampilan
+            Display Theme
           </h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            Pilihan tema juga langsung diterapkan pada widget grafik TradingView.
+            The chosen theme is also applied to the TradingView chart widget right away.
           </p>
         </div>
 
@@ -133,10 +140,10 @@ export function SettingsView({
           />
           <div>
             <h2 id="settings-timeframe-heading" className="text-base font-bold">
-              Timeframe Default Grafik
+              Default Chart Timeframe
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              Interval waktu yang otomatis dipilih saat membuka halaman Detail aset.
+              The time interval selected automatically when you open an asset Detail page.
             </p>
           </div>
         </div>
@@ -166,6 +173,55 @@ export function SettingsView({
         </div>
       </section>
 
+      {/* Start in Terminal Mode */}
+      <section
+        aria-labelledby="settings-terminal-heading"
+        className="p-5 md:p-6 rounded-xl border flex items-start justify-between gap-4"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-subtle)',
+        }}
+      >
+        <div className="flex items-start gap-2.5">
+          <SquareTerminal
+            className="w-5 h-5 shrink-0 mt-0.5"
+            style={{ color: 'var(--accent-radar)' }}
+          />
+          <div>
+            <h2 id="settings-terminal-heading" className="text-base font-bold">
+              Open the app in Terminal mode
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              When the app is opened without a specific page address, show Terminal mode (a dense,
+              Bloomberg-style view) instead of the Radar.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={startInTerminal}
+          aria-labelledby="settings-terminal-heading"
+          onClick={() => onChangeStartInTerminal(!startInTerminal)}
+          className="relative shrink-0 w-11 h-6 rounded-full border transition-colors"
+          style={{
+            backgroundColor: startInTerminal ? 'var(--accent-radar)' : 'var(--bg-surface-subtle)',
+            borderColor: startInTerminal ? 'var(--accent-radar)' : 'var(--border-subtle)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            className="absolute top-0.5 rounded-full transition-all"
+            style={{
+              left: startInTerminal ? 'calc(100% - 1.25rem)' : '0.125rem',
+              width: '1.125rem',
+              height: '1.125rem',
+              backgroundColor: startInTerminal ? '#0B1220' : 'var(--text-secondary)',
+            }}
+          />
+        </button>
+      </section>
+
       {/* About Application, Data Sources & Disclaimer (Spec Section 5.5 & Section 9) */}
       <section
         aria-labelledby="settings-about-heading"
@@ -178,15 +234,15 @@ export function SettingsView({
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} />
           <h2 id="settings-about-heading" className="text-base font-bold">
-            Tentang AssetRadar & Sumber Data
+            About AssetRadar & Data Sources
           </h2>
         </div>
 
         <p className="text-xs md:text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          <strong style={{ color: 'var(--text-primary)' }}>AssetRadar</strong> adalah aplikasi
-          pemantau instrumen investasi pribadi untuk memantau pergerakan harga emas, saham (IHSG),
-          nilai tukar USD/IDR, dan aset crypto dalam satu tampilan radar yang terpadu. Aplikasi ini
-          tidak melayani transaksi jual-beli dan tidak memerlukan akun login.
+          <strong style={{ color: 'var(--text-primary)' }}>AssetRadar</strong> is a personal app
+          for tracking the price moves of gold, stocks (JCI), the USD/IDR exchange rate, and crypto
+          assets in one unified radar view. It does not handle buying or selling and does not
+          require a login.
         </p>
 
         <div
@@ -196,31 +252,37 @@ export function SettingsView({
           <div className="space-y-1">
             <h3 className="font-bold">1. Crypto (BTC, ETH, SOL)</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Sumber data dari API publik &amp; WebSocket resmi <strong>Indodax</strong> dalam
-              mata uang Rupiah (IDR).
+              Data from the official <strong>Indodax</strong> public API &amp; WebSocket, in
+              Rupiah (IDR).
             </p>
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold">2. Saham IHSG (^JKSE) &amp; Kurs (USD/IDR)</h3>
+            <h3 className="font-bold">2. JCI Stocks (^JKSE) &amp; Forex (USD/IDR)</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Sumber data dari <strong>Yahoo Finance</strong>. Perhatian: data indeks IHSG
-              bersifat <strong>tertunda (delayed)</strong> dan hanya diperbarui saat jam perdagangan
-              Bursa Efek Indonesia (Senin–Jumat 09:00–16:00 WIB).
+              Data from <strong>Yahoo Finance</strong>. Note: JCI index data is{' '}
+              <strong>delayed</strong> and only updates during Indonesia Stock Exchange trading
+              hours (Mon–Fri 09:00–16:00 WIB).
             </p>
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold">3. Emas Spot (XAU/USD &amp; IDR/gram)</h3>
+            <h3 className="font-bold">3. Spot Gold (XAU/USD &amp; IDR/gram)</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Sumber data dari penyedia API harga emas spot gratis (XAU per troy ounce) yang
-              dikonversi ke Rupiah per gram memakai kurs USD/IDR terkini.
+              Spot price from <strong>gold-api.com</strong> (XAU per troy ounce), converted to
+              Rupiah per gram with the latest USD/IDR rate.
             </p>
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold">4. Grafik Candlestick</h3>
+            <h3 className="font-bold">4. Candlestick Charts</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Menggunakan widget Advanced Chart resmi oleh <strong>TradingView</strong> serta
-              grafik cadangan <code>lightweight-charts</code> untuk simbol yang memiliki batasan
-              embed.
+              The official <strong>TradingView</strong> Advanced Chart widget, plus a{' '}
+              <code>lightweight-charts</code> alternative chart for symbols with embed limits.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-bold">5. News</h3>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Headlines from <strong>Google News</strong>, shown in the original language of
+              each article (Indonesian or English).
             </p>
           </div>
         </div>
@@ -235,9 +297,8 @@ export function SettingsView({
         >
           <Info className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--accent-radar)' }} />
           <p>
-            <strong>Pernyataan Penyangkalan (Disclaimer):</strong> Data hanya untuk informasi,
-            bukan saran investasi. Segala keputusan investasi beserta risikonya sepenuhnya berada di
-            tangan pengguna.
+            <strong>Disclaimer:</strong> Data is for information only, not investment advice. All
+            investment decisions and their risks rest entirely with the user.
           </p>
         </div>
       </section>

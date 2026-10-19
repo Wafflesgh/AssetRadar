@@ -1,10 +1,48 @@
+/**
+ * sentiment.ts — Rule-based market sentiment: headline tone classification with whole-word
+ * keyword matching (English and Indonesian), a 0–100 score combining price momentum, range
+ * position and news tone, and a Google News RSS parser. This summarizes the news mood only;
+ * it is not a buy/sell signal.
+ */
 import type { MarketNewsItem, SentimentLabel } from '../config/assets.ts';
 
+// English and Indonesian keywords (headlines may come in either language).
+// Matching is whole-word, so inflected forms are listed explicitly.
 const POSITIVE_KEYWORDS = [
+  // English
+  'bullish',
+  'surge',
+  'surges',
+  'surged',
+  'rally',
+  'rallies',
+  'rallied',
+  'gain',
+  'gains',
+  'gained',
+  'soar',
+  'soars',
+  'soared',
+  'jump',
+  'jumps',
+  'jumped',
+  'climb',
+  'climbs',
+  'climbed',
+  'rebound',
+  'rebounds',
+  'record',
+  'upgrade',
+  'adoption',
+  'inflow',
+  'inflows',
+  'optimism',
+  'optimistic',
+  'strengthens',
+  // Indonesian
   'naik',
   'menguat',
   'rekor',
-  'bullish',
   'melonjak',
   'positif',
   'untung',
@@ -15,22 +53,49 @@ const POSITIVE_KEYWORDS = [
   'hijau',
   'cuan',
   'bangkit',
-  'terbang',
   'akumulasi',
-  'inflow',
-  'surge',
-  'rally',
-  'gain',
-  'soar',
-  'adoption',
-  'upgrade',
 ];
 
 const NEGATIVE_KEYWORDS = [
+  // English
+  'bearish',
+  'drop',
+  'drops',
+  'dropped',
+  'fall',
+  'falls',
+  'fell',
+  'crash',
+  'crashes',
+  'plunge',
+  'plunges',
+  'plunged',
+  'slump',
+  'slumps',
+  'tumble',
+  'tumbles',
+  'tumbled',
+  'decline',
+  'declines',
+  'sink',
+  'sinks',
+  'dip',
+  'dips',
+  'selloff',
+  'sell-off',
+  'loss',
+  'losses',
+  'weakens',
+  'recession',
+  'deficit',
+  'outflow',
+  'outflows',
+  'fear',
+  'fears',
+  // Indonesian
   'turun',
   'melemah',
   'anjlok',
-  'bearish',
   'koreksi',
   'merah',
   'rugi',
@@ -40,14 +105,6 @@ const NEGATIVE_KEYWORDS = [
   'jatuh',
   'longsor',
   'waspada',
-  'outflow',
-  'drop',
-  'fall',
-  'crash',
-  'plunge',
-  'dip',
-  'selloff',
-  'fear',
 ];
 
 function escapeRegExp(str: string): string {
@@ -75,7 +132,7 @@ export function classifyHeadlineSentiment(title: string): SentimentLabel {
 
   if (pos > neg) return 'Bullish';
   if (neg > pos) return 'Bearish';
-  return 'Netral';
+  return 'Neutral';
 }
 
 export interface ComputedSentiment {
@@ -128,38 +185,34 @@ export function computeMarketSentiment(params: {
   const rawScore = Math.round(50 + priceMomentumDelta + rangeDelta + newsDelta);
   const score = Math.max(8, Math.min(95, rawScore));
 
-  let label: SentimentLabel = 'Netral';
+  let label: SentimentLabel = 'Neutral';
   if (score >= 58) label = 'Bullish';
   else if (score <= 42) label = 'Bearish';
 
   const directionWord =
     changePct24h > 0.15
-      ? `menguat +${changePct24h.toFixed(2).replace('.', ',')}%`
+      ? `rose +${changePct24h.toFixed(2)}%`
       : changePct24h < -0.15
-        ? `terkoreksi ${changePct24h.toFixed(2).replace('.', ',')}%`
-        : 'bergerak stabil/konsolidasi';
+        ? `fell ${changePct24h.toFixed(2)}%`
+        : 'moved sideways (consolidation)';
 
   const summary =
     label === 'Bullish'
-      ? `Sentimen pasar untuk ${assetName} (${symbol}) cenderung optimis (Bullish, skor ${score}/100). Pergerakan harga 24 jam terakhir ${directionWord} didukung nada pemberitaan yang mayoritas konstruktif.`
+      ? `Market sentiment for ${assetName} (${symbol}) leans optimistic (Bullish, score ${score}/100). Over the last 24 hours the price ${directionWord}, supported by mostly constructive news coverage.`
       : label === 'Bearish'
-        ? `Sentimen pasar untuk ${assetName} (${symbol}) berada di zona waspada (Bearish, skor ${score}/100). Harga ${directionWord} dalam 24 jam terakhir seiring pelaku pasar mencermati tekanan jangka pendek.`
-        : `Sentimen pasar untuk ${assetName} (${symbol}) berada di fase seimbang/konsolidasi (Netral, skor ${score}/100). Pergerakan harga ${directionWord} dengan keseimbangan antara katalis positif dan kehati-hatian pasar.`;
+        ? `Market sentiment for ${assetName} (${symbol}) is in a cautious zone (Bearish, score ${score}/100). The price ${directionWord} over the last 24 hours as market participants weigh short-term pressure.`
+        : `Market sentiment for ${assetName} (${symbol}) is balanced (Neutral, score ${score}/100). The price ${directionWord}, with positive catalysts offset by market caution.`;
 
-  const keyFactors: string[] = [
-    `Momentum harga 24 jam: ${directionWord}.`,
-  ];
+  const keyFactors: string[] = [`24-hour price momentum: ${directionWord}.`];
 
   if (high24h && low24h && price && high24h > low24h) {
     const posPct = Math.round(((price - low24h) / (high24h - low24h)) * 100);
-    keyFactors.push(
-      `Posisi harga berada di ${posPct}% dari rentang perdagangan 24 jam terakhir.`
-    );
+    keyFactors.push(`The price sits at ${posPct}% of its 24-hour trading range.`);
   }
 
   if (news.length > 0) {
     keyFactors.push(
-      `Sorotan media terkini: ${bullishCount} berita bernada positif, ${bearishCount} bernada waspada, dan ${news.length - bullishCount - bearishCount} netral.`
+      `Latest media coverage: ${bullishCount} positive, ${bearishCount} cautious, and ${news.length - bullishCount - bearishCount} neutral headlines.`
     );
   }
 
@@ -172,9 +225,15 @@ export function computeMarketSentiment(params: {
 }
 
 /**
- * Parses Google News / Yahoo RSS XML string into clean MarketNewsItem entries.
+ * Parses Google News / publisher RSS XML into clean MarketNewsItem entries.
+ * With `sourceName` (a publisher's own feed) the title is kept whole; otherwise the
+ * Google News "Title - Source" suffix is split off into `source`.
  */
-export function parseRssItems(xml: string, maxItems: number = 6): MarketNewsItem[] {
+export function parseRssItems(
+  xml: string,
+  maxItems: number = 6,
+  opts: { sourceName?: string } = {}
+): MarketNewsItem[] {
   const items: MarketNewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
   let match: RegExpExecArray | null;
@@ -190,23 +249,28 @@ export function parseRssItems(xml: string, maxItems: number = 6): MarketNewsItem
 
     // Clean "- Source Name" suffix from Google News titles if present
     let cleanTitle = decodeHtmlEntities(rawTitle).trim();
-    let source = decodeHtmlEntities(sourceTag || 'Berita Pasar').trim();
+    let source = opts.sourceName ?? decodeHtmlEntities(sourceTag || 'Market News').trim();
 
     const dashIdx = cleanTitle.lastIndexOf(' - ');
-    if (dashIdx > 20) {
+    const sourceSuffix = sourceTag ? ` - ${decodeHtmlEntities(sourceTag).trim()}` : '';
+    if (!opts.sourceName && sourceSuffix && cleanTitle.endsWith(sourceSuffix)) {
+      // Google News always appends " - Source"; strip it even for short headlines
+      cleanTitle = cleanTitle.slice(0, -sourceSuffix.length).trim();
+    } else if (!opts.sourceName && dashIdx > 20) {
       if (!sourceTag) {
         source = cleanTitle.slice(dashIdx + 3).trim();
       }
       cleanTitle = cleanTitle.slice(0, dashIdx).trim();
     }
 
+    const publishedMs = parseFeedDate(pubDate);
     items.push({
       id: `${items.length}-${pubDate || cleanTitle.slice(0, 16)}`,
       title: cleanTitle,
       link: link.trim(),
       source,
-      publishedAt: pubDate ? formatRssDateId(pubDate) : 'Terkini',
-      publishedAtMs: pubDate && !Number.isNaN(Date.parse(pubDate)) ? Date.parse(pubDate) : undefined,
+      publishedAt: pubDate ? formatRssDate(pubDate) : 'Latest',
+      publishedAtMs: publishedMs,
       sentiment: classifyHeadlineSentiment(cleanTitle),
     });
   }
@@ -232,17 +296,30 @@ function decodeHtmlEntities(str: string): string {
     .replace(/&apos;/g, "'");
 }
 
-function formatRssDateId(dateStr: string): string {
-  const parsed = Date.parse(dateStr);
+function formatRssDate(dateStr: string): string {
+  const parsed = parseFeedDate(dateStr) ?? NaN;
   if (Number.isNaN(parsed)) return dateStr;
   return (
-    new Intl.DateTimeFormat('id-ID', {
+    new Intl.DateTimeFormat('en-US', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
       timeZone: 'Asia/Jakarta',
     }).format(new Date(parsed)) + ' WIB'
   );
+}
+
+/**
+ * Parses an RSS pubDate. RFC-822 dates carry their zone; some feeds (e.g. Investing.com) send
+ * "YYYY-MM-DD HH:MM:SS" without one, which is UTC — parse it explicitly so the server's own
+ * time zone never shifts it.
+ */
+export function parseFeedDate(raw: string): number | undefined {
+  if (!raw) return undefined;
+  const bare = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(:\d{2})?)$/.exec(raw.trim());
+  const ms = bare ? Date.parse(`${bare[1]}T${bare[2]}Z`) : Date.parse(raw);
+  return Number.isNaN(ms) ? undefined : ms;
 }

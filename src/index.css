@@ -1,3 +1,7 @@
+/*
+ * index.css — Global styles: Tailwind import, light/dark color tokens, the Terminal-mode
+ * token overrides, ticker/flash animations and reduced-motion handling.
+ */
 @import "tailwindcss";
 
 :root,
@@ -38,13 +42,110 @@
   color-scheme: dark;
 }
 
+/* Terminal mode (Bloomberg style): always dark. The app tokens are redefined so that
+   shared components (navigation, charts, buttons) take on the Terminal style. */
+.terminal-root {
+  --t-bg: #05070A;
+  --t-panel: #0B0F14;
+  --t-panel-head: #111827;
+  --t-line: #1F2937;
+  --t-text: #E5E7EB;
+  --t-muted: #9CA3AF;
+  --t-amber: #F59E0B;
+  --t-amber-soft: rgba(245, 158, 11, 0.14);
+  --t-up: #22C55E;
+  --t-down: #EF4444;
+
+  --bg-canvas: var(--t-bg);
+  --bg-surface: var(--t-panel);
+  --bg-surface-subtle: var(--t-panel-head);
+  --border-subtle: var(--t-line);
+  --text-primary: var(--t-text);
+  --text-secondary: var(--t-muted);
+  --accent-radar: var(--t-amber);
+  --accent-radar-soft: var(--t-amber-soft);
+  --color-up: var(--t-up);
+  --color-up-soft: rgba(34, 197, 94, 0.14);
+  --color-down: var(--t-down);
+  --color-down-soft: rgba(239, 68, 68, 0.14);
+  --color-gold: var(--t-amber);
+  --color-gold-soft: var(--t-amber-soft);
+  color-scheme: dark;
+}
+
+.terminal-root .terminal-mono,
+.terminal-root .terminal-mono * {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-root [data-testid="tradingview-chart-container"],
+.terminal-root [data-testid="fallback-chart-container"] {
+  border-radius: 2px;
+}
+
+@keyframes terminal-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.terminal-ticker-track {
+  animation: terminal-ticker 45s linear infinite;
+}
+
+.terminal-ticker:hover .terminal-ticker-track,
+.terminal-ticker.is-paused .terminal-ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes terminal-flash-up {
+  from { background-color: rgba(34, 197, 94, 0.35); }
+  to { background-color: transparent; }
+}
+
+@keyframes terminal-flash-down {
+  from { background-color: rgba(239, 68, 68, 0.35); }
+  to { background-color: transparent; }
+}
+
+.terminal-flash-up { animation: terminal-flash-up 0.9s ease-out; }
+.terminal-flash-down { animation: terminal-flash-down 0.9s ease-out; }
+
+/* Breaking headline: amber flash on arrival, then a steady accent edge while NEW */
+@keyframes news-arrive {
+  0%, 30% { background-color: rgba(245, 158, 11, 0.32); }
+  100% { background-color: transparent; }
+}
+
+.news-breaking {
+  animation: news-arrive 4s ease-out;
+  box-shadow: inset 3px 0 0 var(--accent-radar);
+}
+
+@keyframes news-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.news-live-dot { animation: news-live-pulse 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .news-breaking { animation: none; }
+  .news-live-dot { animation: none; }
+  .terminal-ticker-track { animation: none; flex-wrap: wrap; width: 100%; }
+  .terminal-ticker-dup { display: none; }
+  .terminal-flash-up,
+  .terminal-flash-down { animation: none; }
+}
+
 @layer base {
   html,
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden turns body into a scroll container, so sticky headers stop sticking */
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
   }
 }

@@ -1,3 +1,4 @@
+// vite.config.ts — Vite build config: React + Tailwind plugins and the "@" path alias.
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';

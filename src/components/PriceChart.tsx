@@ -1,43 +1,58 @@
+/**
+ * PriceChart.tsx — Chooses and renders the chart source for an asset: the official
+ * TradingView widget or the alternative lightweight-charts candles, with a manual toggle.
+ */
 import { useState } from 'react';
 import { BarChart3, LineChart } from 'lucide-react';
 import { AssetConfig, TimeframeInterval } from '../config/assets.ts';
 import { TradingViewChart } from './TradingViewChart.tsx';
-import { FallbackChart } from './FallbackChart.tsx';
+import { ChartTheme, FallbackChart } from './FallbackChart.tsx';
 
-export type ChartSource = 'tradingview' | 'alternatif';
+export type ChartSource = 'tradingview' | 'alternative';
 
 export interface PriceChartProps {
   asset: AssetConfig;
-  /** Simbol widget TradingView; default asset.tvSymbol (bisa diganti ke simbol cadangan). */
+  /** TradingView widget symbol; defaults to asset.tvSymbol (can be switched to the fallback). */
   tvSymbol?: string;
   interval: TimeframeInterval;
-  theme: 'light' | 'dark';
+  /** 'terminal' = dark TradingView widget using the Terminal panel colors. */
+  theme: ChartTheme;
   height?: number;
 }
 
 /**
- * Sumber otomatis: widget TradingView untuk IDX:COMPOSITE hanya menyediakan D/W, dan kegagalan
- * widget (iframe lintas origin) tidak bisa dideteksi andal. Jadi aset usesBackupChartFallback
- * + timeframe intraday → grafik alternatif; selain itu → TradingView.
+ * Automatic source. Widget failures (cross-origin iframe) cannot be detected reliably, so:
+ * - tvWidgetUnsupported (crypto INDODAX:*IDR rejected by the widget) → always the alternative chart;
+ * - usesBackupChartFallback (IDX:COMPOSITE is D/W only) + intraday → the alternative chart;
+ * - otherwise → TradingView.
  */
 export function getAutoChartSource(asset: AssetConfig, interval: TimeframeInterval): ChartSource {
+  if (asset.tvWidgetUnsupported) return 'alternative';
   const intraday = interval !== 'D' && interval !== 'W';
-  return asset.usesBackupChartFallback && intraday ? 'alternatif' : 'tradingview';
+  return asset.usesBackupChartFallback && intraday ? 'alternative' : 'tradingview';
+}
+
+/** Default widget symbol: the fallback symbol when the primary one is rejected by the widget. */
+export function getDefaultTvSymbol(asset: AssetConfig): string {
+  return asset.tvWidgetUnsupported && asset.tvFallbackSymbol ? asset.tvFallbackSymbol : asset.tvSymbol;
 }
 
 export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceChartProps) {
-  // Pilihan manual hanya berlaku untuk aset tempat pilihan itu dibuat (reset saat ganti aset)
+  // A manual choice only applies to the asset it was made for (resets when switching assets)
   const [override, setOverride] = useState<{ symbol: string; source: ChartSource } | null>(null);
 
   const autoSource = getAutoChartSource(asset, interval);
   const source = override?.symbol === asset.symbol ? override.source : autoSource;
-  // Crypto Rupiah dari Indodax (Yahoo tidak punya BTC-IDR dkk.), aset lain dari Yahoo Finance
+  // Rupiah crypto from Indodax (Yahoo has no BTC-IDR etc.), other assets from Yahoo Finance
   const altSourceLabel = asset.indodaxPair ? 'Indodax' : 'Yahoo Finance';
   const canUseAlternative = Boolean(asset.indodaxPair || asset.yahooSymbol);
-  const showAlternative = source === 'alternatif' && canUseAlternative;
+  const showAlternative = source === 'alternative' && canUseAlternative;
+  // Symbols the widget rejects with no fallback symbol can only use the alternative chart
+  const tradingViewAvailable = !(asset.tvWidgetUnsupported && !asset.tvFallbackSymbol);
+  const activeTvSymbol = tvSymbol ?? getDefaultTvSymbol(asset);
 
   const toggleSource = () =>
-    setOverride({ symbol: asset.symbol, source: showAlternative ? 'tradingview' : 'alternatif' });
+    setOverride({ symbol: asset.symbol, source: showAlternative ? 'tradingview' : 'alternative' });
 
   return (
     <div className="space-y-2">
@@ -47,14 +62,20 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
           style={{ color: 'var(--text-secondary)' }}
         >
           <span>
-            Sumber grafik:{' '}
+            Chart source:{' '}
             <strong style={{ color: 'var(--text-primary)' }}>
-              {showAlternative ? `Alternatif (${altSourceLabel})` : 'TradingView'}
+              {showAlternative ? `Alternative (${altSourceLabel})` : `TradingView (${activeTvSymbol})`}
             </strong>
-            {showAlternative && autoSource === 'alternatif' && override?.symbol !== asset.symbol && (
-              <> · dipilih otomatis untuk timeframe ini</>
+            {showAlternative && autoSource === 'alternative' && override?.symbol !== asset.symbol && (
+              <>
+                {' '}
+                · chosen automatically
+                {asset.tvWidgetUnsupported ? ' (not available in the TradingView widget)' : ' for this timeframe'}
+              </>
             )}
+            {!showAlternative && activeTvSymbol.endsWith('USDT') && <> · prices in USDT</>}
           </span>
+          {tradingViewAvailable && (
           <button
             type="button"
             onClick={toggleSource}
@@ -70,8 +91,9 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
             ) : (
               <BarChart3 className="w-3 h-3" />
             )}
-            <span>{showAlternative ? 'Coba grafik TradingView' : 'Pakai grafik alternatif'}</span>
+            <span>{showAlternative ? 'Try TradingView chart' : 'Use alternative chart'}</span>
           </button>
+          )}
         </div>
       )}
 
@@ -85,10 +107,12 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
         />
       ) : (
         <TradingViewChart
-          symbol={tvSymbol ?? asset.tvSymbol}
+          symbol={activeTvSymbol}
           interval={interval}
-          theme={theme}
+          theme={theme === 'light' ? 'light' : 'dark'}
           height={height}
+          backgroundColor={theme === 'terminal' ? '#0B0F14' : undefined}
+          gridColor={theme === 'terminal' ? '#1F2937' : undefined}
         />
       )}
     </div>

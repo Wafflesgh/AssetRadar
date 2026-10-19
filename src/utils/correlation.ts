@@ -1,9 +1,13 @@
+/**
+ * correlation.ts — Pearson correlation of daily returns between assets, aligned on shared
+ * trading dates, used by the server for the 30-day correlation matrix.
+ */
 export interface DatedClose {
   date: string; // YYYY-MM-DD
   close: number;
 }
 
-/** Koefisien korelasi Pearson. Mengembalikan null jika data kurang atau variansnya nol. */
+/** Pearson correlation coefficient. Returns null with too little data or zero variance. */
 export function pearson(a: number[], b: number[]): number | null {
   const n = Math.min(a.length, b.length);
   if (n < 3) return null;
@@ -31,9 +35,9 @@ export function pearson(a: number[], b: number[]): number | null {
 }
 
 /**
- * Menyelaraskan dua deret harga pada tanggal yang sama-sama tersedia
- * (crypto diperdagangkan 7 hari, saham hanya hari bursa), menghitung return harian,
- * lalu korelasi Pearson atas `windowDays` return terakhir.
+ * Aligns two price series on the dates both have (crypto trades 7 days a week, stocks only
+ * on exchange days), computes daily returns, then the Pearson correlation over the last
+ * `windowDays` returns.
  */
 export function correlateSeries(
   a: DatedClose[],
@@ -59,7 +63,7 @@ export function correlateSeries(
   return pearson(retA.slice(-windowDays), retB.slice(-windowDays));
 }
 
-/** Matriks korelasi simetris; diagonal = 1 jika deret memiliki data. */
+/** Symmetric correlation matrix; the diagonal is 1 when the series has data. */
 export function correlationMatrixFromSeries(
   seriesList: DatedClose[][],
   windowDays: number

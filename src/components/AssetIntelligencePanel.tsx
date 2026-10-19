@@ -1,3 +1,9 @@
+/**
+ * AssetIntelligencePanel.tsx — Sentiment + news panel for one asset (Radar and Detail
+ * pages): score, label, summary and key drivers, plus related headlines in their original
+ * language, updated live from the news stream. Refetches once after 8 s to pick up the
+ * background AI-enhanced result, and re-scores silently when breaking news arrives.
+ */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   TrendingUp,
@@ -8,8 +14,11 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
-import { AssetIntelligence } from '../config/assets.ts';
+import { AssetIntelligence, getAssetBySymbol } from '../config/assets.ts';
 import { fetchAssetIntelligence } from '../services/marketDataService.ts';
+import { filterNewsByCode } from '../services/newsStream.ts';
+import { isBreaking, latestNewsKey, useLiveNews, useNow } from '../hooks/useLiveNews.ts';
+import { formatAge } from '../utils/marketHours.ts';
 
 interface AssetIntelligencePanelProps {
   symbol: string;
@@ -34,7 +43,7 @@ export function AssetIntelligencePanel({
       try {
         const res = await fetchAssetIntelligence(symbol);
         setData(res);
-        // Hasil AI Gemini disiapkan di latar belakang server; ambil ulang sekali setelah 8 detik
+        // The Gemini AI result is prepared in the server background; refetch once after 8 seconds
         if (!res.aiPowered && allowAiRetry) {
           if (aiRetryTimer.current) clearTimeout(aiRetryTimer.current);
           aiRetryTimer.current = setTimeout(() => {
@@ -42,7 +51,7 @@ export function AssetIntelligencePanel({
           }, 8000);
         }
       } catch {
-        if (!silent) setError('Data analisis sentimen dan berita belum dapat dimuat.');
+        if (!silent) setError('Sentiment analysis and news could not be loaded yet.');
       } finally {
         if (!silent) setLoading(false);
       }
@@ -56,6 +65,33 @@ export function AssetIntelligencePanel({
       if (aiRetryTimer.current) clearTimeout(aiRetryTimer.current);
     };
   }, [loadIntelligence]);
+
+  // Live headlines for this asset; sentiment re-scores silently when a new one arrives
+  const assetCode = getAssetBySymbol(symbol)?.code ?? '';
+  const liveNews = useLiveNews();
+  const now = useNow();
+  const liveItems = filterNewsByCode(liveNews.items, assetCode).slice(0, 8);
+  const newsKey = latestNewsKey(liveNews, assetCode);
+  const lastNewsKey = useRef(newsKey);
+  const [rescoredAt, setRescoredAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    setRescoredAt(null);
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!newsKey || newsKey === lastNewsKey.current) return;
+    const firstKeyForAsset = !lastNewsKey.current;
+    lastNewsKey.current = newsKey;
+    if (firstKeyForAsset) return; // initial load, not breaking news
+    const timer = setTimeout(() => {
+      loadIntelligence({ silent: true, allowAiRetry: false }).then(() => setRescoredAt(Date.now()));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [newsKey, loadIntelligence]);
+
+  const newsList = liveNews.items.length > 0 ? liveItems : (data?.news ?? []);
+  const isLive = liveNews.status === 'live';
 
   const sentimentColor =
     data?.sentimentLabel === 'Bullish'
@@ -73,7 +109,7 @@ export function AssetIntelligencePanel({
 
   return (
     <section
-      aria-label={`Analisis Sentimen dan Berita ${assetName}`}
+      aria-label={`${assetName} sentiment analysis and news`}
       className="grid grid-cols-1 lg:grid-cols-12 gap-6"
     >
       {/* Left Column: Market Sentiment Analysis (5 cols on lg) */}
@@ -95,16 +131,16 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Analisis Sentimen Pasar</span>
+                <span>Market Sentiment Analysis</span>
                 {data?.aiPowered && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span>Diperkaya AI</span>
+                    <span>AI-enhanced</span>
                   </>
                 )}
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                Sentimen {assetName}
+                {assetName} Sentiment
               </h2>
             </div>
 
@@ -112,7 +148,7 @@ export function AssetIntelligencePanel({
               type="button"
               onClick={() => loadIntelligence()}
               disabled={loading}
-              aria-label="Muat ulang analisis sentimen dan berita"
+              aria-label="Reload sentiment analysis and news"
               className="p-2 rounded-lg border text-xs font-medium transition-colors"
               style={{
                 backgroundColor: 'var(--bg-surface-subtle)',
@@ -142,7 +178,7 @@ export function AssetIntelligencePanel({
           ) : error || !data ? (
             <div className="py-6 space-y-3">
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {error || 'Data sentimen tidak tersedia'}
+                {error || 'Sentiment data unavailable'}
               </p>
               <button
                 type="button"
@@ -154,7 +190,7 @@ export function AssetIntelligencePanel({
                   color: 'var(--text-primary)',
                 }}
               >
-                Coba lagi
+                Try again
               </button>
             </div>
           ) : (
@@ -215,11 +251,17 @@ export function AssetIntelligencePanel({
                     style={{ color: 'var(--text-secondary)' }}
                   >
                     <span>Bearish (0–42)</span>
-                    <span>Netral (43–57)</span>
+                    <span>Neutral (43–57)</span>
                     <span>Bullish (58–100)</span>
                   </div>
                 </div>
               </div>
+
+              {rescoredAt && (
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--accent-radar)' }}>
+                  ↻ Re-scored on breaking news {agoLabel(rescoredAt, now)}
+                </p>
+              )}
 
               {/* Narrative Summary */}
               <p className="text-xs md:text-sm leading-relaxed">
@@ -233,7 +275,7 @@ export function AssetIntelligencePanel({
                     className="text-xs font-semibold"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Faktor Penggerak Utama:
+                    Key Drivers:
                   </h3>
                   <ul className="space-y-1.5 text-xs">
                     {data.keyFactors.map((factor, idx) => (
@@ -263,8 +305,8 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          Indikator sentimen dihitung dari momentum harga 24 jam dan nada tajuk berita pasar
-          terkini. Bukan rekomendasi jual/beli.
+          The sentiment indicator is computed from 24-hour price momentum and the tone of the latest
+          market headlines. Not a buy/sell recommendation.
         </p>
       </div>
 
@@ -287,17 +329,30 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Berita Pasar Terkait</span>
+                <span>Related Market News</span>
                 <span aria-hidden="true">·</span>
-                <span>Google News Indonesia</span>
+                <span>original language</span>
+                <span aria-hidden="true">·</span>
+                <span
+                  className="inline-flex items-center gap-1 font-semibold"
+                  style={{ color: isLive ? 'var(--color-up)' : 'var(--text-secondary)' }}
+                  title={isLive ? 'Live stream connected' : 'Updating every 60 seconds'}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block w-1.5 h-1.5 rounded-full ${isLive ? 'news-live-dot' : ''}`}
+                    style={{ backgroundColor: 'currentColor' }}
+                  />
+                  {isLive ? 'Live' : 'Every 60s'}
+                </span>
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                Berita yang Mempengaruhi {assetName}
+                News Moving {assetName}
               </h2>
             </div>
           </div>
 
-          {loading ? (
+          {loading && newsList.length === 0 ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map((n) => (
                 <div
@@ -307,7 +362,7 @@ export function AssetIntelligencePanel({
                 />
               ))}
             </div>
-          ) : !data || data.news.length === 0 ? (
+          ) : newsList.length === 0 ? (
             <div
               className="p-6 rounded-xl border text-center space-y-2"
               style={{
@@ -316,7 +371,7 @@ export function AssetIntelligencePanel({
               }}
             >
               <p className="text-sm font-medium">
-                Belum ada berita terbaru yang terindeks saat ini.
+                No recent news has been indexed yet.
               </p>
               <button
                 type="button"
@@ -327,21 +382,25 @@ export function AssetIntelligencePanel({
                   borderColor: 'var(--border-subtle)',
                 }}
               >
-                Coba lagi
+                Try again
               </button>
             </div>
           ) : (
             <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-              {data.news.map((item) => {
+              {newsList.map((item) => {
                 const itemColor =
                   item.sentiment === 'Bullish'
                     ? 'var(--color-up)'
                     : item.sentiment === 'Bearish'
                       ? 'var(--color-down)'
                       : 'var(--text-secondary)';
+                const breaking = isBreaking(liveNews, item.id, now);
 
                 return (
-                  <article key={item.id} className="py-3 first:pt-0 last:pb-0">
+                  <article
+                    key={item.id}
+                    className={`py-3 first:pt-0 last:pb-0 ${breaking ? 'news-breaking pl-2' : ''}`}
+                  >
                     <a
                       href={item.link}
                       target="_blank"
@@ -352,14 +411,22 @@ export function AssetIntelligencePanel({
                         className="flex flex-wrap items-center gap-1.5 text-[11px]"
                         style={{ color: 'var(--text-secondary)' }}
                       >
+                        {breaking && (
+                          <span
+                            className="px-1 rounded text-[10px] font-bold"
+                            style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
+                          >
+                            NEW
+                          </span>
+                        )}
                         <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                           {item.source}
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span>{item.publishedAt}</span>
+                        <span title={item.publishedAt}>{agoLabel(item.publishedAtMs, now)}</span>
                         <span aria-hidden="true">·</span>
                         <span className="font-semibold" style={{ color: itemColor }}>
-                          Nada: {item.sentiment}
+                          Tone: {item.sentiment}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-3">
@@ -386,9 +453,14 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          Klik judul berita untuk membaca artikel lengkap dari media sumber terkait.
+          Click a headline to read the full article at its original source.
         </p>
       </div>
     </section>
   );
+}
+
+function agoLabel(atMs: number | undefined, now: number): string {
+  const age = formatAge(atMs, now);
+  return age === 'now' ? 'just now' : age === '—' ? age : `${age} ago`;
 }
