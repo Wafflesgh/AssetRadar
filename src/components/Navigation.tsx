@@ -2,11 +2,11 @@
  * Navigation.tsx — App navigation: the fixed desktop sidebar (brand, menu, theme toggle)
  * and the mobile bottom navigation bar. Also defines the NavTab type.
  */
-import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart, SquareTerminal } from 'lucide-react';
+import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart, SquareTerminal, BrainCircuit } from 'lucide-react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -21,13 +21,16 @@ interface NavItem {
   id: NavTab;
   label: string;
   icon: typeof Radar;
+  /** Shorter label for the mobile bottom bar. */
+  shortLabel?: string;
 }
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'radar', label: 'Radar', icon: Radar },
   { id: 'terminal', label: 'Terminal', icon: SquareTerminal },
+  { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  { id: 'risk', label: 'Risk Profile', icon: ShieldAlert },
+  { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -199,7 +202,7 @@ export function BottomNav({
                 </span>
               )}
             </div>
-            <span>{item.label}</span>
+            <span>{item.shortLabel ?? item.label}</span>
           </button>
         );
       })}

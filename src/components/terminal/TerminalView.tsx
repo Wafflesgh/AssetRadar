@@ -23,6 +23,7 @@ interface TerminalViewProps {
   onChangeTimeframe: (tf: TimeframeInterval) => void;
   onRetrySymbol: (symbol: string) => void;
   onGoToRadar: () => void;
+  onGoToAdvisor: () => void;
 }
 
 const PANEL_ELEMENT_ID: Record<PanelId, string> = {
@@ -62,6 +63,7 @@ export function TerminalView({
   onChangeTimeframe,
   onRetrySymbol,
   onGoToRadar,
+  onGoToAdvisor,
 }: TerminalViewProps) {
   const [selectedSymbol, setSelectedSymbol] = useState(
     () => getAssetBySymbol(initialSymbol)?.symbol ?? ASSETS[0].symbol
@@ -111,6 +113,10 @@ export function TerminalView({
 
   const handleCommand = useCallback(
     (cmd: Exclude<TerminalCommand, { type: 'help' } | { type: 'error' }>): string => {
+      if (cmd.type === 'advisor') {
+        onGoToAdvisor();
+        return 'Opening AI Advisor.';
+      }
       if (cmd.type === 'radar') {
         onGoToRadar();
         return 'Back to Radar.';
@@ -123,7 +129,7 @@ export function TerminalView({
       focusPanel(cmd.panel, true);
       return `Opening ${PANEL_NAME[cmd.panel]}`;
     },
-    [focusPanel, onGoToRadar]
+    [focusPanel, onGoToRadar, onGoToAdvisor]
   );
 
   const selectAsset = useCallback((symbol: string) => setSelectedSymbol(symbol), []);

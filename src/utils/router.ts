@@ -1,12 +1,12 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
- * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal.
+ * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -33,6 +33,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (cleaned === 'settings' || cleaned === 'pengaturan') {
     return { tab: 'settings' };
+  }
+  if (cleaned === 'advisor' || cleaned === 'ai') {
+    return { tab: 'advisor' };
   }
   if (cleaned === 'terminal') {
     return { tab: 'terminal' };
@@ -70,6 +73,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/risk';
     case 'settings':
       return '#/settings';
+    case 'advisor':
+      return '#/advisor';
     case 'terminal':
       return '#/terminal';
     case 'detail': {

@@ -21,8 +21,32 @@ Terminal mode, news sentiment, and risk-profile education.
 - **Sentiment & news**: a summary of the news mood (not a buy/sell signal), optionally
   enhanced by Gemini. Headlines are shown in their **original language** (Indonesian sources
   in Indonesian, international sources in English).
+- **Global markets**: S&P 500, Nasdaq 100, Dow, Nikkei 225, FTSE 100, DAX, Hang Seng, STI,
+  the US Dollar Index, and EUR/SGD/JPY/GBP/CNY/AUD against the Rupiah, with per-exchange
+  open/closed status.
+- **Live news**: publisher feeds every 60 s and Google News every 2 min, pushed to the browser
+  over Server-Sent Events, a running headline tape, NEW badges, and a red **geopolitical
+  alert** banner when a new war or major escalation is reported.
+- **AI Advisor** (`#/advisor`): a personalized, backtested outlook (see below).
 - **Watchlist** saved on the device, **light/dark theme**, and an option to open the app in
   Terminal mode.
+
+## AI Advisor (scientific approach)
+
+1. **Data**: ~5 years of daily closes per instrument, US 3-month and 10-year yields, the dollar
+   index; today's live price is the latest data point.
+2. **Rate events**: every FOMC decision since 2021 (recorded through 2025, later ones inferred
+   from T-bill yield moves) feeds a "Fed stance" feature and an event study per asset.
+3. **Competing hypotheses**: a logistic-regression model (13 features), a trend-following rule
+   and a mean-reversion rule.
+4. **Walk-forward testing**: retrained on past data only; the best method per asset is picked
+   on the first 60% of out-of-sample predictions and judged only on the last 40% (holdout).
+5. **Trust & personalization**: a method counts only if its holdout signals beat the base rate
+   with ≥ 30 signals; probabilities are shrunk by that trust, nudged by the news mood, and
+   filtered by the Conservative / Moderate / Aggressive volatility limits.
+
+> The AI Advisor is a statistical screen, not personal financial advice. Past patterns can
+> break, and no outcome is guaranteed.
 
 ## Data sources
 
@@ -93,6 +117,13 @@ sentiment.
 | `utils/candles.ts` | 4-hour candle aggregation and WIB chart-data conversion. |
 | `utils/correlation.ts` | Pearson correlation of daily returns. |
 | `utils/terminalCommands.ts` | Terminal command parser, autocomplete and HELP list. |
+| `utils/newsTags.ts` | Headline asset tagging, MACRO/GEO tags, war-alert detection, news merging. |
+| `services/newsStream.ts` | Shared live news store (SSE stream with polling fallback). |
+| `hooks/useLiveNews.ts` | React hooks for the live news store. |
+| `ai/indicators.ts` | Feature engineering for the AI (momentum, trend, volatility, RSI, macro). |
+| `ai/events.ts` | FOMC decision calendar, inferred outcomes, Fed stance and event study. |
+| `ai/model.ts` | Logistic regression, walk-forward backtest, strategy selection with holdout. |
+| `ai/outlook.ts` | Per-asset AI outlook and risk-profile ranking. |
 | `**/*.test.ts` | Unit tests for the files above (`npm test`). |
 
 ### `src/components/`
@@ -108,6 +139,9 @@ sentiment.
 | `AssetIntelligencePanel.tsx` | Sentiment score, drivers, and related news for one asset. |
 | `WatchlistView.tsx` | Watchlist page. |
 | `RiskProfileView.tsx` | Risk-profile education page with the disclaimer. |
+| `AdvisorView.tsx` | AI Advisor page: summary, ranked outlook, methodology. |
+| `NewsTape.tsx` | Running live headline tape. |
+| `GeoAlertBanner.tsx` | Red war/attack alert banner shown on every page. |
 | `SettingsView.tsx` | Settings, data sources and disclaimer. |
 | `Navigation.tsx` | Desktop sidebar and mobile bottom navigation. |
 | `RadarLogo.tsx` | The radar logo (SVG). |

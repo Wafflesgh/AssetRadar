@@ -12,6 +12,7 @@ export type TerminalCommand =
   | { type: 'panel'; panel: 'heatmap' | 'eco' | 'corr' | 'top' }
   | { type: 'help' }
   | { type: 'radar' }
+  | { type: 'advisor' }
   | { type: 'error'; message: string };
 
 /** Recognized asset codes (aliases are accepted but not suggested). Order = suggestion order. */
@@ -36,6 +37,7 @@ export const TERMINAL_HELP: CommandHelpItem[] = [
   { command: '<CODE> N', description: 'Asset news, e.g. JCI N' },
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
   { command: 'HELP', description: 'List of commands' },
+  { command: 'AI', description: 'Open the AI Advisor (backtested outlook)' },
   { command: 'RADAR', description: 'Back to the Radar page' },
 ];
 
@@ -53,6 +55,7 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   if (!text) return null;
   if (text === 'HELP' || text === '?') return { type: 'help' };
   if (text === 'RADAR') return { type: 'radar' };
+  if (text === 'AI' || text === 'ADVISOR') return { type: 'advisor' };
   if (PANEL_COMMANDS[text]) return { type: 'panel', panel: PANEL_COMMANDS[text].panel };
 
   const [code, fn, ...rest] = text.split(' ');
@@ -77,6 +80,7 @@ const ALL_SUGGESTIONS: CommandHelpItem[] = [
   ]),
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
   { command: 'HELP', description: 'List of commands' },
+  { command: 'AI', description: 'AI Advisor' },
   { command: 'RADAR', description: 'Back to Radar' },
 ];
 

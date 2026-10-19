@@ -33,6 +33,7 @@ test('parseTerminalCommand handles panel, help, radar and errors', () => {
   assert.deepEqual(parseTerminalCommand('TOP'), { type: 'panel', panel: 'top' });
   assert.deepEqual(parseTerminalCommand('help'), { type: 'help' });
   assert.deepEqual(parseTerminalCommand('Radar'), { type: 'radar' });
+  assert.deepEqual(parseTerminalCommand('ai'), { type: 'advisor' });
   assert.equal(parseTerminalCommand('DOGE')?.type, 'error');
   assert.equal(parseTerminalCommand('BTC XYZ')?.type, 'error');
   assert.equal(parseTerminalCommand('BTC GP N')?.type, 'error');

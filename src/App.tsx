@@ -37,6 +37,7 @@ import { RiskProfileView } from './components/RiskProfileView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { TerminalView } from './components/terminal/TerminalView.tsx';
 import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
+import { AdvisorView } from './components/AdvisorView.tsx';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -275,6 +276,7 @@ export default function App() {
               {activeTab === 'watchlist' && 'Favorite Watchlist'}
               {activeTab === 'risk' && 'Risk Profile Education'}
               {activeTab === 'settings' && 'Settings & About'}
+              {activeTab === 'advisor' && 'AI Advisor'}
             </span>
           </div>
         </div>
@@ -332,6 +334,7 @@ export default function App() {
             onChangeTimeframe={handleChangeTimeframe}
             onRetrySymbol={handleRetrySymbol}
             onGoToRadar={() => handleSelectTab('radar')}
+            onGoToAdvisor={() => handleSelectTab('advisor')}
           />
         )}
 
@@ -371,6 +374,10 @@ export default function App() {
 
         {activeTab === 'risk' && (
           <RiskProfileView onSelectAsset={handleSelectAsset} />
+        )}
+
+        {activeTab === 'advisor' && (
+          <AdvisorView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}
 
         {activeTab === 'settings' && (

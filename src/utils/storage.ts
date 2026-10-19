@@ -1,7 +1,8 @@
 /**
  * storage.ts — Every localStorage read/write in the app, always wrapped in try/catch:
  * theme, default timeframe, watchlist, last price snapshot (offline mode),
- * start-in-Terminal option, the saved risk-profile result and dismissed geopolitical alerts.
+ * start-in-Terminal option, the saved risk-profile result, dismissed geopolitical alerts and
+ * the AI Advisor preferences (risk profile, horizon).
  */
 import { DEFAULT_TIMEFRAME, isValidTimeframe, TimeframeInterval, PriceTick } from '../config/assets.ts';
 
@@ -16,6 +17,7 @@ const STORAGE_KEYS = {
   START_IN_TERMINAL: 'assetradar_start_terminal',
   RISK_RESULT: 'assetradar_risk_result',
   DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
+  AI_PREFS: 'assetradar_ai_prefs',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -217,4 +219,26 @@ export function getDismissedAlerts(): string[] {
 
 export function saveDismissedAlerts(ids: string[]): void {
   safeSet(STORAGE_KEYS.DISMISSED_ALERTS, JSON.stringify(ids.slice(-100)));
+}
+
+export interface AiPrefs {
+  profile: 'conservative' | 'moderate' | 'aggressive';
+  horizon: 20 | 60;
+}
+
+/** AI Advisor personalization (risk profile and horizon). */
+export function getAiPrefs(): AiPrefs {
+  const raw = safeGet(STORAGE_KEYS.AI_PREFS);
+  try {
+    const p = raw ? JSON.parse(raw) : null;
+    const profile = ['conservative', 'moderate', 'aggressive'].includes(p?.profile) ? p.profile : 'moderate';
+    const horizon = p?.horizon === 60 ? 60 : 20;
+    return { profile, horizon };
+  } catch {
+    return { profile: 'moderate', horizon: 20 };
+  }
+}
+
+export function saveAiPrefs(prefs: AiPrefs): void {
+  safeSet(STORAGE_KEYS.AI_PREFS, JSON.stringify(prefs));
 }

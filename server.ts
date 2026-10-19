@@ -17,6 +17,7 @@ import {
   type PriceTick,
   type AssetGroup,
   type PriceCurrency,
+  type ExchangeId,
   type SparklinePoint,
   type AssetIntelligence,
   type MarketNewsItem,
@@ -27,8 +28,24 @@ import {
 import { correlationMatrixFromSeries, type DatedClose } from './src/utils/correlation.ts';
 import { aggregateCandles } from './src/utils/candles.ts';
 import { convertXauUsdToIdrPerGram } from './src/utils/format.ts';
-import { isExchangeOpen, isIdxMarketOpen } from './src/utils/marketHours.ts';
-import { GEO_TAG, MACRO_TAG, detectGeoAlert, mergeNewsItems, tagHeadline } from './src/utils/newsTags.ts';
+import { EXCHANGE_HOURS, isExchangeOpen, isIdxMarketOpen } from './src/utils/marketHours.ts';
+import {
+  GEO_TAG,
+  MACRO_TAG,
+  detectGeoAlert,
+  mergeNewsItems,
+  selectGeoAlert,
+  tagHeadline,
+} from './src/utils/newsTags.ts';
+import { alignByDate, type DailyBar } from './src/ai/indicators.ts';
+import { eventStudy, fedStanceSeries, nextMeeting, resolveMeetings } from './src/ai/events.ts';
+import {
+  RISK_PROFILES,
+  buildAssetOutlook,
+  rankOutlooks,
+  type AssetOutlook,
+  type RiskProfile,
+} from './src/ai/outlook.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -909,6 +926,276 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
   return initialIntelligence;
 }
 
+// ---------------------------------------------------------------------------------------
+// AI outlook engine
+// ~5 years of daily closes per asset (Yahoo; crypto from Indodax in IDR) + US rates and the
+// dollar index, Fed decisions (recorded or inferred), walk-forward backtested logistic model.
+// The latest live price is used as today's bar, so the outlook moves with the market.
+// ---------------------------------------------------------------------------------------
+
+const AI_HISTORY_TTL_MS = 6 * 3600_000;
+const AI_OUTLOOK_TTL_MS = 10 * 60_000;
+const AI_HORIZONS = [20, 60] as const;
+type AiHorizon = (typeof AI_HORIZONS)[number];
+
+const aiHistoryCache = new Map<string, CacheEntry<DailyBar[]>>();
+const aiOutlookCache = new Map<AiHorizon, CacheEntry<AiOutlookPayload>>();
+const aiComputing = new Map<AiHorizon, Promise<AiOutlookPayload>>();
+const aiSummaryCache = new Map<string, CacheEntry<{ text: string; aiPowered: boolean }>>();
+
+interface AiOutlookPayload {
+  generatedAt: number;
+  horizonDays: number;
+  assets: AssetOutlook[];
+  nextFomc: { date: string; daysUntil: number } | null;
+  recentFedDecisions: Array<{ date: string; decision: string; inferred: boolean }>;
+  geoAlertActive: boolean;
+}
+
+/** Local trading-day date (YYYY-MM-DD) for an exchange. */
+function localDate(ms: number, exchange: ExchangeId): string {
+  const tz =
+    exchange === 'CRYPTO' ? 'Asia/Jakarta' : exchange === 'FX' ? 'America/New_York' : EXCHANGE_HOURS[exchange].timeZone;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+}
+
+async function fetchYahooDaily(yahooSymbol: string): Promise<DailyBar[]> {
+  const key = `y:${yahooSymbol}`;
+  const cached = aiHistoryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
+  const ts: number[] = result.timestamp || [];
+  const closes: Array<number | null> = result.indicators?.quote?.[0]?.close || [];
+  const offsetSec = Number(result.meta?.gmtoffset) || 0;
+  const bars: DailyBar[] = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = closes[i];
+    if (c === null || c === undefined || !Number.isFinite(c) || c <= 0) continue;
+    const date = new Date((Number(ts[i]) + offsetSec) * 1000).toISOString().slice(0, 10);
+    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1].close = Number(c);
+    else bars.push({ date, close: Number(c) });
+  }
+  aiHistoryCache.set(key, { data: bars, expiresAt: Date.now() + AI_HISTORY_TTL_MS });
+  return bars;
+}
+
+async function fetchIndodaxDaily(pair: string): Promise<DailyBar[]> {
+  const key = `i:${pair}`;
+  const cached = aiHistoryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
+  const res = await fetchWithTimeout(url, {}, 10_000);
+  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
+  const rows = await res.json();
+  const bars: DailyBar[] = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const t = Number(row?.Time);
+    const c = Number(row?.Close);
+    if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) continue;
+    const date = localDate(t * 1000, 'CRYPTO');
+    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1].close = c;
+    else bars.push({ date, close: c });
+  }
+  aiHistoryCache.set(key, { data: bars, expiresAt: Date.now() + AI_HISTORY_TTL_MS });
+  return bars;
+}
+
+/** Latest live price for an asset from the price caches (null if unknown). */
+function livePriceFor(asset: Asset): { price: number; at: number } | null {
+  const tick = asset.indodaxPair
+    ? indodaxCache.entry?.data?.[asset.symbol]
+    : yahooCache.get(asset.symbol)?.data; // gold: GC=F futures, matching its history
+  return tick && Number.isFinite(tick.price) && tick.price > 0 ? { price: tick.price, at: tick.updatedAt } : null;
+}
+
+/** Puts the live price in as today's bar (replacing a same-day close) without mutating the cache. */
+function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
+  const live = livePriceFor(asset);
+  if (!live || bars.length === 0) return bars;
+  const date = localDate(live.at, asset.exchange);
+  const last = bars[bars.length - 1];
+  if (date < last.date) return bars;
+  return date === last.date
+    ? [...bars.slice(0, -1), { date, close: live.price }]
+    : [...bars, { date, close: live.price }];
+}
+
+/** Live news mood 0–100 per asset from the news hub (same rule-based score as the panels). */
+function newsScoreFor(asset: Asset): number | null {
+  const news = newsHub.items.filter((i) => i.assetTags?.includes(asset.code)).slice(0, 6);
+  if (news.length === 0) return null;
+  const tick = asset.indodaxPair ? indodaxCache.entry?.data?.[asset.symbol] : yahooCache.get(asset.symbol)?.data;
+  return computeMarketSentiment({
+    assetName: asset.name,
+    symbol: asset.symbol,
+    changePct24h: tick?.changePct24h,
+    price: tick?.price,
+    high24h: tick?.high24h,
+    low24h: tick?.low24h,
+    news,
+  }).score;
+}
+
+async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
+  // Kick off price caches so live bars are available (ignore failures)
+  await Promise.allSettled([getIndodaxPrices(), getYahooTicks(), ensureNewsFresh()]);
+
+  const [tbillBars, yieldBars, dollarBars] = await Promise.all([
+    fetchYahooDaily('^IRX'),
+    fetchYahooDaily('^TNX'),
+    fetchYahooDaily('DX-Y.NYB'),
+  ]);
+  const today = new Date().toISOString().slice(0, 10);
+  const meetings = resolveMeetings(tbillBars, today);
+
+  const candidates = ASSETS.filter((a) => a.indodaxPair || a.yahooSymbol);
+  const outlooks = await Promise.all(
+    candidates.map(async (asset): Promise<AssetOutlook | null> => {
+      try {
+        const raw = asset.indodaxPair
+          ? await fetchIndodaxDaily(asset.indodaxPair)
+          : await fetchYahooDaily(asset.yahooSymbol as string);
+        const bars = withLiveBar(raw, asset);
+        const dates = bars.map((b) => b.date);
+        const macro = {
+          tbill: alignByDate(dates, tbillBars),
+          yield10y: alignByDate(dates, yieldBars),
+          dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
+          fedStance: fedStanceSeries(dates, meetings),
+        };
+        const outlook = buildAssetOutlook({
+          symbol: asset.symbol,
+          code: asset.code,
+          name: asset.name,
+          group: asset.group,
+          bars,
+          macro,
+          horizonDays: horizon,
+          fedReactions: eventStudy(bars, meetings),
+        });
+        return { ...outlook, newsScore: newsScoreFor(asset) };
+      } catch (err) {
+        console.warn(`[AI] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      }
+    })
+  );
+
+  const next = nextMeeting(today);
+  return {
+    generatedAt: Date.now(),
+    horizonDays: horizon,
+    assets: outlooks.filter((o): o is AssetOutlook => o !== null),
+    nextFomc: next
+      ? { date: next, daysUntil: Math.round((Date.parse(next) - Date.parse(today)) / 86_400_000) }
+      : null,
+    recentFedDecisions: meetings
+      .filter((m) => m.decision && m.date <= today)
+      .slice(-4)
+      .map((m) => ({ date: m.date, decision: m.decision as string, inferred: m.inferred })),
+    geoAlertActive: selectGeoAlert(newsHub.items, Date.now()) !== null,
+  };
+}
+
+/** Cached outlook; recomputes in the background when stale (first call waits). */
+async function getAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
+  const cached = aiOutlookCache.get(horizon);
+  const refresh = () => {
+    if (!aiComputing.has(horizon)) {
+      const job = computeAiOutlook(horizon)
+        .then((data) => {
+          aiOutlookCache.set(horizon, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
+          return data;
+        })
+        .finally(() => aiComputing.delete(horizon));
+      aiComputing.set(horizon, job);
+    }
+    return aiComputing.get(horizon) as Promise<AiOutlookPayload>;
+  };
+  if (cached) {
+    if (cached.expiresAt <= Date.now()) refresh().catch(() => {});
+    return cached.data;
+  }
+  return refresh();
+}
+
+/** Rule-based English summary of the ranked outlook (used when Gemini is not configured). */
+function ruleBasedSummary(payload: AiOutlookPayload, profile: RiskProfile): string {
+  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(0)}%`);
+  const favorable = ranked.filter((o) => o.verdict === 'favorable');
+  const watch = ranked.filter((o) => o.verdict === 'watch');
+  const weak = ranked.filter((o) => o.verdict === 'unfavorable');
+  const horizon = payload.horizonDays === 20 ? 'about 1 month' : 'about 3 months';
+  const parts: string[] = [];
+  if (favorable.length) {
+    parts.push(
+      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, the strongest statistical setups now are ${favorable
+        .slice(0, 3)
+        .map((o) => `${o.name} (${pct(o.adjustedProbability)} adjusted probability of a gain; in backtests its favorable signals were right ${pct(o.backtest?.signalHitRate)} of the time vs a ${pct(o.backtest?.baseRate)} base rate)`)
+        .join(', ')}.`
+    );
+  } else {
+    parts.push(
+      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, no instrument currently has an active buy setup from a strategy with a proven out-of-sample edge — waiting is a valid choice. The watch list below shows where such a setup is most likely to appear.`
+    );
+  }
+  if (watch.length) parts.push(`Watch list (a strategy with a proven edge exists, but no active buy setup yet): ${watch.slice(0, 4).map((o) => o.name).join(", ")}.`);
+  if (weak.length) parts.push(`Active bearish setups (better avoided for now): ${weak.slice(0, 4).map((o) => o.name).join(", ")}.`);
+  if (payload.nextFomc) {
+    parts.push(
+      `The next Fed decision is on ${payload.nextFomc.date} (${payload.nextFomc.daysUntil} days); rate decisions often move indices, gold and currencies, so expect volatility around it.`
+    );
+  }
+  if (payload.geoAlertActive) parts.push('A geopolitical alert is active, which raises short-term risk.');
+  return parts.join(' ');
+}
+
+async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile) {
+  const key = `${payload.generatedAt}|${payload.horizonDays}|${profile}`;
+  const cached = aiSummaryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const fallback = { text: ruleBasedSummary(payload, profile), aiPowered: false };
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    aiSummaryCache.set(key, { data: fallback, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
+    return fallback;
+  }
+  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
+  const facts = ranked.map((o) => ({
+    asset: o.name,
+    verdict: o.verdict,
+    adjustedProbabilityUp: o.adjustedProbability?.toFixed(2),
+    backtestSignalHitRate: o.backtest?.signalHitRate?.toFixed(2),
+    backtestBaseRate: o.backtest?.baseRate?.toFixed(2),
+    volatility: o.stats.volatility?.toFixed(2),
+    return1y: o.stats.return1y?.toFixed(2),
+    topDrivers: o.drivers.slice(0, 2).map((d) => `${d.label} (${d.impact > 0 ? '+' : '-'})`),
+    newsMood: o.newsScore,
+  }));
+  const prompt = `You are a quantitative market analyst. Using ONLY the data below (a walk-forward backtested logistic model of the probability that each instrument rises over the next ${payload.horizonDays} trading days), write 4-6 plain-English sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the probability and backtest hit rate vs base rate), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "This is a statistical screen, not personal financial advice."
+DATA: ${JSON.stringify(facts)}`;
+  try {
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+    const response = await Promise.race([
+      ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
+    ]);
+    const text = response?.text?.trim();
+    const data = text ? { text, aiPowered: true } : fallback;
+    aiSummaryCache.set(key, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
+    return data;
+  } catch (err) {
+    console.warn('[AI] Gemini summary failed:', err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json());
@@ -1083,6 +1370,22 @@ async function startServer() {
     }
   });
 
+  // 10. AI outlook: backtested model per asset + personalized summary
+  app.get('/api/ai/outlook', async (req, res) => {
+    const horizon = (Number(req.query.horizon) === 60 ? 60 : 20) as AiHorizon;
+    const profileParam = String(req.query.profile || 'moderate');
+    const profile: RiskProfile = profileParam in RISK_PROFILES ? (profileParam as RiskProfile) : 'moderate';
+    try {
+      const payload = await getAiOutlook(horizon);
+      const summary = await getAiSummary(payload, profile);
+      res.json({ ...payload, profile, summary });
+    } catch (err) {
+      res.status(502).json({
+        error: err instanceof Error ? err.message : 'Failed to compute the AI outlook',
+      });
+    }
+  });
+
   // 9. Live news stream (Server-Sent Events): a snapshot first, then every new headline
   app.get('/api/market/news-stream', async (req, res) => {
     res.set({
@@ -1132,6 +1435,8 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AssetRadar server listening on http://localhost:${PORT}`);
+    // Warm up the AI outlook so the first visitor does not wait for 5 years of data
+    setTimeout(() => getAiOutlook(20).catch((err) => console.warn('[AI] warm-up failed:', err)), 3000);
   });
 }
 

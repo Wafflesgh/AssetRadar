@@ -454,3 +454,21 @@ export async function fetchNewsFeed(): Promise<MarketNewsItem[]> {
   const data = await res.json();
   return Array.isArray(data?.items) ? data.items : [];
 }
+
+/** Response of /api/ai/outlook (see server.ts and src/ai/outlook.ts). */
+export interface AiOutlookResponse {
+  generatedAt: number;
+  horizonDays: number;
+  profile: string;
+  assets: import('../ai/outlook.ts').AssetOutlook[];
+  nextFomc: { date: string; daysUntil: number } | null;
+  recentFedDecisions: Array<{ date: string; decision: string; inferred: boolean }>;
+  geoAlertActive: boolean;
+  summary: { text: string; aiPowered: boolean };
+}
+
+export async function fetchAiOutlook(horizon: number, profile: string): Promise<AiOutlookResponse> {
+  const res = await fetch(`/api/ai/outlook?horizon=${horizon}&profile=${encodeURIComponent(profile)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
