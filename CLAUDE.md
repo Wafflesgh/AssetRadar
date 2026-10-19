@@ -66,5 +66,5 @@ Setelah setiap perubahan: `npm run lint && npm test && npm run build` harus lulu
 
 ## Deploy / GitHub
 
-- Repo belum dibuat. Saat pemilik siap: `git init`, commit, buat repo GitHub (privat), push. Bisa diimpor kembali ke Google AI Studio (Build → ⊕ → Import from GitHub) yang menjalankan `server.ts` di Cloud Run.
+- Repo GitHub (privat): https://github.com/Wafflesgh/AssetRadar , cabang `main`. Identitas commit (konfigurasi lokal repo): Dilan <alfianclassche@gmail.com>. Setelah perubahan lulus lint/test/build: commit lalu `git push`. Bisa diimpor kembali ke Google AI Studio (Build → ⊕ → Import from GitHub) yang menjalankan `server.ts` di Cloud Run.
 - `bun.lock` lama sengaja dihapus karena `recharts` ditambahkan; `package-lock.json` adalah lockfile yang berlaku.
