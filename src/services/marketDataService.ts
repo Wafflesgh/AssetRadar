@@ -489,3 +489,15 @@ export async function fetchQuantFactors(universe: QuantUniverse): Promise<QuantF
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
+export interface YieldCurve {
+  points: Array<{ tenor: string; years: number; yield: number; prevClose: number | null; monthAgo: number | null }>;
+  updatedAt: number;
+}
+
+/** US Treasury yields (3M, 5Y, 10Y, 30Y) for the Terminal CURV panel. */
+export async function fetchYieldCurve(): Promise<YieldCurve> {
+  const res = await fetch('/api/market/yields');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}

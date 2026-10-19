@@ -48,7 +48,8 @@ export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
       onTouchStart={() => setPaused((p) => !p)}
       aria-label="Price tape for all assets"
     >
-      <div className="terminal-ticker-track flex w-max">
+      {/* ~2.5 s per asset keeps the speed readable however many assets are tracked */}
+      <div className="terminal-ticker-track flex w-max" style={{ animationDuration: `${ASSETS.length * 2.5}s` }}>
         <div className="flex">{items(0)}</div>
         <div className="terminal-ticker-dup flex" aria-hidden="true">
           {items(1)}

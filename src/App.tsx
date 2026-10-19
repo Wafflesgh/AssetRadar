@@ -357,6 +357,7 @@ export default function App() {
             onRetrySymbol={handleRetrySymbol}
             onGoToRadar={() => handleSelectTab('radar')}
             onGoToAdvisor={() => handleSelectTab('advisor')}
+            onGoToQuant={() => handleSelectTab('quant')}
           />
         )}
 

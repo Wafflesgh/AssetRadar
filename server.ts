@@ -1597,6 +1597,46 @@ async function getQuantFactors(universe: QuantUniverse): Promise<QuantFactorsPay
   return job;
 }
 
+// ---- US Treasury yield curve (Terminal CURV) ----------------------------------------------
+
+const YIELD_TENORS: Array<{ symbol: string; tenor: string; years: number }> = [
+  { symbol: '^IRX', tenor: '3M', years: 0.25 },
+  { symbol: '^FVX', tenor: '5Y', years: 5 },
+  { symbol: '^TNX', tenor: '10Y', years: 10 },
+  { symbol: '^TYX', tenor: '30Y', years: 30 },
+];
+const yieldsCache: { entry: CacheEntry<YieldCurvePayload> | null } = { entry: null };
+
+interface YieldCurvePayload {
+  points: Array<{ tenor: string; years: number; yield: number; prevClose: number | null; monthAgo: number | null }>;
+  updatedAt: number;
+}
+
+async function getYieldCurve(): Promise<YieldCurvePayload> {
+  if (yieldsCache.entry && yieldsCache.entry.expiresAt > Date.now()) return yieldsCache.entry.data;
+  const series = await fetchYahooSpark(YIELD_TENORS.map((t) => t.symbol), '1mo', '1d');
+  const points: YieldCurvePayload['points'] = [];
+  for (const t of YIELD_TENORS) {
+    const sp = series.get(t.symbol);
+    const meta = sp?.meta as { regularMarketPrice?: number; chartPreviousClose?: number; previousClose?: number } | undefined;
+    const y = Number(meta?.regularMarketPrice);
+    if (!Number.isFinite(y)) continue;
+    const closes = (sp?.closes ?? []).filter((c): c is number => c !== null && Number.isFinite(c));
+    const prev = Number(meta?.previousClose ?? closes[closes.length - 2]);
+    points.push({
+      tenor: t.tenor,
+      years: t.years,
+      yield: y,
+      prevClose: Number.isFinite(prev) ? prev : null,
+      monthAgo: closes.length ? closes[0] : null,
+    });
+  }
+  if (points.length === 0) throw new Error('Yield data unavailable');
+  const data = { points, updatedAt: Date.now() };
+  yieldsCache.entry = { data, expiresAt: Date.now() + 60_000 };
+  return data;
+}
+
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -1952,6 +1992,15 @@ async function startServer() {
     } catch (err) {
       console.warn('[Quant] failed:', err instanceof Error ? err.message : err);
       res.status(502).json({ error: 'Factor data unavailable' });
+    }
+  });
+
+  // 5d. US Treasury yield curve
+  app.get('/api/market/yields', async (_req, res) => {
+    try {
+      res.json(await getYieldCurve());
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Yield data unavailable' });
     }
   });
 
