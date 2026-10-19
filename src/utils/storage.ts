@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
   PORTFOLIO: 'assetradar_portfolio_v1',
+  FORWARD_LOG: 'assetradar_ai_forward_log_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -137,6 +138,20 @@ export function getPortfolioTxs<T extends { id: string; symbol: string }>(): T[]
 export function savePortfolioTxs(txs: unknown[]): boolean {
   safeSet(STORAGE_KEYS.PORTFOLIO, JSON.stringify(txs));
   return safeGet(STORAGE_KEYS.PORTFOLIO) !== null;
+}
+
+/** AI Advisor forward-test log (raw JSON; validated by parseForwardLog in ai/forwardTest.ts). */
+export function getForwardLogRaw(): unknown {
+  try {
+    return JSON.parse(safeGet(STORAGE_KEYS.FORWARD_LOG) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+export function saveForwardLogRaw(log: unknown): boolean {
+  safeSet(STORAGE_KEYS.FORWARD_LOG, JSON.stringify(log));
+  return safeGet(STORAGE_KEYS.FORWARD_LOG) !== null;
 }
 
 export interface SavedRiskResult {

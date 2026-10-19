@@ -5,7 +5,8 @@
  * rate vs base rate, risk stats, Fed-decision reactions and the methodology. A "How verdicts
  * are decided" box and a pass/fail checklist on every card show exactly why an asset is
  * favorable, on the watch list, unfavorable or has no proven edge. Refreshes every 10 minutes
- * with the latest prices and news. A statistical screen, not personal advice.
+ * with the latest prices and news, and keeps a live (forward-test) track record of its own
+ * verdicts on this device. A statistical screen, not personal advice.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -31,6 +32,7 @@ import { formatPercent } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { getAiPrefs, getSavedRiskResult, saveAiPrefs, type AiPrefs } from '../utils/storage.ts';
 import { profileForAnswers } from '../config/riskProfiles.ts';
+import { LiveTrackRecord } from './LiveTrackRecord.tsx';
 
 const REFRESH_MS = 10 * 60_000;
 
@@ -270,6 +272,7 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
               </section>
             )
           )}
+          <LiveTrackRecord ranked={ranked} horizonDays={data.horizonDays} profile={prefs.profile} ticks={ticks} />
           <Methodology open={showMethod} onToggle={() => setShowMethod((s) => !s)} />
         </>
       ) : null}

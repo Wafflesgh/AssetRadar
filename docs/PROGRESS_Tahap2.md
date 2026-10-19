@@ -37,7 +37,10 @@ Node 24 · `lint / test / build` awal: lulus (85 test)
   - Dibuat: `src/utils/portfolio.ts` (metode rata-rata tertimbang seperti broker Indonesia, realized/unrealized, konversi ke Rupiah dengan kurs live, kelas aset, validasi: angka positif, tanggal tidak di masa depan, tidak bisa jual melebihi kepemilikan pada tanggal itu, format export/import) + test. Halaman `#/portfolio` (lazy-load): tambah/edit/hapus transaksi (saham BEI dalam lot = 100 lembar, crypto desimal, emas dalam gram dengan harga Rp/gram, saham AS/dunia & kurs), tombol "Use live", ringkasan nilai/modal/P&L, tabel posisi (rata-rata vs live, nilai Rp, P/L, skor bukti & F-score sebagai informasi), donut alokasi, perbandingan dengan alokasi Profil Risiko tersimpan, riwayat transaksi, Export/Import JSON. Data hanya di perangkat (`getPortfolioTxs`/`savePortfolioTxs`).
   - Verifikasi: uji di browser — 10 lot BBCA @Rp5.000 → nilai Rp4.820.000, P/L −Rp180.000 (−3,6%) dengan skor bukti; data uji dihapus lagi.
   - Keterbatasan: posisi dalam KRW/HKD (Samsung, Tencent) tidak masuk total Rupiah karena tidak ada kurs IDR untuk mata uang itu (diberi catatan). Tidak memperhitungkan dividen/aksi korporasi otomatis.
-- [ ] 5. Uji nyata (forward test) AI Advisor
+- [x] 5. Uji nyata (forward test) AI Advisor
+  - Dibuat: `src/ai/forwardTest.ts` (+ test): snapshot verdict sekali per hari per horizon & profil (tanggal WIB, verdict, chance, harga live), tidak pernah diisi mundur; penilaian setelah N hari bursa memakai close harian sungguhan (close hari snapshot vs close N bar kemudian, hasil disimpan permanen di log); track record per verdict vs base rate; ambang 30 hasil. Komponen `LiveTrackRecord.tsx` di AI Advisor (rekam otomatis saat ≥60% harga live tersedia, cek hasil hanya untuk snapshot yang cukup tua, Export/Import JSON). Disimpan di perangkat (`getForwardLogRaw`/`saveForwardLogRaw`, maks 15.000 entri).
+  - Verifikasi: membuka AI Advisor menyimpan 55 verdict untuk 2026-10-20 (horizon 20, moderate); hasil pertama baru muncul ±20 hari bursa kemudian.
+  - Butuh keputusan pemilik: penyimpanan di server (database gratis, mis. Firestore/Supabase dengan kunci di Secrets) agar riwayat tidak hilang saat ganti HP/browser dan tetap terekam walau aplikasi tidak dibuka. Belum dipasang — perlu persetujuan.
 - [ ] 6. Kalender emiten IDX
 - [ ] 7. Data makro Indonesia
 - [ ] 8. Laporan keuangan perusahaan + rasio
@@ -47,7 +50,7 @@ Untuk setiap fitur tulis: rencana singkat, apa yang dibuat, sumber data, keterba
 
 ## Butuh keputusan pemilik
 
-_(kosong)_
+- Forward test AI Advisor: simpan juga di server (database gratis + kunci di Secrets) supaya tercatat setiap hari walau aplikasi tidak dibuka dan tidak hilang saat ganti perangkat? Saat ini hanya di perangkat.
 
 ## Laporan akhir
 
