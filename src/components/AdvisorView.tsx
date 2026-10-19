@@ -27,7 +27,8 @@ import {
 } from '../ai/outlook.ts';
 import { formatPercent } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
-import { getAiPrefs, saveAiPrefs, type AiPrefs } from '../utils/storage.ts';
+import { getAiPrefs, getSavedRiskResult, saveAiPrefs, type AiPrefs } from '../utils/storage.ts';
+import { profileForAnswers } from '../config/riskProfiles.ts';
 
 const REFRESH_MS = 10 * 60_000;
 
@@ -74,6 +75,11 @@ interface AdvisorViewProps {
 
 export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
   const [prefs, setPrefs] = useState<AiPrefs>(() => getAiPrefs());
+  // Profile from the Risk Profile questionnaire, if the viewer took it
+  const [quizProfile] = useState(() => {
+    const saved = getSavedRiskResult();
+    return saved ? profileForAnswers(saved.answers) : null;
+  });
   const [data, setData] = useState<AiOutlookResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshing, setRefreshing] = useState(false);
@@ -195,7 +201,16 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
       </header>
       <p className="text-xs -mt-3" style={{ color: 'var(--text-secondary)' }}>
         {RISK_PROFILES[prefs.profile].description} Max volatility:{' '}
-        {pct(RISK_PROFILES[prefs.profile].maxVolatility)} per year.
+        {pct(RISK_PROFILES[prefs.profile].maxVolatility)} per year.{' '}
+        {quizProfile === prefs.profile ? (
+          <span>Matches your Risk Profile questionnaire result.</span>
+        ) : (
+          <a href="#/risk" className="font-semibold hover:underline" style={{ color: 'var(--accent-radar)' }}>
+            {quizProfile
+              ? `Your questionnaire result was ${RISK_PROFILES[quizProfile].label}.`
+              : 'Not sure? Take the Risk Profile questionnaire.'}
+          </a>
+        )}
       </p>
 
       {state === 'loading' && !data ? (

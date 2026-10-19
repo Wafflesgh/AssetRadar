@@ -3,7 +3,7 @@
  * timeframe, watchlist, selected asset), syncs it with the URL hash, and lays out the page
  * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Sun, Moon, Wifi } from 'lucide-react';
 import {
   ASSETS,
@@ -33,11 +33,15 @@ import { RadarLogo } from './components/RadarLogo.tsx';
 import { RadarView } from './components/RadarView.tsx';
 import { AssetDetailView } from './components/AssetDetailView.tsx';
 import { WatchlistView } from './components/WatchlistView.tsx';
-import { RiskProfileView } from './components/RiskProfileView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { TerminalView } from './components/terminal/TerminalView.tsx';
 import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
 import { AdvisorView } from './components/AdvisorView.tsx';
+
+// Lazy: the Risk Profile page pulls in recharts, which most visits never need
+const RiskProfileView = lazy(() =>
+  import('./components/RiskProfileView.tsx').then((m) => ({ default: m.RiskProfileView }))
+);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -373,7 +377,18 @@ export default function App() {
         )}
 
         {activeTab === 'risk' && (
-          <RiskProfileView onSelectAsset={handleSelectAsset} />
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <RiskProfileView
+              onSelectAsset={handleSelectAsset}
+              onGoToAdvisor={() => handleSelectTab('advisor')}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'advisor' && (

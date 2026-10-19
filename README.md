@@ -108,6 +108,7 @@ sentiment.
 | `App.tsx` | Root component: global state, URL hash routing, layout, header and footer. |
 | `index.css` | Global styles, light/dark tokens, Terminal-mode tokens, animations. |
 | `config/assets.ts` | Shared types, the six tracked assets, groups and timeframes. |
+| `config/riskProfiles.ts` | Risk questionnaire (7 questions), scoring, sample allocations, instrument notes and the capital split. |
 | `services/marketDataService.ts` | Live data manager (Indodax WebSocket, polling, offline snapshot) and API fetch helpers. |
 | `utils/format.ts` | Rupiah/USD/points/percent formatting and the gold-per-gram conversion. |
 | `utils/marketHours.ts` | IDX trading-hours check and "updated X ago" labels. |
@@ -138,7 +139,7 @@ sentiment.
 | `SparklineChart.tsx` | 24h mini area chart on price cards. |
 | `AssetIntelligencePanel.tsx` | Sentiment score, drivers, and related news for one asset. |
 | `WatchlistView.tsx` | Watchlist page. |
-| `RiskProfileView.tsx` | Risk-profile education page with the disclaimer. |
+| `RiskProfileView.tsx` | Risk Profile: questionnaire, donut allocation, Compare, capital simulator, custom sliders; sets the AI Advisor profile. Lazy-loaded (recharts). |
 | `AdvisorView.tsx` | AI Advisor page: summary, ranked outlook, methodology. |
 | `NewsTape.tsx` | Running live headline tape. |
 | `GeoAlertBanner.tsx` | Red war/attack alert banner shown on every page. |
