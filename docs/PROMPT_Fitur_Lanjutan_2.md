@@ -1,10 +1,14 @@
 # Prompt — AssetRadar fitur lanjutan (tahap 2)
 
-> Cara pakai: salin seluruh isi di bawah garis ini ke Claude Code (di folder `D:\Asset Radar\assetradar`) lalu jalankan.
+> Cara pakai (di laptop, Claude Code desktop, folder `D:\Asset Radar\assetradar`): kirim pesan **"Jalankan semua instruksi di docs/PROMPT_Fitur_Lanjutan_2.md dari awal sampai akhir."** Untuk Claude Cloud pakai `docs/PROMPT_Cloud_Tahap2.md`.
 
 ---
 
 Lanjutkan pengembangan AssetRadar. Baca dulu `CLAUDE.md` (aturan wajib, arsitektur, status) dan `README.md`. Kerjakan 9 fitur di bawah **berurutan**, satu per satu. Untuk setiap fitur: buat rencana singkat, kerjakan, tulis/ubah test, jalankan `npm run lint && npm test && npm run build` sampai lulus, cek di browser (375px dan 1440px, mode terang dan gelap), lalu commit dan push sebelum lanjut ke fitur berikutnya.
+
+Catat kemajuan di `docs/PROGRESS_Tahap2.md` setiap selesai satu fitur (centang, ringkasan, sumber data, keterbatasan, status verifikasi live). Kalau sesi terputus atau konteks habis, lanjutkan dari fitur pertama yang belum dicentang — jangan mulai ulang. Kerjakan mandiri sampai selesai; keputusan yang biasanya ditanyakan ke saya (mis. memakai layanan luar) dicatat di bagian "Butuh keputusan pemilik" dengan pilihan paling aman sebagai default, lalu lanjut.
+
+Kunci `FINNHUB_API_KEY` sudah ada di file `.env` lokal (diabaikan git). Pakai lewat `process.env` di server saja; **jangan pernah menampilkan, mencetak ke log, menyalin ke file lain, atau meng-commit nilainya**.
 
 ## Aturan yang wajib diikuti (ringkasan dari CLAUDE.md)
 
