@@ -4,7 +4,7 @@
 
 ---
 
-Lanjutkan pengembangan AssetRadar. Baca dulu `CLAUDE.md` (aturan wajib, arsitektur, status) dan `README.md`. Kerjakan 8 fitur di bawah **berurutan**, satu per satu. Untuk setiap fitur: buat rencana singkat, kerjakan, tulis/ubah test, jalankan `npm run lint && npm test && npm run build` sampai lulus, cek di browser (375px dan 1440px, mode terang dan gelap), lalu commit dan push sebelum lanjut ke fitur berikutnya.
+Lanjutkan pengembangan AssetRadar. Baca dulu `CLAUDE.md` (aturan wajib, arsitektur, status) dan `README.md`. Kerjakan 9 fitur di bawah **berurutan**, satu per satu. Untuk setiap fitur: buat rencana singkat, kerjakan, tulis/ubah test, jalankan `npm run lint && npm test && npm run build` sampai lulus, cek di browser (375px dan 1440px, mode terang dan gelap), lalu commit dan push sebelum lanjut ke fitur berikutnya.
 
 ## Aturan yang wajib diikuti (ringkasan dari CLAUDE.md)
 
@@ -102,6 +102,18 @@ Verifikasi ulang sumber-sumber ini sebelum dipakai; kalau ada yang berubah, cari
 - Tambahkan tabel + grafik batang (pendapatan & laba bersih per periode), tombol unduh CSV untuk periode yang tampil, dan sumber data per angka.
 - Endpoint server baru (mis. `GET /api/fundamentals/statements?symbol=&period=annual|semester|quarterly`), cache 12 jam, logika parsing dan rasio di `src/ai/` atau `src/utils/` dengan test (termasuk turunan semester, TTM, kuartal bolong).
 - Hubungkan dengan F-score yang sudah ada (pakai data tahunan yang sama).
+
+## Fitur 9 — Harga lebih cepat (±5 detik) dengan push dari server
+
+Saat ini browser bertanya ke server tiap 10 detik dan server menyimpan harga Yahoo 15 detik, jadi saham/indeks/komoditas/kurs bergerak kira-kira tiap 10–15 detik. Ubah skemanya menjadi **server menarik data sekali untuk semua pengguna, lalu mendorong (push) harga baru ke browser**:
+
+- **Server:** satu loop harga untuk semua pengguna. Selama ada penonton, aset Yahoo yang bursanya **buka** diambil tiap **±5 detik** (cache 5 dtk), yang **tutup** tiap 5 menit. Pakai batch spark (maks 20 simbol/permintaan) dan pembatas jumlah permintaan bersamaan. Prioritaskan aset yang sedang dilihat pengguna, watchlist, portofolio dan `quick`. Sisanya boleh lebih jarang, ikuti tingkatan di Fitur 2.
+- **Push ke browser:** endpoint SSE baru, mis. `GET /api/market/price-stream` (pola sama dengan `news-stream`). Kirim `snapshot` saat tersambung, lalu event `prices` berisi **hanya tick yang berubah**, plus `ping` tiap 20 dtk. Server hanya polling Yahoo saat ada klien tersambung atau ada permintaan dalam ≤5 menit terakhir.
+- **Browser:** `MarketDataManager` berlangganan ke stream ini menggantikan polling Yahoo 10 dtk. Kalau stream putus atau macet (>30 dtk tanpa data/ping), kembali otomatis ke polling REST 10 dtk dan coba sambung ulang dengan backoff. Putuskan saat tab tersembunyi, sambung lagi saat terlihat (seperti WebSocket Indodax). Crypto tetap lewat WebSocket Indodax. Emas bisa ikut stream ini (30 dtk).
+- **Jaga dari rate limit Yahoo:** kalau Yahoo membalas 429/5xx atau gagal berulang, perlambat otomatis (mis. 5 → 10 → 20 dtk) dan pulihkan pelan-pelan. Simpan harga terakhir, jangan pernah mengosongkan atau mengisi angka palsu. Catat di log server.
+- **Tampilan:** indikator kecil "updated Xs ago" tetap jujur. Status koneksi menunjukkan "Live (streaming)" saat SSE aktif dan "Polling" saat cadangan dipakai. Saham BEI/IHSG tetap diberi label **delayed** karena sumber gratisnya memang tertunda.
+- **Opsional — Finnhub real-time:** kalau `FINNHUB_API_KEY` ada di `.env`/Secrets, server membuka WebSocket Finnhub (`wss://ws.finnhub.io?token=…`, kunci hanya di server, **tidak pernah dikirim ke browser**) untuk saham AS, forex dan crypto global yang didukung, lalu meneruskan trade terbaru lewat `price-stream` (dibatasi, mis. maks 1 update per simbol per detik). Periksa dulu dokumentasi resmi dan syarat paket gratis Finnhub (batas simbol, simbol yang didukung, real-time atau tidak) dan patuhi batasnya. Tanpa kunci, semuanya tetap jalan dengan skema ±5 detik di atas. Tambahkan `FINNHUB_API_KEY=` (tanpa nilai) ke `.env.example`, dan jelaskan di README dan Settings → Data sources.
+- **Test:** logika penjadwalan dan prioritas, backoff rate limit, diff tick (hanya yang berubah dikirim), fallback stream → polling di klien (pure functions di `src/utils/` atau `src/services/` dengan test). Uji server dengan `curl -N` ke endpoint SSE.
 
 ---
 

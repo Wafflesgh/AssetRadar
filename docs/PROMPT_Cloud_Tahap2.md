@@ -11,7 +11,7 @@ Kamu adalah Claude Code yang berjalan di **cloud**, di salinan repo AssetRadar d
 ## 0. Baca dulu
 
 1. `CLAUDE.md` — aturan wajib, arsitektur, status proyek.
-2. `docs/PROMPT_Fitur_Lanjutan_2.md` — **spesifikasi lengkap 8 fitur** yang harus dikerjakan (PWA, IHSG + seluruh saham BEI, search bar, portofolio, uji nyata AI Advisor, kalender emiten IDX, makro Indonesia, laporan keuangan + rasio). Ikuti semua isinya, **kecuali bagian Git dan pengecekan browser**, yang diganti oleh aturan cloud di file ini.
+2. `docs/PROMPT_Fitur_Lanjutan_2.md` — **spesifikasi lengkap 9 fitur** yang harus dikerjakan (PWA, IHSG + seluruh saham BEI, search bar, portofolio, uji nyata AI Advisor, kalender emiten IDX, makro Indonesia, laporan keuangan + rasio, harga ±5 detik lewat push dari server). Ikuti semua isinya, **kecuali bagian Git dan pengecekan browser**, yang diganti oleh aturan cloud di file ini.
 3. `docs/PROGRESS_Tahap2.md` — catatan kemajuan. Kalau sudah ada fitur yang dicentang selesai (sesi sebelumnya terputus), **lanjutkan dari fitur berikutnya** di branch yang sama, jangan mulai ulang.
 
 ## 1. Cek lingkungan cloud (wajib sebelum menulis kode)
@@ -27,12 +27,13 @@ Kamu adalah Claude Code yang berjalan di **cloud**, di salinan repo AssetRadar d
   - `https://fred.stlouisfed.org/graph/fredgraph.csv?id=IRSTCI01IDM156N`
   - `https://api.worldbank.org/v2/country/IDN/indicator/FP.CPI.TOTL.ZG?format=json`
   - `https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json` (perlu header `User-Agent` berisi nama aplikasi + email kontak)
+  - `https://finnhub.io/api/v1/quote?symbol=AAPL` (tanpa kunci akan membalas 401; itu tanda domainnya terjangkau. Pakai kunci hanya jika `FINNHUB_API_KEY` tersedia di environment)
 - Tulis hasilnya di `docs/PROGRESS_Tahap2.md`. Kalau sumber yang dibutuhkan sebuah fitur **terblokir oleh jaringan cloud**, tetap tulis kodenya dengan penanganan "Data unavailable" dan test berbasis contoh respons (fixture) yang disimpan di repo. Tandai fitur itu **"belum diverifikasi dengan data live"** di catatan kemajuan dan di laporan akhir. **Jangan pernah** mengganti data live dengan angka contoh di aplikasi. Fixture hanya untuk test.
 
 ## 2. Aturan Git di cloud (menggantikan aturan Git di file spesifikasi)
 
 - **Jangan push ke `main`.** Kerjakan semuanya di **satu branch** (mis. `claude/tahap2-features`) dan **satu pull request** ke `main`.
-- Buat PR sejak fitur pertama selesai, lalu terus perbarui. Judul: `AssetRadar stage 2: PWA, all IDX stocks, search, portfolio, forward test, IDX calendar, Indonesia macro, financial statements`. Isi PR: daftar fitur dengan status, sumber data, keterbatasan, dan cara mengujinya. Akhiri isi PR dengan baris atribusi yang berlaku.
+- Buat PR sejak fitur pertama selesai, lalu terus perbarui. Judul: `AssetRadar stage 2: PWA, all IDX stocks, search, portfolio, forward test, IDX calendar, Indonesia macro, financial statements, faster streaming prices`. Isi PR: daftar fitur dengan status, sumber data, keterbatasan, dan cara mengujinya. Akhiri isi PR dengan baris atribusi yang berlaku.
 - **Commit dan push ke branch setiap selesai satu fitur** (dan juga di tengah fitur besar), supaya pekerjaan aman kalau sesi terputus. Pesan commit berbahasa Inggris, diakhiri baris Co-Authored-By yang berlaku.
 - Jangan force-push. Jangan menghapus branch. Jangan merge PR sendiri; pemilik yang merge.
 - Jangan pernah menulis kunci API ke kode atau commit `.env`. Kunci baru opsional (mis. `BPS_API_KEY`) hanya dicatat di `.env.example` tanpa nilai.
@@ -48,7 +49,7 @@ Cloud mungkin tidak punya browser. Untuk setiap fitur:
 
 ## 4. Urutan kerja
 
-Ikuti urutan fitur 1 → 8 di `docs/PROMPT_Fitur_Lanjutan_2.md`. Untuk setiap fitur:
+Ikuti urutan fitur 1 → 9 di `docs/PROMPT_Fitur_Lanjutan_2.md`. Untuk setiap fitur:
 
 1. Tulis rencana singkat di `docs/PROGRESS_Tahap2.md`.
 2. Kerjakan dan buat/ubah test.

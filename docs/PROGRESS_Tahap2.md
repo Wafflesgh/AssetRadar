@@ -16,6 +16,7 @@ Branch: _(isi saat mulai)_  ·  Pull request: _(isi saat dibuat)_
 | FRED | | |
 | World Bank | | |
 | SEC EDGAR | | |
+| Finnhub | | |
 
 Node: _  ·  `lint / test / build` awal: _
 
@@ -29,6 +30,7 @@ Node: _  ·  `lint / test / build` awal: _
 - [ ] 6. Kalender emiten IDX
 - [ ] 7. Data makro Indonesia
 - [ ] 8. Laporan keuangan perusahaan + rasio
+- [ ] 9. Harga ±5 detik lewat push dari server (SSE) + Finnhub opsional
 
 Untuk setiap fitur tulis: rencana singkat, apa yang dibuat, sumber data, keterbatasan, status verifikasi live (sudah / belum + alasan), commit.
 
