@@ -15,6 +15,8 @@ import {
   saveTimeframe,
   getSavedWatchlist,
   saveWatchlist,
+  getStartInTerminal,
+  saveStartInTerminal,
 } from './utils/storage.ts';
 import {
   MarketDataManager,
@@ -28,12 +30,16 @@ import { AssetDetailView } from './components/AssetDetailView.tsx';
 import { WatchlistView } from './components/WatchlistView.tsx';
 import { RiskProfileView } from './components/RiskProfileView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
+import { TerminalView } from './components/terminal/TerminalView.tsx';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     if (typeof window === 'undefined') return 'radar';
+    // Opsi "Buka aplikasi di mode Terminal" hanya berlaku saat URL tanpa hash
+    if (!window.location.hash && getStartInTerminal()) return 'terminal';
     return parseHashRoute(window.location.hash).tab;
   });
+  const [startInTerminal, setStartInTerminal] = useState<boolean>(() => getStartInTerminal());
   const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
     if (typeof window === 'undefined') return 'BTC/IDR';
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
@@ -170,6 +176,11 @@ export default function App() {
     }
   }, []);
 
+  const handleChangeStartInTerminal = useCallback((enabled: boolean) => {
+    setStartInTerminal(enabled);
+    saveStartInTerminal(enabled);
+  }, []);
+
   const handleRetrySymbol = useCallback((symbol: string) => {
     managerRef.current?.retrySymbol(symbol);
   }, []);
@@ -186,6 +197,7 @@ export default function App() {
   }, []);
 
   const currentAsset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
+  const isTerminal = activeTab === 'terminal';
 
   // Connection status indicator color & label (hijau = live, kuning = menyambung ulang, abu-abu = tertunda)
   const connColor =
@@ -204,7 +216,7 @@ export default function App() {
 
   return (
     <div
-      className="min-h-screen flex flex-col md:pl-64"
+      className={`min-h-screen flex flex-col md:pl-64 ${isTerminal ? 'terminal-root' : ''}`}
       style={{
         backgroundColor: 'var(--bg-canvas)',
         color: 'var(--text-primary)',
@@ -220,7 +232,8 @@ export default function App() {
         onToggleThemeQuick={handleToggleThemeQuick}
       />
 
-      {/* Top Header Bar */}
+      {/* Top Header Bar (Terminal punya baris status sendiri) */}
+      {!isTerminal && (
       <header
         className="sticky top-0 z-10 h-14 md:h-16 px-4 md:px-8 border-b flex items-center justify-between gap-4"
         style={{
@@ -289,9 +302,28 @@ export default function App() {
           </button>
         </div>
       </header>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10">
+      <main
+        className={
+          isTerminal
+            ? 'flex-1 w-full min-w-0 pb-14 md:pb-0'
+            : 'flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10'
+        }
+      >
+        {isTerminal && (
+          <TerminalView
+            ticks={ticks}
+            connectionState={connectionState}
+            initialSymbol={selectedSymbol}
+            timeframe={timeframe}
+            onChangeTimeframe={handleChangeTimeframe}
+            onRetrySymbol={handleRetrySymbol}
+            onGoToRadar={() => handleSelectTab('radar')}
+          />
+        )}
+
         {activeTab === 'radar' && (
           <RadarView
             ticks={ticks}
@@ -336,6 +368,8 @@ export default function App() {
             onChangeThemePreference={handleChangeThemePreference}
             defaultTimeframe={timeframe}
             onChangeDefaultTimeframe={handleChangeTimeframe}
+            startInTerminal={startInTerminal}
+            onChangeStartInTerminal={handleChangeStartInTerminal}
           />
         )}
       </main>

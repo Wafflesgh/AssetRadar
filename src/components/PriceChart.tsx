@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BarChart3, LineChart } from 'lucide-react';
 import { AssetConfig, TimeframeInterval } from '../config/assets.ts';
 import { TradingViewChart } from './TradingViewChart.tsx';
-import { FallbackChart } from './FallbackChart.tsx';
+import { ChartTheme, FallbackChart } from './FallbackChart.tsx';
 
 export type ChartSource = 'tradingview' | 'alternatif';
 
@@ -11,18 +11,26 @@ export interface PriceChartProps {
   /** Simbol widget TradingView; default asset.tvSymbol (bisa diganti ke simbol cadangan). */
   tvSymbol?: string;
   interval: TimeframeInterval;
-  theme: 'light' | 'dark';
+  /** 'terminal' = widget TradingView gelap dengan warna panel Terminal. */
+  theme: ChartTheme;
   height?: number;
 }
 
 /**
- * Sumber otomatis: widget TradingView untuk IDX:COMPOSITE hanya menyediakan D/W, dan kegagalan
- * widget (iframe lintas origin) tidak bisa dideteksi andal. Jadi aset usesBackupChartFallback
- * + timeframe intraday → grafik alternatif; selain itu → TradingView.
+ * Sumber otomatis. Kegagalan widget (iframe lintas origin) tidak bisa dideteksi andal, jadi:
+ * - tvWidgetUnsupported (crypto INDODAX:*IDR ditolak widget) → selalu grafik alternatif;
+ * - usesBackupChartFallback (IDX:COMPOSITE hanya D/W) + intraday → grafik alternatif;
+ * - selain itu → TradingView.
  */
 export function getAutoChartSource(asset: AssetConfig, interval: TimeframeInterval): ChartSource {
+  if (asset.tvWidgetUnsupported) return 'alternatif';
   const intraday = interval !== 'D' && interval !== 'W';
   return asset.usesBackupChartFallback && intraday ? 'alternatif' : 'tradingview';
+}
+
+/** Simbol widget default: simbol cadangan jika simbol utama ditolak widget. */
+export function getDefaultTvSymbol(asset: AssetConfig): string {
+  return asset.tvWidgetUnsupported && asset.tvFallbackSymbol ? asset.tvFallbackSymbol : asset.tvSymbol;
 }
 
 export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceChartProps) {
@@ -35,6 +43,7 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
   const altSourceLabel = asset.indodaxPair ? 'Indodax' : 'Yahoo Finance';
   const canUseAlternative = Boolean(asset.indodaxPair || asset.yahooSymbol);
   const showAlternative = source === 'alternatif' && canUseAlternative;
+  const activeTvSymbol = tvSymbol ?? getDefaultTvSymbol(asset);
 
   const toggleSource = () =>
     setOverride({ symbol: asset.symbol, source: showAlternative ? 'tradingview' : 'alternatif' });
@@ -49,11 +58,16 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
           <span>
             Sumber grafik:{' '}
             <strong style={{ color: 'var(--text-primary)' }}>
-              {showAlternative ? `Alternatif (${altSourceLabel})` : 'TradingView'}
+              {showAlternative ? `Alternatif (${altSourceLabel})` : `TradingView (${activeTvSymbol})`}
             </strong>
             {showAlternative && autoSource === 'alternatif' && override?.symbol !== asset.symbol && (
-              <> · dipilih otomatis untuk timeframe ini</>
+              <>
+                {' '}
+                · dipilih otomatis
+                {asset.tvWidgetUnsupported ? ' (simbol Rupiah tidak tersedia di widget TradingView)' : ' untuk timeframe ini'}
+              </>
             )}
+            {!showAlternative && activeTvSymbol.endsWith('USDT') && <> · harga dalam USDT</>}
           </span>
           <button
             type="button"
@@ -85,10 +99,12 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
         />
       ) : (
         <TradingViewChart
-          symbol={tvSymbol ?? asset.tvSymbol}
+          symbol={activeTvSymbol}
           interval={interval}
-          theme={theme}
+          theme={theme === 'light' ? 'light' : 'dark'}
           height={height}
+          backgroundColor={theme === 'terminal' ? '#0B0F14' : undefined}
+          gridColor={theme === 'terminal' ? '#1F2937' : undefined}
         />
       )}
     </div>

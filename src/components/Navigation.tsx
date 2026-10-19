@@ -1,8 +1,8 @@
-import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart } from 'lucide-react';
+import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart, SquareTerminal } from 'lucide-react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan' | 'terminal';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -21,6 +21,7 @@ interface NavItem {
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'radar', label: 'Radar', icon: Radar },
+  { id: 'terminal', label: 'Terminal', icon: SquareTerminal },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   { id: 'risiko', label: 'Profil Risiko', icon: ShieldAlert },
   { id: 'pengaturan', label: 'Pengaturan', icon: Settings },

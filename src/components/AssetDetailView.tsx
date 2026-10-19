@@ -40,12 +40,13 @@ export function AssetDetailView({
   isWatchlisted,
   onToggleWatchlist,
 }: AssetDetailViewProps) {
-  const [useFallbackSymbol, setUseFallbackSymbol] = useState(false);
+  // Simbol utama yang ditolak widget TradingView langsung memakai simbol cadangan
+  const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
 
   // Reset fallback toggle when switching assets
   useEffect(() => {
-    setUseFallbackSymbol(false);
-  }, [asset.symbol]);
+    setUseFallbackSymbol(Boolean(asset.tvWidgetUnsupported));
+  }, [asset.symbol, asset.tvWidgetUnsupported]);
 
   const activeTvSymbol =
     useFallbackSymbol && asset.tvFallbackSymbol

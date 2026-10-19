@@ -7,9 +7,19 @@ export interface TradingViewChartProps {
   theme: 'light' | 'dark';
   /** Tinggi tetap dalam piksel (mis. panel Terminal); tanpa ini memakai tinggi standar halaman Detail. */
   height?: number;
+  /** Warna latar & grid widget (opsi resmi widget), dipakai mode Terminal. */
+  backgroundColor?: string;
+  gridColor?: string;
 }
 
-export function TradingViewChart({ symbol, interval, theme, height }: TradingViewChartProps) {
+export function TradingViewChart({
+  symbol,
+  interval,
+  theme,
+  height,
+  backgroundColor,
+  gridColor,
+}: TradingViewChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +77,8 @@ export function TradingViewChart({ symbol, interval, theme, height }: TradingVie
       save_image: false,
       calendar: false,
       support_host: 'https://www.tradingview.com',
+      ...(backgroundColor ? { backgroundColor } : {}),
+      ...(gridColor ? { gridColor } : {}),
     };
 
     script.textContent = JSON.stringify(widgetConfig);
@@ -81,7 +93,7 @@ export function TradingViewChart({ symbol, interval, theme, height }: TradingVie
         container.innerHTML = '';
       }
     };
-  }, [symbol, interval, theme]);
+  }, [symbol, interval, theme, backgroundColor, gridColor]);
 
   return (
     <div

@@ -1,6 +1,6 @@
 import { ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan' | 'terminal';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -8,7 +8,7 @@ export interface ParsedRoute {
 }
 
 /**
- * Parses URL hash string (e.g. "#/radar", "#/aset/btc", "#/watchlist", "#/risiko", "#/pengaturan")
+ * Parses URL hash string (e.g. "#/radar", "#/aset/btc", "#/watchlist", "#/risiko", "#/pengaturan", "#/terminal")
  * into a structured route state.
  */
 export function parseHashRoute(hash: string): ParsedRoute {
@@ -24,6 +24,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (cleaned === 'pengaturan') {
     return { tab: 'pengaturan' };
+  }
+  if (cleaned === 'terminal') {
+    return { tab: 'terminal' };
   }
   if (cleaned.startsWith('aset/')) {
     const rawId = decodeURIComponent(cleaned.slice('aset/'.length)).trim();
@@ -55,6 +58,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/risiko';
     case 'pengaturan':
       return '#/pengaturan';
+    case 'terminal':
+      return '#/terminal';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];

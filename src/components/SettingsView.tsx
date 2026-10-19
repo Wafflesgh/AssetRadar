@@ -1,4 +1,4 @@
-import { Sun, Moon, Monitor, Clock, Info, Database } from 'lucide-react';
+import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal } from 'lucide-react';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
 
@@ -7,6 +7,8 @@ interface SettingsViewProps {
   onChangeThemePreference: (theme: ThemePreference) => void;
   defaultTimeframe: TimeframeInterval;
   onChangeDefaultTimeframe: (interval: TimeframeInterval) => void;
+  startInTerminal: boolean;
+  onChangeStartInTerminal: (enabled: boolean) => void;
 }
 
 export function SettingsView({
@@ -14,6 +16,8 @@ export function SettingsView({
   onChangeThemePreference,
   defaultTimeframe,
   onChangeDefaultTimeframe,
+  startInTerminal,
+  onChangeStartInTerminal,
 }: SettingsViewProps) {
   const themeOptions: { value: ThemePreference; label: string; desc: string; icon: typeof Sun }[] = [
     {
@@ -164,6 +168,55 @@ export function SettingsView({
             );
           })}
         </div>
+      </section>
+
+      {/* Start in Terminal Mode */}
+      <section
+        aria-labelledby="settings-terminal-heading"
+        className="p-5 md:p-6 rounded-xl border flex items-start justify-between gap-4"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-subtle)',
+        }}
+      >
+        <div className="flex items-start gap-2.5">
+          <SquareTerminal
+            className="w-5 h-5 shrink-0 mt-0.5"
+            style={{ color: 'var(--accent-radar)' }}
+          />
+          <div>
+            <h2 id="settings-terminal-heading" className="text-base font-bold">
+              Buka aplikasi di mode Terminal
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              Saat aplikasi dibuka tanpa alamat halaman tertentu, langsung tampilkan mode Terminal
+              (tampilan padat ala Bloomberg) alih-alih Radar.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={startInTerminal}
+          aria-labelledby="settings-terminal-heading"
+          onClick={() => onChangeStartInTerminal(!startInTerminal)}
+          className="relative shrink-0 w-11 h-6 rounded-full border transition-colors"
+          style={{
+            backgroundColor: startInTerminal ? 'var(--accent-radar)' : 'var(--bg-surface-subtle)',
+            borderColor: startInTerminal ? 'var(--accent-radar)' : 'var(--border-subtle)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            className="absolute top-0.5 rounded-full transition-all"
+            style={{
+              left: startInTerminal ? 'calc(100% - 1.25rem)' : '0.125rem',
+              width: '1.125rem',
+              height: '1.125rem',
+              backgroundColor: startInTerminal ? '#0B1220' : 'var(--text-secondary)',
+            }}
+          />
+        </button>
       </section>
 
       {/* About Application, Data Sources & Disclaimer (Spec Section 5.5 & Section 9) */}

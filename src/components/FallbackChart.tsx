@@ -17,7 +17,7 @@ export interface FallbackChartProps {
   /** Simbol aplikasi, contoh "^JKSE" atau "BTC/IDR". */
   symbol: string;
   interval: TimeframeInterval;
-  theme: 'light' | 'dark';
+  theme: ChartTheme;
   /** Tinggi tetap dalam piksel; tanpa ini memakai tinggi standar halaman Detail. */
   height?: number;
   /** Nama sumber candle untuk keterangan, contoh "Yahoo Finance" atau "Indodax". */
@@ -44,7 +44,19 @@ const CHART_COLORS = {
     volumeUp: 'rgba(34, 197, 94, 0.35)',
     volumeDown: 'rgba(248, 113, 113, 0.35)',
   },
+  // Mode Terminal (lihat .terminal-root di index.css)
+  terminal: {
+    background: '#0B0F14',
+    text: '#9CA3AF',
+    grid: '#1F2937',
+    up: '#22C55E',
+    down: '#EF4444',
+    volumeUp: 'rgba(34, 197, 94, 0.35)',
+    volumeDown: 'rgba(239, 68, 68, 0.35)',
+  },
 } as const;
+
+export type ChartTheme = keyof typeof CHART_COLORS;
 
 const INTRADAY_REFRESH_MS = 60_000;
 

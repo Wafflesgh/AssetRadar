@@ -102,6 +102,11 @@ export interface AssetConfig {
   tvSymbol: string;
   tvFallbackSymbol?: string;
   usesBackupChartFallback?: boolean;
+  /**
+   * Widget TradingView menolak tvSymbol ("Simbol ini tidak tersedia"; INDODAX:*IDR, dicek
+   * 19 Okt 2026): grafik alternatif dipakai otomatis, dan pilihan TradingView memakai tvFallbackSymbol.
+   */
+  tvWidgetUnsupported?: boolean;
   sourceLabel: string;
   unitLabel: string;
   description: string;
@@ -120,6 +125,7 @@ export const ASSETS: AssetConfig[] = [
     currency: 'IDR',
     tvSymbol: 'INDODAX:BTCIDR',
     tvFallbackSymbol: 'BINANCE:BTCUSDT',
+    tvWidgetUnsupported: true,
     sourceLabel: 'Indodax',
     unitLabel: 'Rupiah (IDR)',
     description:
@@ -137,6 +143,7 @@ export const ASSETS: AssetConfig[] = [
     currency: 'IDR',
     tvSymbol: 'INDODAX:ETHIDR',
     tvFallbackSymbol: 'BINANCE:ETHUSDT',
+    tvWidgetUnsupported: true,
     sourceLabel: 'Indodax',
     unitLabel: 'Rupiah (IDR)',
     description:
@@ -154,6 +161,7 @@ export const ASSETS: AssetConfig[] = [
     currency: 'IDR',
     tvSymbol: 'INDODAX:SOLIDR',
     tvFallbackSymbol: 'BINANCE:SOLUSDT',
+    tvWidgetUnsupported: true,
     sourceLabel: 'Indodax',
     unitLabel: 'Rupiah (IDR)',
     description:

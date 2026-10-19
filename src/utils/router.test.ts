@@ -8,6 +8,7 @@ test('parseHashRoute parses all main routes and asset detail routes', () => {
   assert.deepEqual(parseHashRoute('#/watchlist'), { tab: 'watchlist' });
   assert.deepEqual(parseHashRoute('#/risiko'), { tab: 'risiko' });
   assert.deepEqual(parseHashRoute('#/pengaturan'), { tab: 'pengaturan' });
+  assert.deepEqual(parseHashRoute('#/terminal'), { tab: 'terminal' });
 
   assert.deepEqual(parseHashRoute('#/aset/btc'), {
     tab: 'detail',
@@ -28,6 +29,7 @@ test('buildHashRoute builds canonical hash strings', () => {
   assert.equal(buildHashRoute('watchlist'), '#/watchlist');
   assert.equal(buildHashRoute('risiko'), '#/risiko');
   assert.equal(buildHashRoute('pengaturan'), '#/pengaturan');
+  assert.equal(buildHashRoute('terminal'), '#/terminal');
   assert.equal(buildHashRoute('detail', 'BTC/IDR'), '#/aset/btc');
   assert.equal(buildHashRoute('detail', '^JKSE'), '#/aset/ihsg');
 });

@@ -38,13 +38,90 @@
   color-scheme: dark;
 }
 
+/* Mode Terminal (gaya Bloomberg): selalu gelap. Token aplikasi didefinisikan ulang agar
+   komponen bersama (navigasi, grafik, tombol) ikut bergaya Terminal. */
+.terminal-root {
+  --t-bg: #05070A;
+  --t-panel: #0B0F14;
+  --t-panel-head: #111827;
+  --t-line: #1F2937;
+  --t-text: #E5E7EB;
+  --t-muted: #9CA3AF;
+  --t-amber: #F59E0B;
+  --t-amber-soft: rgba(245, 158, 11, 0.14);
+  --t-up: #22C55E;
+  --t-down: #EF4444;
+
+  --bg-canvas: var(--t-bg);
+  --bg-surface: var(--t-panel);
+  --bg-surface-subtle: var(--t-panel-head);
+  --border-subtle: var(--t-line);
+  --text-primary: var(--t-text);
+  --text-secondary: var(--t-muted);
+  --accent-radar: var(--t-amber);
+  --accent-radar-soft: var(--t-amber-soft);
+  --color-up: var(--t-up);
+  --color-up-soft: rgba(34, 197, 94, 0.14);
+  --color-down: var(--t-down);
+  --color-down-soft: rgba(239, 68, 68, 0.14);
+  --color-gold: var(--t-amber);
+  --color-gold-soft: var(--t-amber-soft);
+  color-scheme: dark;
+}
+
+.terminal-root .terminal-mono,
+.terminal-root .terminal-mono * {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-root [data-testid="tradingview-chart-container"],
+.terminal-root [data-testid="fallback-chart-container"] {
+  border-radius: 2px;
+}
+
+@keyframes terminal-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.terminal-ticker-track {
+  animation: terminal-ticker 45s linear infinite;
+}
+
+.terminal-ticker:hover .terminal-ticker-track,
+.terminal-ticker.is-paused .terminal-ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes terminal-flash-up {
+  from { background-color: rgba(34, 197, 94, 0.35); }
+  to { background-color: transparent; }
+}
+
+@keyframes terminal-flash-down {
+  from { background-color: rgba(239, 68, 68, 0.35); }
+  to { background-color: transparent; }
+}
+
+.terminal-flash-up { animation: terminal-flash-up 0.9s ease-out; }
+.terminal-flash-down { animation: terminal-flash-down 0.9s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-ticker-track { animation: none; flex-wrap: wrap; width: 100%; }
+  .terminal-ticker-dup { display: none; }
+  .terminal-flash-up,
+  .terminal-flash-down { animation: none; }
+}
+
 @layer base {
   html,
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    overflow-x: hidden;
+    /* clip, bukan hidden: hidden menjadikan body wadah gulir sehingga header sticky tidak menempel */
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
   }
 }
