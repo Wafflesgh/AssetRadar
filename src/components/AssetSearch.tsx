@@ -1,12 +1,16 @@
 /**
  * AssetSearch.tsx — Search box with a results dropdown for picking any of the tracked assets
  * by code, name or keyword ("bbca", "nvidia", "crude oil", "nikkei"). Keyboard friendly:
- * ↑/↓ to move, Enter to pick, Esc to close. Results show the live price and 24h change.
+ * ↑/↓ to move, Enter to pick, Esc to close. Results show the live price and 24h change (stocks
+ * outside the core price loop are priced as soon as they appear), and the header search also
+ * offers the last 5 picks.
  */
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Search, X } from 'lucide-react';
-import { ASSET_GROUPS, AssetConfig, PriceTick, searchAssets } from '../config/assets.ts';
+import { Clock, Search, X } from 'lucide-react';
+import { ASSET_GROUPS, AssetConfig, PriceTick, getAssetBySymbol, searchAssets } from '../config/assets.ts';
+import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
 import { formatAssetPrice, formatPercent } from '../utils/format.ts';
+import { getRecentSearches, saveRecentSearch } from '../utils/storage.ts';
 
 const GROUP_LABEL: Record<string, string> = Object.fromEntries(ASSET_GROUPS.map((g) => [g.key, g.title]));
 
@@ -20,6 +24,15 @@ interface AssetSearchProps {
   selected?: AssetConfig;
   className?: string;
   limit?: number;
+  /** id of the input (so a keyboard shortcut can focus it). */
+  inputId?: string;
+  autoFocus?: boolean;
+  /** Remember picks and show the last 5 when the box is empty. */
+  recent?: boolean;
+  /** Called after Escape (e.g. to close a full-screen search). */
+  onEscape?: () => void;
+  /** Render the results in the page flow instead of a floating dropdown (full-screen search). */
+  inline?: boolean;
 }
 
 export function AssetSearch({
@@ -30,15 +43,25 @@ export function AssetSearch({
   selected,
   className = '',
   limit = 12,
+  inputId,
+  autoFocus = false,
+  recent = false,
+  onEscape,
+  inline = false,
 }: AssetSearchProps) {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoFocus);
+  const [recentSymbols, setRecentSymbols] = useState<string[]>(() => (recent ? getRecentSearches() : []));
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
 
-  const results = useMemo(() => (query.trim() ? searchAssets(query, limit) : []), [query, limit]);
+  const results = useMemo(() => {
+    if (query.trim()) return searchAssets(query, limit);
+    return recentSymbols.map((s) => getAssetBySymbol(s)).filter((a): a is AssetConfig => Boolean(a));
+  }, [query, limit, recentSymbols]);
+  const showingRecent = !query.trim() && results.length > 0;
 
   useEffect(() => setActive(0), [query]);
 
@@ -53,6 +76,10 @@ export function AssetSearch({
   }, [open]);
 
   const pick = (asset: AssetConfig) => {
+    if (recent) {
+      saveRecentSearch(asset.symbol);
+      setRecentSymbols(getRecentSearches());
+    }
     onSelect(asset);
     setQuery('');
     setOpen(false);
@@ -75,10 +102,13 @@ export function AssetSearch({
     } else if (e.key === 'Escape') {
       setQuery('');
       setOpen(false);
+      onEscape?.();
     }
   };
 
-  const showList = open && query.trim().length > 0;
+  const showList = open && (query.trim().length > 0 || showingRecent);
+  // Price what is listed (IDX universe stocks are not in the core loop)
+  useTrackedSymbols(showList ? results.map((r) => r.symbol) : []);
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
@@ -89,6 +119,8 @@ export function AssetSearch({
         <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--text-secondary)' }} aria-hidden="true" />
         <input
           ref={inputRef}
+          id={inputId}
+          autoFocus={autoFocus}
           type="search"
           role="combobox"
           aria-label={label}
@@ -129,9 +161,18 @@ export function AssetSearch({
           id={listId}
           role="listbox"
           aria-label="Matching assets"
-          className="absolute z-40 left-0 right-0 mt-1 max-h-80 overflow-y-auto rounded-lg border shadow-lg"
+          className={
+            inline
+              ? 'mt-2 overflow-y-auto rounded-lg border'
+              : 'absolute z-40 left-0 right-0 mt-1 max-h-80 overflow-y-auto rounded-lg border shadow-lg'
+          }
           style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
         >
+          {showingRecent && (
+            <li role="presentation" className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+              <Clock className="w-3 h-3" /> Recent
+            </li>
+          )}
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
               No asset matches "{query.trim()}".
@@ -158,12 +199,12 @@ export function AssetSearch({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono-num font-bold">{asset.code}</span>
+                      <span className="font-mono-num font-bold">{asset.shortName.length <= 6 ? asset.shortName : asset.code}</span>
                       <span
-                        className="text-[10px] px-1.5 py-0.5 rounded"
+                        className="text-[10px] px-1.5 py-0.5 rounded truncate"
                         style={{ backgroundColor: 'var(--bg-surface-subtle)', color: 'var(--text-secondary)' }}
                       >
-                        {GROUP_LABEL[asset.group]}
+                        {asset.sector ? `${GROUP_LABEL[asset.group]} · ${asset.sector}` : GROUP_LABEL[asset.group]}
                       </span>
                     </div>
                     <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>

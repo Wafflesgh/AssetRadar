@@ -20,6 +20,7 @@ const STORAGE_KEYS = {
   AI_PREFS: 'assetradar_ai_prefs',
   SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
+  RECENT_SEARCHES: 'assetradar_recent_searches',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -104,6 +105,21 @@ export function getInstallBannerDismissed(): boolean {
 
 export function saveInstallBannerDismissed(): void {
   safeSet(STORAGE_KEYS.INSTALL_BANNER_DISMISSED, '1');
+}
+
+/** Last 5 assets picked from the search box (symbols, newest first). */
+export function getRecentSearches(): string[] {
+  try {
+    const parsed = JSON.parse(safeGet(STORAGE_KEYS.RECENT_SEARCHES) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string').slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveRecentSearch(symbol: string): void {
+  const next = [symbol, ...getRecentSearches().filter((s) => s !== symbol)].slice(0, 5);
+  safeSet(STORAGE_KEYS.RECENT_SEARCHES, JSON.stringify(next));
 }
 
 export interface SavedRiskResult {

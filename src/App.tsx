@@ -42,6 +42,7 @@ import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
 import { AdvisorView } from './components/AdvisorView.tsx';
 import { QuantSimView } from './components/QuantSimView.tsx';
 import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
+import { HeaderSearch } from './components/HeaderSearch.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
@@ -308,15 +309,17 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right: Connection Status Indicator & Theme Switch */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Right: search, connection status and theme switch */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <HeaderSearch ticks={ticks} onSelectAsset={handleSelectAsset} />
           <div
             data-testid="connection-indicator"
             className="flex items-center gap-1.5 text-xs font-semibold"
             style={{ color: connColor }}
+            title={connLabel}
           >
-            <Wifi className="w-3.5 h-3.5 shrink-0" />
-            <span>{connLabel}</span>
+            <Wifi className="w-3.5 h-3.5 shrink-0" aria-label={connLabel} />
+            <span className="hidden sm:inline">{connLabel}</span>
           </div>
 
           <button
