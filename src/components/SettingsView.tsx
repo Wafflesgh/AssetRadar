@@ -240,9 +240,10 @@ export function SettingsView({
 
         <p className="text-xs md:text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
           <strong style={{ color: 'var(--text-primary)' }}>AssetRadar</strong> is a personal app
-          for tracking the price moves of gold, stocks (JCI), the USD/IDR exchange rate, and crypto
-          assets in one unified radar view. It does not handle buying or selling and does not
-          require a login.
+          for tracking more than 100 assets — the world's largest companies, Indonesian stocks,
+          crypto, commodities, stock indices and currencies — in one radar view, with technical and
+          fundamental analysis, an AI screen and a portfolio simulator. It does not handle buying or
+          selling and does not require a login.
         </p>
 
         <div
@@ -250,18 +251,19 @@ export function SettingsView({
           style={{ borderColor: 'var(--border-subtle)' }}
         >
           <div className="space-y-1">
-            <h3 className="font-bold">1. Crypto (BTC, ETH, SOL)</h3>
+            <h3 className="font-bold">1. Crypto (20 coins)</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Data from the official <strong>Indodax</strong> public API &amp; WebSocket, in
-              Rupiah (IDR).
+              Live prices from the official <strong>Indodax</strong> public API &amp; WebSocket, in
+              Rupiah (IDR). Market caps and 1h/7d changes from <strong>CoinGecko</strong>.
             </p>
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold">2. JCI Stocks (^JKSE) &amp; Forex (USD/IDR)</h3>
+            <h3 className="font-bold">2. Stocks, indices, commodities &amp; currencies</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Data from <strong>Yahoo Finance</strong>. Note: JCI index data is{' '}
-              <strong>delayed</strong> and only updates during Indonesia Stock Exchange trading
-              hours (Mon–Fri 09:00–16:00 WIB).
+              Quotes, history and annual reports (for the Piotroski F-score) from{' '}
+              <strong>Yahoo Finance</strong>, refreshed every 10–15 seconds while a market is open.
+              Exchange data (including JCI and Indonesian stocks) is <strong>delayed</strong> and
+              only moves during trading hours. Market cap = live price × shares outstanding.
             </p>
           </div>
           <div className="space-y-1">
@@ -281,8 +283,16 @@ export function SettingsView({
           <div className="space-y-1">
             <h3 className="font-bold">5. News</h3>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Headlines from <strong>Google News</strong>, shown in the original language of
-              each article (Indonesian or English).
+              Headlines from <strong>Google News</strong> and publisher feeds (CNBC, CNBC Indonesia,
+              ANTARA, CoinDesk, Cointelegraph, FXStreet, Investing.com, BBC, Al Jazeera), shown in the
+              original language of each article (Indonesian or English).
+            </p>
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-bold">6. Not available</h3>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Crude palm oil (CPO) and coal have no free live price source, so they are not listed
+              rather than showing stale numbers.
             </p>
           </div>
         </div>
