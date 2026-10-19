@@ -52,6 +52,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -310,6 +311,7 @@ export default function App() {
               {activeTab === 'idx' && 'Indonesian Stocks'}
               {activeTab === 'portfolio' && 'My Portfolio'}
               {activeTab === 'calendar' && 'IDX Corporate Calendar'}
+              {activeTab === 'macro' && 'Indonesia Macro'}
             </span>
           </div>
         </div>
@@ -436,6 +438,17 @@ export default function App() {
           </Suspense>
         )}
         {activeTab === 'calendar' && <IdxCalendarView onSelectAsset={handleSelectAsset} watchlist={watchlist} />}
+        {activeTab === 'macro' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <IndonesiaMacroView />
+          </Suspense>
+        )}
         {activeTab === 'idx' && (
           <IndonesianStocksView
             ticks={ticks}

@@ -20,6 +20,7 @@ import {
 import type { AssetAnalysis } from '../ai/analysis.ts';
 import type { QuantFactorsPayload, QuantUniverse } from '../ai/factorPortfolio.ts';
 import type { CalendarEvent } from '../utils/corporateCalendar.ts';
+import type { MacroPoint, MacroSeries } from '../utils/macro.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 
@@ -614,6 +615,21 @@ export interface CalendarResponse {
 /** Corporate calendar for one stock, or (no symbol) every IDX stock from -30 to +90 days. */
 export async function fetchCorporateCalendar(symbol?: string): Promise<CalendarResponse> {
   const res = await fetch(symbol ? `/api/idx/calendar?symbol=${encodeURIComponent(symbol)}` : '/api/idx/calendar');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export interface IndonesiaMacro {
+  series: MacroSeries[];
+  biRate: MacroPoint[];
+  unavailable: Array<{ label: string; reason: string }>;
+  failed: string[];
+  generatedAt: number;
+}
+
+/** Indonesia macro indicators (Bank Indonesia, FRED, World Bank; cached 6 h on the server). */
+export async function fetchIndonesiaMacro(): Promise<IndonesiaMacro> {
+  const res = await fetch('/api/macro/indonesia');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

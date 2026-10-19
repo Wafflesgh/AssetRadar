@@ -2,7 +2,8 @@
  * indicators.ts — Pure technical/macro feature engineering for the AI outlook model.
  * Every feature at day t only uses data up to and including t (no look-ahead). Series are
  * daily closes aligned to the asset's own trading calendar; macro series (T-bill yield,
- * 10-year yield, dollar index) are forward-filled onto that calendar by date.
+ * 10-year yield, dollar index, and for Indonesian assets the policy-rate proxy and inflation,
+ * dated by their release) are forward-filled onto that calendar by date.
  */
 
 export interface DailyBar {
@@ -95,6 +96,9 @@ export const FEATURE_NAMES = [
   'yield10y20',
   'dollar20',
   'fedStance',
+  // Indonesian assets only (appended when the inputs are given)
+  'idRate60',
+  'idInflation60',
 ] as const;
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
@@ -114,6 +118,8 @@ export const FEATURE_LABELS: Record<FeatureName, string> = {
   yield10y20: 'US 10-year yield change (1M)',
   dollar20: 'US dollar index change (1M)',
   fedStance: 'Fed stance (last decisions)',
+  idRate60: 'Indonesian policy rate change (3M)',
+  idInflation60: 'Indonesian inflation change (3M)',
 };
 
 export interface MacroInputs {
@@ -125,6 +131,10 @@ export interface MacroInputs {
   dollar: Array<number | null>;
   /** Fed stance per date: +1 recent cuts (easing), −1 recent hikes (tightening), 0 neutral. */
   fedStance: number[];
+  /** Indonesian interbank overnight rate (%, BI-Rate proxy), dated by release. */
+  idRate?: Array<number | null>;
+  /** Indonesian CPI inflation y/y (%), dated by release. */
+  idInflation?: Array<number | null>;
 }
 
 const WARMUP = 252;
@@ -149,6 +159,7 @@ export function featuresAt(closes: number[], t: number, macro: MacroInputs): num
     ratioChange(macro.dollar, t, 20) ?? 0,
     macro.fedStance[t] ?? 0,
   ];
+  if (macro.idRate && macro.idInflation) values.push(diff(macro.idRate, t, 60), diff(macro.idInflation, t, 60));
   if (values.some((v) => v === null || !Number.isFinite(v))) return null;
   return values as number[];
 }

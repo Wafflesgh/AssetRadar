@@ -60,3 +60,8 @@ test('calendar route', () => {
   assert.deepEqual(parseHashRoute('#/calendar'), { tab: 'calendar' });
   assert.equal(buildHashRoute('calendar'), '#/calendar');
 });
+
+test('macro route', () => {
+  assert.deepEqual(parseHashRoute('#/macro'), { tab: 'macro' });
+  assert.equal(buildHashRoute('macro'), '#/macro');
+});

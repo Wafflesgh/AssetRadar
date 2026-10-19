@@ -19,6 +19,7 @@ import {
   Landmark,
   Wallet,
   CalendarDays,
+  Building2,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -26,7 +27,7 @@ import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -57,6 +58,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit, mobile: true },
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },
   { id: 'calendar', label: 'IDX Calendar', shortLabel: 'Calendar', icon: CalendarDays },
+  { id: 'macro', label: 'ID Macro', icon: Building2 },
   { id: 'quant', label: 'Quant Lab', shortLabel: 'Quant', icon: FlaskConical },
   { id: 'watchlist', label: 'Watchlist', shortLabel: 'Watch', icon: Star },
   { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },

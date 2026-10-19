@@ -1,12 +1,13 @@
 /**
  * MarketFunctionPanels.tsx — Terminal market functions: MOV (biggest movers over the live
  * 5-minute window, 1H, 24H and 7D), WEI (world equity indices with session status and local
- * time), FXC (currency cross-rate matrix built from the Rupiah pairs) and CURV (US Treasury
- * yield curve with the 10Y–3M spread).
+ * time), FXC (currency cross-rate matrix built from the Rupiah pairs), CURV (US Treasury
+ * yield curve with the 10Y–3M spread) and IDMACRO (Indonesia macro snapshot).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
-import { fetchYieldCurve, type YieldCurve } from '../../services/marketDataService.ts';
+import { fetchIndonesiaMacro, fetchYieldCurve, type IndonesiaMacro, type YieldCurve } from '../../services/marketDataService.ts';
+import { latest } from '../../utils/macro.ts';
 import { EXCHANGE_HOURS, isExchangeOpen } from '../../utils/marketHours.ts';
 import { MOVER_WINDOWS, MoverWindow, changeForWindow, liveHistory, rankMovers } from '../../utils/movers.ts';
 import { formatNumber } from '../../utils/format.ts';
@@ -311,6 +312,61 @@ export function YieldCurvePanel({ highlighted, className }: { highlighted?: bool
             </p>
           )}
         </div>
+      )}
+    </TerminalPanel>
+  );
+}
+
+// ---- IDMACRO --------------------------------------------------------------------------------
+
+export function IdMacroPanel({ highlighted, className }: { highlighted?: boolean; className?: string }) {
+  const [data, setData] = useState<IndonesiaMacro | null>(null);
+  const [error, setError] = useState(false);
+  const load = () =>
+    fetchIndonesiaMacro()
+      .then((d) => {
+        setData(d);
+        setError(false);
+      })
+      .catch(() => setError(true));
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30 * 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const bi = data?.biRate.at(-1);
+  return (
+    <TerminalPanel id="panel-idmacro" className={className} title="ID Macro" subtitle="IDMACRO · Bank Indonesia, FRED, World Bank" highlighted={highlighted}>
+      {error && !data ? (
+        <PanelMessage kind="error" onRetry={load} />
+      ) : !data ? (
+        <PanelMessage kind="loading" />
+      ) : (
+        <table className="w-full text-[11px]">
+          <tbody>
+            {bi && (
+              <tr className="border-t" style={{ borderColor: 'var(--t-line)' }}>
+                <td className="px-2 py-1 font-bold" style={{ color: 'var(--t-amber)' }}>BI-RATE</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--t-text)' }}>{bi.value.toFixed(2)}%</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--t-muted)' }}>{bi.date}</td>
+              </tr>
+            )}
+            {data.series
+              .filter((s) => s.frequency !== 'annual')
+              .map((s) => {
+                const l = latest(s.points);
+                if (!l) return null;
+                const val = s.unit === 'Rp' ? formatNumber(l.value, 0) : s.unit === 'US$ bn' ? `$${l.value.toFixed(1)}B` : `${l.value.toFixed(2)}%`;
+                return (
+                  <tr key={s.id} className="border-t" style={{ borderColor: 'var(--t-line)' }}>
+                    <td className="px-2 py-1" style={{ color: 'var(--t-muted)' }}>{s.label.toUpperCase()}</td>
+                    <td className="px-2 py-1 text-right" style={{ color: 'var(--t-text)' }}>{val}</td>
+                    <td className="px-2 py-1 text-right whitespace-nowrap" style={{ color: 'var(--t-muted)' }}>{l.date.slice(0, 7)}</td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
       )}
     </TerminalPanel>
   );

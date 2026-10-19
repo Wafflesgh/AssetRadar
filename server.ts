@@ -44,6 +44,7 @@ import { eventStudy, fedStanceSeries, nextMeeting, resolveMeetings } from './src
 import {
   RISK_PROFILES,
   buildAssetOutlook,
+  compareIdMacro,
   rankOutlooks,
   type AssetOutlook,
   type RiskProfile,
@@ -62,6 +63,16 @@ import {
 } from './src/ai/fundamentals.ts';
 import { analyzeNewsDrivers } from './src/ai/newsDrivers.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
+import {
+  mergeSeries,
+  parseBiTable,
+  parseFredCsv,
+  parseWorldBank,
+  periodChange,
+  shiftToRelease,
+  type MacroPoint,
+  type MacroSeries,
+} from './src/utils/macro.ts';
 import {
   addDays,
   eventsBetween,
@@ -1845,6 +1856,153 @@ setInterval(() => {
   if (!calendarScan.running && now - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
 }, 60_000);
 
+// ---- Indonesia macro (Bank Indonesia pages, FRED, World Bank) -----------------------------
+
+const MACRO_TTL_MS = 6 * 3600_000;
+const macroCache: { entry: CacheEntry<IndonesiaMacroPayload> | null; pending: Promise<IndonesiaMacroPayload> | null } = { entry: null, pending: null };
+
+interface IndonesiaMacroPayload {
+  series: MacroSeries[];
+  /** Official BI-Rate decisions (latest first page of bi.go.id). */
+  biRate: MacroPoint[];
+  unavailable: Array<{ label: string; reason: string }>;
+  failed: string[];
+  generatedAt: number;
+}
+
+const FRED_URL = (id: string) => `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}`;
+const FRED_PAGE = (id: string) => `https://fred.stlouisfed.org/series/${id}`;
+
+async function fetchText(url: string): Promise<string> {
+  const res = await fetchWithTimeout(url, {}, 15_000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
+  const failed: string[] = [];
+  const get = async <T,>(id: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      console.warn(`[Macro] ${id} failed:`, err instanceof Error ? err.message : err);
+      failed.push(id);
+      return fallback;
+    }
+  };
+  const fred = (id: string) => get(id, async () => parseFredCsv(await fetchText(FRED_URL(id))), [] as MacroPoint[]);
+  const wb = (id: string) =>
+    get(id, async () => parseWorldBank(JSON.parse(await fetchText(`https://api.worldbank.org/v2/country/IDN/indicator/${id}?format=json&per_page=60`))), [] as MacroPoint[]);
+  const [biRate, biInflation, interbank, cpiYoy, cpiIndex, gdp, reserves, trade, usdIdr, wbInfl, wbGdp] = await Promise.all([
+    get('bi-rate', async () => parseBiTable(await fetchText('https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx')), [] as MacroPoint[]),
+    get('bi-inflation', async () => parseBiTable(await fetchText('https://www.bi.go.id/en/statistik/indikator/data-inflasi.aspx')), [] as MacroPoint[]),
+    fred('IRSTCI01IDM156N'),
+    fred('CPALTT01IDM659N'),
+    fred('IDNCPIALLMINMEI'),
+    fred('IDNGDPRQPSMEI'),
+    fred('TRESEGIDM052N'),
+    fred('XTNTVA01IDM667S'),
+    fred('CCUSMA02IDM618N'),
+    wb('FP.CPI.TOTL.ZG'),
+    wb('NY.GDP.MKTP.KD.ZG'),
+  ]);
+  const since = (pts: MacroPoint[], from = '2014-01-01') => pts.filter((p) => p.date >= from);
+  const series: MacroSeries[] = [
+    {
+      id: 'policyRate',
+      label: 'Interbank overnight rate (follows the BI-Rate)',
+      unit: '%',
+      frequency: 'monthly',
+      source: 'OECD via FRED',
+      sourceUrl: FRED_PAGE('IRSTCI01IDM156N'),
+      points: since(interbank),
+      note: 'Monthly average of the overnight interbank rate, which tracks Bank Indonesia\'s policy rate.',
+    },
+    {
+      id: 'inflationYoy',
+      label: 'Inflation, CPI year-on-year',
+      unit: '%',
+      frequency: 'monthly',
+      source: 'OECD via FRED; latest months from Bank Indonesia',
+      sourceUrl: 'https://www.bi.go.id/en/statistik/indikator/data-inflasi.aspx',
+      points: since(mergeSeries(cpiYoy, biInflation)),
+      note: 'FRED stops in April 2025 and bi.go.id lists only the latest 10 months, so months in between may be missing.',
+    },
+    {
+      id: 'inflationMom',
+      label: 'Inflation, CPI month-on-month',
+      unit: '%',
+      frequency: 'monthly',
+      source: 'OECD via FRED',
+      sourceUrl: FRED_PAGE('IDNCPIALLMINMEI'),
+      points: since(periodChange(cpiIndex)),
+      note: 'Computed from the CPI index; the free series currently ends in April 2025.',
+    },
+    { id: 'gdpYoy', label: 'Real GDP growth, year-on-year', unit: '%', frequency: 'quarterly', source: 'OECD via FRED', sourceUrl: FRED_PAGE('IDNGDPRQPSMEI'), points: since(gdp) },
+    {
+      id: 'reserves',
+      label: 'FX reserves (excluding gold)',
+      unit: 'US$ bn',
+      frequency: 'monthly',
+      source: 'IMF via FRED',
+      sourceUrl: FRED_PAGE('TRESEGIDM052N'),
+      points: since(reserves.map((p) => ({ date: p.date, value: p.value / 1000 }))),
+    },
+    {
+      id: 'tradeBalance',
+      label: 'Trade balance (seasonally adjusted)',
+      unit: 'US$ bn',
+      frequency: 'monthly',
+      source: 'OECD via FRED',
+      sourceUrl: FRED_PAGE('XTNTVA01IDM667S'),
+      points: since(trade.map((p) => ({ date: p.date, value: p.value / 1e9 }))),
+    },
+    { id: 'usdIdr', label: 'USD/IDR (monthly average)', unit: 'Rp', frequency: 'monthly', source: 'OECD via FRED', sourceUrl: FRED_PAGE('CCUSMA02IDM618N'), points: since(usdIdr) },
+    { id: 'inflationAnnual', label: 'Inflation, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=ID', points: since(wbInfl, '2000-01-01') },
+    { id: 'gdpAnnual', label: 'GDP growth, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG?locations=ID', points: since(wbGdp, '2000-01-01') },
+  ].filter((x) => x.points.length > 0) as MacroSeries[];
+  return {
+    series,
+    biRate,
+    unavailable: [
+      { label: '10-year government bond (SBN) yield', reason: 'No free source with current data was found.' },
+      { label: 'Manufacturing PMI', reason: 'PMI data is licensed (S&P Global) and not free.' },
+    ],
+    failed,
+    generatedAt: Date.now(),
+  };
+}
+
+async function getIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
+  if (macroCache.entry && macroCache.entry.expiresAt > Date.now()) return macroCache.entry.data;
+  if (!macroCache.pending) {
+    macroCache.pending = computeIndonesiaMacro()
+      .then((data) => {
+        macroCache.entry = { data, expiresAt: Date.now() + (data.failed.length ? 30 * 60_000 : MACRO_TTL_MS) };
+        return data;
+      })
+      .finally(() => {
+        macroCache.pending = null;
+      });
+  }
+  return macroCache.pending;
+}
+
+/** AI inputs dated by publication: interbank rate known ~2 months later, CPI ~1 month + 5 days. */
+async function indonesiaMacroBars(): Promise<{ rate: DailyBar[]; inflation: DailyBar[] } | null> {
+  const m = await getIndonesiaMacro().catch(() => null);
+  const rate = m?.series.find((x) => x.id === 'policyRate')?.points ?? [];
+  const infl = m?.series.find((x) => x.id === 'inflationYoy')?.points ?? [];
+  if (rate.length < 24 || infl.length < 24) return null;
+  const toBars = (pts: MacroPoint[]) => pts.map((p) => ({ date: p.date, close: p.value }));
+  return { rate: toBars(shiftToRelease(rate, 2)), inflation: toBars(shiftToRelease(infl, 1, 5)) };
+}
+
+/** IHSG, Indonesian stocks and Rupiah currency pairs (not crypto, which is only quoted in IDR). */
+function usesIdMacro(asset: Asset): boolean {
+  return asset.group === 'idStock' || asset.code === 'JCI' || (asset.group === 'forex' && asset.symbol.endsWith('/IDR'));
+}
+
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -1863,10 +2021,11 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   // Kick off price caches so live bars are available (ignore failures)
   await Promise.allSettled([getIndodaxPrices(), getYahooTicks(), ensureNewsFresh()]);
 
-  const [tbillBars, yieldBars, dollarBars] = await Promise.all([
+  const [tbillBars, yieldBars, dollarBars, idMacro] = await Promise.all([
     fetchYahooDaily('^IRX'),
     fetchYahooDaily('^TNX'),
     fetchYahooDaily('DX-Y.NYB'),
+    indonesiaMacroBars(),
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const meetings = resolveMeetings(tbillBars, today);
@@ -1883,16 +2042,25 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
         dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
         fedStance: fedStanceSeries(dates, meetings),
       };
-      const outlook = buildAssetOutlook({
-        symbol: asset.symbol,
-        code: asset.code,
-        name: asset.name,
-        group: asset.group,
-        bars,
-        macro,
-        horizonDays: horizon,
-        fedReactions: eventStudy(bars, meetings),
-      });
+      const build = (m: typeof macro & { idRate?: Array<number | null>; idInflation?: Array<number | null> }) =>
+        buildAssetOutlook({
+          symbol: asset.symbol,
+          code: asset.code,
+          name: asset.name,
+          group: asset.group,
+          bars,
+          macro: m,
+          horizonDays: horizon,
+          fedReactions: eventStudy(bars, meetings),
+        });
+      let outlook = build(macro);
+      // Indonesian assets: test BI-Rate proxy + inflation features; keep them only if they
+      // improved the validation period, and report the holdout either way
+      if (idMacro && usesIdMacro(asset)) {
+        const withId = build({ ...macro, idRate: alignByDate(dates, idMacro.rate), idInflation: alignByDate(dates, idMacro.inflation) });
+        const test = compareIdMacro(withId, outlook);
+        outlook = { ...(test?.used ? withId : outlook), idMacroTest: test };
+      }
       // Evidence-weighted analysis on the same bars (fundamentals from the 12 h cache, hub news only)
       const evidence = await analysisFromCloses(
         asset,
@@ -2302,6 +2470,15 @@ async function startServer() {
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Calendar unavailable' });
+    }
+  });
+
+  // 5h. Indonesia macro: BI-Rate, inflation, GDP growth, FX reserves, trade balance, USD/IDR
+  app.get('/api/macro/indonesia', async (_req, res) => {
+    try {
+      res.json(await getIndonesiaMacro());
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Macro data unavailable' });
     }
   });
 

@@ -460,6 +460,13 @@ function OutlookCard({
         </p>
       )}
 
+      {o.idMacroTest && (
+        <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }} title="Model accuracy on the holdout period with and without the Indonesian inputs">
+          BI-Rate & inflation inputs: {o.idMacroTest.used ? 'used' : 'not used'} (validation decided) · holdout accuracy{' '}
+          {pct(o.idMacroTest.holdoutAccuracyWith)} with vs {pct(o.idMacroTest.holdoutAccuracyWithout)} without
+        </p>
+      )}
+
       {o.reasons.length > 0 && (
         <ul className="text-[11px] space-y-0.5 font-semibold" style={{ color: meta.color }}>
           {o.reasons.map((r) => (
@@ -630,7 +637,14 @@ function Methodology({ open, onToggle }: { open: boolean; onToggle: () => void }
           <p>
             <strong style={{ color: 'var(--text-primary)' }}>Limits.</strong> Markets change; a
             pattern that worked can stop working. Fees, taxes and exchange rates are not included.
-            Bank Indonesia decisions are not modeled yet (no free historical data source).
+          </p>
+          <p>
+            <strong style={{ color: 'var(--text-primary)' }}>7. Indonesian macro.</strong> For IHSG,
+            Indonesian stocks and Rupiah currency pairs the model is also tested with the 3-month change
+            in the interbank overnight rate (which follows the BI-Rate; counted from two months after
+            the month, when the data is published) and in CPI inflation (from one month after). The
+            extra inputs are kept only when they improved the validation period; each card shows the
+            holdout accuracy with and without them, so you can see whether they really helped.
           </p>
         </div>
       )}

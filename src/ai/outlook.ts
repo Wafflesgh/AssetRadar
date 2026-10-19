@@ -71,9 +71,48 @@ export interface AssetOutlook {
     maxDrawdown: number;
   };
   fedReactions: EventReaction[];
+  /** The logistic model's out-of-sample predictions split like the strategy test (first 60% / last 40%). */
+  modelValidation?: BacktestResult | null;
+  modelHoldout?: BacktestResult | null;
+  /**
+   * Indonesian assets: the walk-forward test with and without the BI-Rate proxy and inflation
+   * features. They are kept only if they improved the validation Brier score; the holdout
+   * numbers (never used for that choice) show whether they really helped.
+   */
+  idMacroTest?: IdMacroTest | null;
   /** Evidence-weighted analysis summary (see analysis.ts), if it could be computed. */
   evidence?: OutlookEvidence | null;
   note?: string;
+}
+
+export interface IdMacroTest {
+  used: boolean;
+  validationBrierWith: number;
+  validationBrierWithout: number;
+  holdoutAccuracyWith: number;
+  holdoutAccuracyWithout: number;
+  holdoutBrierWith: number;
+  holdoutBrierWithout: number;
+  holdoutPredictions: number;
+}
+
+/** Compares a model with and without Indonesian macro features (see AssetOutlook.idMacroTest). */
+export function compareIdMacro(withId: AssetOutlook, without: AssetOutlook): IdMacroTest | null {
+  const vw = withId.modelValidation;
+  const vo = without.modelValidation;
+  const hw = withId.modelHoldout;
+  const ho = without.modelHoldout;
+  if (!vw || !vo || !hw || !ho) return null;
+  return {
+    used: vw.brier < vo.brier,
+    validationBrierWith: vw.brier,
+    validationBrierWithout: vo.brier,
+    holdoutAccuracyWith: hw.accuracy,
+    holdoutAccuracyWithout: ho.accuracy,
+    holdoutBrierWith: hw.brier,
+    holdoutBrierWithout: ho.brier,
+    holdoutPredictions: hw.predictions,
+  };
 }
 
 export interface OutlookEvidence {
@@ -166,6 +205,8 @@ export function buildAssetOutlook(input: {
     strategy,
     strategyLabel: STRATEGY_LABELS[strategy],
     candidates: selection?.candidates ?? [],
+    modelValidation: evaluatePredictions(modelPreds.slice(0, Math.floor(modelPreds.length * 0.6))),
+    modelHoldout: evaluatePredictions(modelPreds.slice(Math.floor(modelPreds.length * 0.6))),
   };
 }
 

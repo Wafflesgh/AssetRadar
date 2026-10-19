@@ -46,7 +46,11 @@ Node 24 · `lint / test / build` awal: lulus (85 test)
   - Dibuat: `src/utils/corporateCalendar.ts` (+ test), server `GET /api/idx/calendar?symbol=` (per saham, cache 12 jam) dan `GET /api/idx/calendar` (semua emiten −30…+90 hari; dipindai pelan 2 paralel + jeda, sekali per 12 jam, hanya bila ada penonton ≤1 jam). Halaman `#/calendar` (minggu ini / bulan ini / 90 hari / 30 hari lalu, filter semua/watchlist/portofolio, filter jenis), bagian "Corporate Calendar" di detail saham, panel Terminal CAL (`CAL`, `<KODE> CAL`, tombol QuickBar).
   - Verifikasi: TLKM → earnings 29 Okt 2026 + 5 dividen terakhir; halaman kalender terisi bertahap (±8 menit untuk 962 emiten).
   - Tidak tersedia dari sumber gratis (ditulis di UI): RUPS, cum date, recording date, rights issue. Nilai dividen mendatang hanya muncul jika sumber sudah mencatatnya.
-- [ ] 7. Data makro Indonesia
+- [x] 7. Data makro Indonesia
+  - Sumber: Bank Indonesia (bi.go.id, halaman resmi BI-Rate & data inflasi — hanya 10 baris terbaru tanpa postback), FRED tanpa kunci (suku bunga antarbank overnight IRSTCI01IDM156N sebagai proksi jalur BI-Rate, CPI y/y CPALTT01IDM659N & indeks CPI s.d. Apr 2025, PDB y/y kuartalan, cadangan devisa, neraca perdagangan, USD/IDR rata-rata bulanan), World Bank (inflasi & PDB tahunan). BPS API (butuh kunci) tidak dipasang.
+  - Dibuat: `src/utils/macro.ts` (+ test: parser FRED/BI/World Bank, merge, m/m, pergeseran tanggal rilis), `GET /api/macro/indonesia` (cache 6 jam), halaman `#/macro` (BI-Rate resmi + tabel keputusan, kartu & grafik tiap indikator dengan tanggal data terakhir, frekuensi, sumber), panel Terminal IDMACRO (+ QuickBar).
+  - AI Advisor: fitur baru (perubahan 3 bulan suku bunga antarbank — dianggap terbit 2 bulan setelah periode — dan inflasi y/y — terbit 1 bulan + 5 hari) untuk IHSG, saham IDX, dan pasangan kurs X/IDR. Dipakai hanya jika memperbaiki Brier score periode validasi; hasil holdout dilaporkan di tiap kartu & Methodology. Hasil 20 Okt 2026 (horizon 20 hari): dipakai di 3 dari 15 aset (ASII, EUR/IDR, MYR/IDR); akurasi holdout rata-rata 54,0% tanpa vs 57,2% dengan — membantu kurs, tidak untuk sebagian besar saham bank.
+  - Tidak tersedia: imbal hasil SBN 10 tahun (tidak ada sumber gratis yang terkini), PMI manufaktur (data berlisensi). Inflasi m/m gratis berhenti di Apr 2025; inflasi y/y punya celah Mei–Okt 2025 (FRED berhenti, BI hanya 10 bulan terakhir).
 - [ ] 8. Laporan keuangan perusahaan + rasio
 - [ ] 9. Harga ±5 detik lewat push dari server (SSE) + Finnhub opsional
 

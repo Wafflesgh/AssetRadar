@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { alignByDate, drawdown, featuresAt, maxDrawdown, pctChange, rsi, sma } from './indicators.ts';
 import { eventStudy, fedStanceSeries, nextMeeting, resolveMeetings } from './events.ts';
 import { predictProba, selectStrategy, trainLogistic, walkForward, type Sample } from './model.ts';
-import { rankOutlooks, reliabilityOf, type AssetOutlook } from './outlook.ts';
+import { compareIdMacro, rankOutlooks, reliabilityOf, type AssetOutlook } from './outlook.ts';
 
 const day = (i: number) => new Date(Date.UTC(2021, 0, 1) + i * 86_400_000).toISOString().slice(0, 10);
 
@@ -36,6 +36,9 @@ test('featuresAt needs a one-year warm-up and returns 13 features', () => {
   };
   assert.equal(featuresAt(closes, 200, macro), null);
   assert.equal(featuresAt(closes, 299, macro)?.length, 13);
+  // Indonesian macro inputs add two features
+  const idMacro = { ...macro, idRate: closes.map(() => 6), idInflation: closes.map((_, i) => 2 + i / 1000) };
+  assert.equal(featuresAt(closes, 299, idMacro)?.length, 15);
 });
 
 test('resolveMeetings keeps recorded outcomes and infers later ones from T-bill moves', () => {
@@ -170,4 +173,26 @@ test('rankOutlooks: a proven scorecard lean can decide, and checks explain the v
   assert.equal(v.DAX.checks.length, 4);
   assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Backtested'))?.pass, false);
   assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Scorecard'))?.pass, true);
+});
+
+test('compareIdMacro keeps the Indonesian features only when validation improved', () => {
+  const bt = (accuracy: number, brier: number) => ({
+    predictions: 100,
+    accuracy,
+    baseRate: 0.5,
+    signalHitRate: null,
+    signalCount: 0,
+    avgReturnSignal: null,
+    avgReturnAll: 0,
+    brier,
+    threshold: 0.55,
+  });
+  const base = outlook('JCI', 'index', 0.5, 0.15, 0);
+  const withId = { ...base, modelValidation: bt(0.55, 0.24), modelHoldout: bt(0.52, 0.25) };
+  const without = { ...base, modelValidation: bt(0.5, 0.26), modelHoldout: bt(0.53, 0.245) };
+  const t = compareIdMacro(withId, without);
+  assert.equal(t?.used, true);
+  assert.equal(t?.holdoutAccuracyWith, 0.52);
+  assert.equal(compareIdMacro({ ...withId, modelValidation: bt(0.5, 0.3) }, without)?.used, false);
+  assert.equal(compareIdMacro(base, without), null);
 });

@@ -75,6 +75,7 @@ test('new market functions and asset analysis commands', () => {
   assert.equal((parseTerminalCommand('spx hp') as { panel: string }).panel, 'hp');
   assert.deepEqual(getCommandSuggestions('btc').map((s) => s.command), ['BTC GP', 'BTC N', 'BTC INTEL', 'BTC HP', 'BTC CAL']);
   assert.deepEqual(parseTerminalCommand('cal'), { type: 'panel', panel: 'cal' });
+  assert.deepEqual(parseTerminalCommand('idmacro'), { type: 'panel', panel: 'idmacro' });
   assert.equal((parseTerminalCommand('bbca cal') as { panel: string }).panel, 'cal');
   assert.deepEqual(getCommandSuggestions('cu').map((s) => s.command)[0], 'CURV');
 });
