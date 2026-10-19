@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root,
+[data-theme="light"] {
+  --bg-canvas: #F7F9FC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-subtle: #F1F5F9;
+  --border-subtle: #E2E8F0;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --accent-radar: #10B981;
+  --accent-radar-soft: rgba(16, 185, 129, 0.12);
+  --color-up: #16A34A;
+  --color-up-soft: rgba(22, 163, 74, 0.12);
+  --color-down: #DC2626;
+  --color-down-soft: rgba(220, 38, 38, 0.12);
+  --color-gold: #D4A017;
+  --color-gold-soft: rgba(212, 160, 23, 0.14);
+  color-scheme: light;
+}
+
+.dark,
+[data-theme="dark"] {
+  --bg-canvas: #0B1220;
+  --bg-surface: #131C2E;
+  --bg-surface-subtle: #1A263D;
+  --border-subtle: #1E293B;
+  --text-primary: #E6EDF7;
+  --text-secondary: #94A3B8;
+  --accent-radar: #34D399;
+  --accent-radar-soft: rgba(52, 211, 153, 0.14);
+  --color-up: #22C55E;
+  --color-up-soft: rgba(34, 197, 94, 0.14);
+  --color-down: #F87171;
+  --color-down-soft: rgba(248, 113, 113, 0.14);
+  --color-gold: #FACC15;
+  --color-gold-soft: rgba(250, 204, 21, 0.14);
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono-num {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

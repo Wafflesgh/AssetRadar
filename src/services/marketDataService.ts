@@ -1,0 +1,463 @@
+import {
+  PriceTick,
+  AssetIntelligence,
+  OhlcCandle,
+  CorrelationMatrix,
+  MarketNewsItem,
+  TimeframeInterval,
+} from '../config/assets.ts';
+import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
+import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
+import { isIdxMarketOpen } from '../utils/marketHours.ts';
+
+export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
+
+const INDODAX_WS_URL = 'wss://ws3.indodax.com/ws/';
+// Official public static token from btcid/indodax-official-api-docs Market Data WebSocket documentation
+const INDODAX_PUBLIC_WS_TOKEN =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo';
+
+const PAIR_MAP: Record<string, string> = {
+  btcidr: 'BTC/IDR',
+  ethidr: 'ETH/IDR',
+  solidr: 'SOL/IDR',
+};
+
+export interface MarketStreamCallbacks {
+  onTicksUpdate: (ticks: Record<string, PriceTick>) => void;
+  onConnectionStateChange: (state: ConnectionState) => void;
+}
+
+export class MarketDataManager {
+  private callbacks: MarketStreamCallbacks;
+  private ticks: Record<string, PriceTick> = {};
+  private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private indodaxPollTimer: ReturnType<typeof setInterval> | null = null;
+  private yahooPollTimer: ReturnType<typeof setInterval> | null = null;
+  private goldPollTimer: ReturnType<typeof setInterval> | null = null;
+  private isDestroyed = false;
+  private wsConnected = false;
+  private lastSnapshotSave = 0;
+
+  constructor(callbacks: MarketStreamCallbacks) {
+    this.callbacks = callbacks;
+    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+    this.handleOnline = this.handleOnline.bind(this);
+    this.handleOffline = this.handleOffline.bind(this);
+  }
+
+  public start(): void {
+    this.isDestroyed = false;
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline);
+      window.addEventListener('offline', this.handleOffline);
+    }
+
+    // Tampilkan harga terakhir yang tersimpan lebih dulu (berguna saat offline)
+    const snapshot = loadTickSnapshot();
+    if (snapshot && Object.keys(snapshot).length > 0) {
+      this.ticks = snapshot;
+      this.callbacks.onTicksUpdate(this.ticks);
+    }
+    if (this.isOffline()) {
+      this.callbacks.onConnectionStateChange('offline');
+    }
+    this.fetchInitialSnapshot();
+    this.connectIndodaxWebSocket();
+    this.startPollingTimers();
+  }
+
+  public stop(): void {
+    this.isDestroyed = true;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline);
+      window.removeEventListener('offline', this.handleOffline);
+    }
+    this.disconnectWebSocket();
+    this.clearPollingTimers();
+  }
+
+  public async retrySymbol(symbol: string): Promise<void> {
+    if (symbol === 'BTC/IDR' || symbol === 'ETH/IDR' || symbol === 'SOL/IDR') {
+      await this.pollIndodaxRest();
+      if (!this.wsConnected) {
+        this.connectIndodaxWebSocket();
+      }
+    } else if (symbol === '^JKSE' || symbol === 'USD/IDR') {
+      await this.pollYahoo();
+    } else if (symbol === 'XAU/USD') {
+      await this.pollGold();
+    } else {
+      await this.fetchInitialSnapshot();
+    }
+  }
+
+  private isOffline(): boolean {
+    return typeof navigator !== 'undefined' && navigator.onLine === false;
+  }
+
+  private handleOnline(): void {
+    if (this.isDestroyed) return;
+    this.callbacks.onConnectionStateChange('reconnecting');
+    this.fetchInitialSnapshot();
+    this.connectIndodaxWebSocket();
+  }
+
+  private handleOffline(): void {
+    if (this.isDestroyed) return;
+    this.disconnectWebSocket();
+    this.callbacks.onConnectionStateChange('offline');
+  }
+
+  private handleVisibilityChange(): void {
+    if (this.isDestroyed) return;
+    if (document.visibilityState === 'hidden') {
+      // Putuskan koneksi saat tab tidak terlihat
+      this.disconnectWebSocket();
+      this.clearPollingTimers();
+    } else if (document.visibilityState === 'visible') {
+      // Sambungkan lagi saat terlihat
+      this.fetchInitialSnapshot();
+      this.connectIndodaxWebSocket();
+      this.startPollingTimers();
+    }
+  }
+
+  private async fetchInitialSnapshot(): Promise<void> {
+    try {
+      const res = await fetch('/api/market/snapshot');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.ticks) {
+        this.mergeTicks(data.ticks);
+      }
+      if (!this.wsConnected) {
+        this.callbacks.onConnectionStateChange('live');
+      }
+    } catch {
+      this.callbacks.onConnectionStateChange(this.isOffline() ? 'offline' : 'reconnecting');
+    }
+  }
+
+  private mergeTicks(incoming: Record<string, PriceTick>): void {
+    const next = { ...this.ticks };
+    for (const [sym, tick] of Object.entries(incoming)) {
+      const existing = next[sym];
+      next[sym] = {
+        ...existing,
+        ...tick,
+        fromSnapshot: tick.fromSnapshot ?? false,
+        sparkline:
+          tick.sparkline && tick.sparkline.length > 0
+            ? tick.sparkline
+            : existing?.sparkline,
+      };
+    }
+
+    // Recompute Gold IDR/gram whenever XAU/USD or USD/IDR updates
+    const xau = next['XAU/USD'];
+    const usdIdr = next['USD/IDR'];
+    if (
+      xau &&
+      usdIdr &&
+      Number.isFinite(xau.price) &&
+      xau.price > 0 &&
+      Number.isFinite(usdIdr.price) &&
+      usdIdr.price > 0
+    ) {
+      next['XAU/USD'] = {
+        ...xau,
+        priceIdrPerGram: convertXauUsdToIdrPerGram(xau.price, usdIdr.price),
+      };
+    }
+
+    this.ticks = next;
+    this.callbacks.onTicksUpdate(this.ticks);
+
+    // Simpan snapshot harga terakhir (maks. tiap 5 detik) untuk mode offline
+    const nowMs = Date.now();
+    if (nowMs - this.lastSnapshotSave > 5000) {
+      this.lastSnapshotSave = nowMs;
+      saveTickSnapshot(this.ticks);
+    }
+  }
+
+  private connectIndodaxWebSocket(): void {
+    if (this.isDestroyed || typeof window === 'undefined') return;
+    if (this.isOffline()) return;
+    this.disconnectWebSocket();
+
+    try {
+      const ws = new WebSocket(INDODAX_WS_URL);
+      this.ws = ws;
+
+      ws.onopen = () => {
+        if (this.isDestroyed) return;
+        this.wsConnected = true;
+        this.reconnectAttempts = 0;
+        this.callbacks.onConnectionStateChange('live');
+
+        // 1. Send Auth Token per Indodax WS v3 specification
+        ws.send(
+          JSON.stringify({
+            params: { token: INDODAX_PUBLIC_WS_TOKEN },
+            id: 1,
+          })
+        );
+
+        // 2. Subscribe to market:summary-24h channel
+        ws.send(
+          JSON.stringify({
+            method: 1,
+            params: { channel: 'market:summary-24h' },
+            id: 2,
+          })
+        );
+      };
+
+      ws.onmessage = (event) => {
+        if (this.isDestroyed) return;
+        try {
+          const msg = JSON.parse(String(event.data));
+          const rows = msg?.result?.data?.data;
+          if (Array.isArray(rows)) {
+            const updates: Record<string, PriceTick> = {};
+            const now = Date.now();
+            for (const row of rows) {
+              // Indodax summary-24h row: [pairId, epochSec, last, low, high, prev24h, volIdr, volCoin]
+              if (Array.isArray(row) && row.length >= 6) {
+                const pairId = String(row[0]).toLowerCase();
+                const symbol = PAIR_MAP[pairId];
+                if (!symbol) continue;
+
+                const last = Number(row[2]);
+                const low = Number(row[3]);
+                const high = Number(row[4]);
+                const prev24h = Number(row[5]);
+                if (!Number.isFinite(last) || last <= 0) continue;
+
+                const changePct24h =
+                  Number.isFinite(prev24h) && prev24h > 0
+                    ? ((last - prev24h) / prev24h) * 100
+                    : this.ticks[symbol]?.changePct24h;
+
+                const existingSparkline = this.ticks[symbol]?.sparkline || [];
+                const nowSec = Math.floor(now / 1000);
+                const lastPt = existingSparkline[existingSparkline.length - 1];
+                const updatedSparkline =
+                  lastPt && nowSec > lastPt.time
+                    ? [...existingSparkline.slice(-47), { time: nowSec, value: last }]
+                    : existingSparkline;
+
+                updates[symbol] = {
+                  symbol,
+                  group: 'crypto',
+                  price: last,
+                  changePct24h,
+                  high24h: Number.isFinite(high) ? high : this.ticks[symbol]?.high24h,
+                  low24h: Number.isFinite(low) ? low : this.ticks[symbol]?.low24h,
+                  sparkline: updatedSparkline,
+                  currency: 'IDR',
+                  source: 'Indodax WS',
+                  updatedAt: now,
+                  status: 'live',
+                };
+              }
+            }
+            if (Object.keys(updates).length > 0) {
+              this.mergeTicks(updates);
+            }
+          }
+        } catch {
+          // Ignore malformed WS frames
+        }
+      };
+
+      ws.onerror = () => {
+        this.wsConnected = false;
+      };
+
+      ws.onclose = () => {
+        this.wsConnected = false;
+        if (this.isDestroyed) return;
+        this.scheduleReconnect();
+      };
+    } catch {
+      this.wsConnected = false;
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.isDestroyed) return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+
+    this.callbacks.onConnectionStateChange('reconnecting');
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+    const delaySec = Math.min(30, Math.pow(2, this.reconnectAttempts));
+    this.reconnectAttempts += 1;
+
+    this.reconnectTimer = setTimeout(() => {
+      if (!this.isDestroyed && document.visibilityState !== 'hidden') {
+        this.connectIndodaxWebSocket();
+      }
+    }, delaySec * 1000);
+  }
+
+  private disconnectWebSocket(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch {
+        // Ignore close error
+      }
+      this.ws = null;
+    }
+    this.wsConnected = false;
+  }
+
+  private startPollingTimers(): void {
+    this.clearPollingTimers();
+
+    // 1. Indodax REST polling tiap 10 detik HANYA saat WebSocket tidak tersambung
+    this.indodaxPollTimer = setInterval(() => {
+      if (!this.wsConnected) {
+        this.pollIndodaxRest();
+      }
+    }, 10_000);
+
+    // 2. Yahoo Finance polling every 60 seconds
+    // IHSG only polled during IDX trading hours (Mon-Fri 09:00-16:00 WIB)
+    this.yahooPollTimer = setInterval(() => {
+      this.pollYahoo();
+    }, 60_000);
+
+    // 3. Gold XAU/USD polling every 5 minutes (300_000 ms)
+    this.goldPollTimer = setInterval(() => {
+      this.pollGold();
+    }, 300_000);
+  }
+
+  private clearPollingTimers(): void {
+    if (this.indodaxPollTimer) {
+      clearInterval(this.indodaxPollTimer);
+      this.indodaxPollTimer = null;
+    }
+    if (this.yahooPollTimer) {
+      clearInterval(this.yahooPollTimer);
+      this.yahooPollTimer = null;
+    }
+    if (this.goldPollTimer) {
+      clearInterval(this.goldPollTimer);
+      this.goldPollTimer = null;
+    }
+  }
+
+  private async pollIndodaxRest(): Promise<void> {
+    try {
+      const res = await fetch('/api/market/indodax');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.ticks) {
+        this.mergeTicks(data.ticks);
+        if (!this.wsConnected) {
+          // REST berhasil tetapi WebSocket belum tersambung: data tetap mengalir via polling
+          this.callbacks.onConnectionStateChange('delayed');
+        }
+      }
+    } catch {
+      if (!this.wsConnected) {
+        this.callbacks.onConnectionStateChange(this.isOffline() ? 'offline' : 'reconnecting');
+      }
+    }
+  }
+
+  private async pollYahoo(): Promise<void> {
+    try {
+      const res = await fetch('/api/market/yahoo');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.ticks) {
+        const incoming: Record<string, PriceTick> = {};
+        if (data.ticks['USD/IDR']) {
+          incoming['USD/IDR'] = data.ticks['USD/IDR'];
+        }
+        // Only update IHSG during market hours or if we don't have a valid IHSG price yet
+        const hasIhsg = Number.isFinite(this.ticks['^JKSE']?.price);
+        if (data.ticks['^JKSE'] && (isIdxMarketOpen() || !hasIhsg)) {
+          incoming['^JKSE'] = data.ticks['^JKSE'];
+        } else if (this.ticks['^JKSE']) {
+          incoming['^JKSE'] = {
+            ...this.ticks['^JKSE'],
+            isMarketOpen: isIdxMarketOpen(),
+          };
+        }
+        this.mergeTicks(incoming);
+      }
+    } catch {
+      // Keep existing tick
+    }
+  }
+
+  private async pollGold(): Promise<void> {
+    try {
+      const res = await fetch('/api/market/gold');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.tick) {
+        this.mergeTicks({ 'XAU/USD': data.tick });
+      }
+    } catch {
+      // Keep existing gold tick
+    }
+  }
+}
+
+export async function fetchAssetIntelligence(symbol: string): Promise<AssetIntelligence> {
+  const res = await fetch(`/api/market/intelligence?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistory(
+  symbol: string,
+  interval: TimeframeInterval
+): Promise<OhlcCandle[]> {
+  const res = await fetch(
+    `/api/market/history?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data?.candles) ? data.candles : [];
+}
+
+export async function fetchCorrelation(): Promise<CorrelationMatrix> {
+  const res = await fetch('/api/market/correlation');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function fetchNewsFeed(): Promise<MarketNewsItem[]> {
+  const res = await fetch('/api/market/news-feed');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data?.items) ? data.items : [];
+}
