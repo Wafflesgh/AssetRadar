@@ -1,7 +1,7 @@
 /** sentiment.test.ts — Tests for IDX trading hours, relative time, headline tone and RSS parsing. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isIdxMarketOpen, formatRelativeTime } from './marketHours.ts';
+import { isIdxMarketOpen, formatRelativeTime, formatAge } from './marketHours.ts';
 import {
   classifyHeadlineSentiment,
   computeMarketSentiment,
@@ -86,4 +86,34 @@ test('parseRssItems parses RSS XML feed into structured MarketNewsItem array', (
   assert.equal(parsed[0].source, 'Reuters');
   assert.equal(parsed[0].sentiment, 'Bullish');
   assert.match(parsed[0].publishedAt, /WIB$/);
+});
+
+test('formatAge gives a compact news age', () => {
+  const now = 10_000_000;
+  assert.equal(formatAge(now - 3000, now), 'now');
+  assert.equal(formatAge(now - 45_000, now), '45s');
+  assert.equal(formatAge(now - 3 * 60_000, now), '3m');
+  assert.equal(formatAge(now - 2 * 3600_000, now), '2h');
+  assert.equal(formatAge(now - 30 * 3600_000, now), '1d');
+  assert.equal(formatAge(undefined, now), '—');
+});
+
+test('parseRssItems keeps the full title when the feed source is known', () => {
+  const xml = `<rss><channel><item>
+    <title><![CDATA[Gold rallies - analysts see more upside ahead]]></title>
+    <link>https://feed.example.com/a</link>
+    <pubDate>Mon, 19 Oct 2026 02:00:00 GMT</pubDate>
+  </item></channel></rss>`;
+  const [parsed] = parseRssItems(xml, 5, { sourceName: 'FXStreet' });
+  assert.equal(parsed.title, 'Gold rallies - analysts see more upside ahead');
+  assert.equal(parsed.source, 'FXStreet');
+});
+
+test('parseRssItems strips the Google News source suffix from short titles', () => {
+  const xml = `<rss><channel><item>
+    <title>Egypt enters the war - Arab News</title>
+    <link>https://news.google.com/a</link>
+    <source url="https://arabnews.com">Arab News</source>
+  </item></channel></rss>`;
+  assert.equal(parseRssItems(xml)[0].title, 'Egypt enters the war');
 });

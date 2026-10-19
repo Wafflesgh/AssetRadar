@@ -1,6 +1,6 @@
 /**
- * TerminalView.tsx — The #/terminal page: sticky status bar, ticker tape and command line,
- * the responsive panel grid, number-key shortcuts and command → panel focusing.
+ * TerminalView.tsx — The #/terminal page: sticky status bar, price and live headline tapes,
+ * command line, the responsive panel grid, number-key shortcuts and command → panel focusing.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSETS, PriceTick, TimeframeInterval, getAssetBySymbol } from '../../config/assets.ts';
@@ -8,6 +8,8 @@ import { ConnectionState } from '../../services/marketDataService.ts';
 import { TerminalCommand, TerminalPanel as PanelId } from '../../utils/terminalCommands.ts';
 import { TerminalStatusBar } from './TerminalStatusBar.tsx';
 import { TickerTape } from './TickerTape.tsx';
+import { NewsTape } from '../NewsTape.tsx';
+import { latestNewsKey, useLiveNews } from '../../hooks/useLiveNews.ts';
 import { CommandLine } from './CommandLine.tsx';
 import { HeatmapPanel, MonitorPanel } from './MarketPanels.tsx';
 import { AssetNewsPanel, SentimentPanel, useAssetIntelligence } from './IntelligencePanels.tsx';
@@ -68,7 +70,9 @@ export function TerminalView({
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const asset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
-  const intel = useAssetIntelligence(asset.symbol);
+  const news = useLiveNews();
+  // Sentiment re-scores whenever a new headline about the selected asset arrives
+  const intel = useAssetIntelligence(asset.symbol, latestNewsKey(news, asset.shortName.toUpperCase()));
 
   const focusPanel = useCallback((panel: PanelId, scroll: boolean) => {
     setHighlight(panel);
@@ -129,6 +133,7 @@ export function TerminalView({
       <div className="sticky top-0 z-10" style={{ backgroundColor: 'var(--t-bg)' }}>
         <TerminalStatusBar connectionState={connectionState} />
         <TickerTape ticks={ticks} onSelect={selectAsset} />
+        <NewsTape />
         <CommandLine onCommand={handleCommand} />
       </div>
 
@@ -155,10 +160,10 @@ export function TerminalView({
           highlighted={highlight === 'heatmap'}
         />
         <SentimentPanel asset={asset} intel={intel} />
-        <AssetNewsPanel asset={asset} intel={intel} highlighted={highlight === 'news'} />
+        <AssetNewsPanel asset={asset} ticks={ticks} highlighted={highlight === 'news'} />
         <CorrelationPanel highlighted={highlight === 'corr'} />
         <EconomicCalendarPanel highlighted={highlight === 'eco'} />
-        <NewsFeedPanel highlighted={highlight === 'top'} />
+        <NewsFeedPanel asset={asset} ticks={ticks} highlighted={highlight === 'top'} />
       </div>
     </div>
   );

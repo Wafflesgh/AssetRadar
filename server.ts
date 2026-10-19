@@ -26,6 +26,7 @@ import { correlationMatrixFromSeries, type DatedClose } from './src/utils/correl
 import { aggregateCandles } from './src/utils/candles.ts';
 import { convertXauUsdToIdrPerGram } from './src/utils/format.ts';
 import { isIdxMarketOpen } from './src/utils/marketHours.ts';
+import { GEO_TAG, MACRO_TAG, detectGeoAlert, mergeNewsItems, tagHeadline } from './src/utils/newsTags.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -51,68 +52,178 @@ const indodaxSparklineCache = new Map<string, CacheEntry<SparklinePoint[]>>();
 const yahooCache = new Map<string, CacheEntry<PriceTick>>();
 const goldCache: { entry: CacheEntry<PriceTick> | null } = { entry: null };
 const intelligenceCache = new Map<string, CacheEntry<AssetIntelligence>>();
-const newsCache = new Map<string, CacheEntry<MarketNewsItem[]>>();
 const historyCache = new Map<string, CacheEntry<OhlcCandle[]>>();
 const correlationCache: { entry: CacheEntry<CorrelationMatrix> | null } = { entry: null };
-const newsFeedCache: { entry: CacheEntry<MarketNewsItem[]> | null } = { entry: null };
 
-const NEWS_CACHE_MS = 10 * 60_000;
+// ---------------------------------------------------------------------------------------
+// Live news hub
+// Polls publisher RSS feeds every 60 s and Google News every 2 min (only while someone is
+// watching), tags each headline with the assets it mentions, and pushes new headlines to
+// browsers over Server-Sent Events. Headlines are never translated: Indonesian sources stay
+// in Indonesian, international sources stay in English.
+// ---------------------------------------------------------------------------------------
 
-// Google News editions. Articles are never translated: Indonesian sources stay in
-// Indonesian, international sources stay in English.
-const NEWS_EDITIONS = [
-  { key: 'id', params: 'hl=id&gl=ID&ceid=ID:id', query: (a: (typeof ASSETS)[number]) => a.newsQueryId },
-  { key: 'en', params: 'hl=en-US&gl=US&ceid=US:en', query: (a: (typeof ASSETS)[number]) => a.newsQuery },
-] as const;
-const NEWS_PER_EDITION = 5;
-const NEWS_PER_ASSET = 8;
+type Asset = (typeof ASSETS)[number];
 
-/** Fetches one Google News RSS edition; returns [] on failure. */
-async function fetchNewsEdition(
-  asset: (typeof ASSETS)[number],
-  edition: (typeof NEWS_EDITIONS)[number]
-): Promise<MarketNewsItem[]> {
-  try {
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
-      edition.query(asset)
-    )}&${edition.params}`;
-    const rssRes = await fetchWithTimeout(rssUrl, {}, 5000);
-    if (!rssRes.ok) throw new Error(`HTTP ${rssRes.status}`);
-    const xml = await rssRes.text();
-    return parseRssItems(xml, NEWS_PER_EDITION).map((item) => ({
-      ...item,
-      id: `${asset.id}-${edition.key}-${item.id}`,
-      assetTags: [asset.shortName.toUpperCase()],
-    }));
-  } catch (err) {
-    console.warn(`[News] Failed to load ${edition.key} RSS for ${asset.symbol}:`, err);
-    return [];
-  }
+interface NewsSource {
+  id: string;
+  url: string;
+  minIntervalMs: number;
+  maxItems: number;
+  /** Publisher name for direct feeds (keeps full titles); Google News reads it per item. */
+  sourceName?: string;
+  /** Asset the query is about (Google News); direct feeds are tagged by keywords only. */
+  asset?: Asset;
+  /** Conflict search feeds: keep only "high" alerts so ongoing-war coverage does not flood the feed. */
+  highAlertsOnly?: boolean;
 }
 
-/** News for one asset from the Indonesian and English editions, newest first (10-minute cache). */
-async function fetchNewsForAsset(asset: (typeof ASSETS)[number]): Promise<MarketNewsItem[]> {
-  const now = Date.now();
-  const cached = newsCache.get(asset.symbol);
-  if (cached && cached.expiresAt > now) return cached.data;
+const FEED_INTERVAL_MS = 60_000;
+const GOOGLE_INTERVAL_MS = 120_000;
+const NEWS_IDLE_AFTER_MS = 5 * 60_000; // stop polling 5 min after the last viewer/request
+const NEWS_FEED_LIMIT = 60;
+const NEWS_PER_ASSET = 10;
 
-  const lists = await Promise.all(NEWS_EDITIONS.map((e) => fetchNewsEdition(asset, e)));
-  const seen = new Set<string>();
-  const items = lists
-    .flat()
-    .filter((item) => {
-      const key = item.link || item.title;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+const NEWS_SOURCES: NewsSource[] = [
+  // Direct publisher feeds: published within minutes
+  { id: 'coindesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', sourceName: 'CoinDesk', minIntervalMs: FEED_INTERVAL_MS, maxItems: 25 },
+  { id: 'cointelegraph', url: 'https://cointelegraph.com/rss', sourceName: 'Cointelegraph', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  { id: 'cnbcid', url: 'https://www.cnbcindonesia.com/market/rss', sourceName: 'CNBC Indonesia', minIntervalMs: FEED_INTERVAL_MS, maxItems: 40 },
+  { id: 'antara', url: 'https://www.antaranews.com/rss/ekonomi-bursa.xml', sourceName: 'ANTARA', minIntervalMs: FEED_INTERVAL_MS, maxItems: 20 },
+  { id: 'fxstreet', url: 'https://www.fxstreet.com/rss/news', sourceName: 'FXStreet', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  // World news for sudden war/attack alerts (only conflict headlines are kept from these)
+  { id: 'bbcworld', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', sourceName: 'BBC News', minIntervalMs: FEED_INTERVAL_MS, maxItems: 30 },
+  { id: 'aljazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml', sourceName: 'Al Jazeera', minIntervalMs: FEED_INTERVAL_MS, maxItems: 25 },
+  {
+    id: 'gn-geo-en',
+    highAlertsOnly: true,
+    url: `https://news.google.com/rss/search?q=${encodeURIComponent('war OR invasion OR missile OR airstrike OR "declares war" when:1h')}&hl=en-US&gl=US&ceid=US:en`,
+    minIntervalMs: FEED_INTERVAL_MS,
+    maxItems: 40,
+  },
+  {
+    id: 'gn-geo-id',
+    highAlertsOnly: true,
+    url: `https://news.google.com/rss/search?q=${encodeURIComponent('perang OR invasi OR rudal OR "serangan udara" when:1h')}&hl=id&gl=ID&ceid=ID:id`,
+    minIntervalMs: FEED_INTERVAL_MS,
+    maxItems: 30,
+  },
+  // Google News search per asset, Indonesian and English editions, last 24 hours
+  ...ASSETS.flatMap((asset): NewsSource[] => [
+    {
+      id: `gn-id-${asset.id}`,
+      url: `https://news.google.com/rss/search?q=${encodeURIComponent(`${asset.newsQueryId} when:1d`)}&hl=id&gl=ID&ceid=ID:id`,
+      asset,
+      minIntervalMs: GOOGLE_INTERVAL_MS,
+      maxItems: 6,
+    },
+    {
+      id: `gn-en-${asset.id}`,
+      url: `https://news.google.com/rss/search?q=${encodeURIComponent(`${asset.newsQuery} when:1d`)}&hl=en-US&gl=US&ceid=US:en`,
+      asset,
+      minIntervalMs: GOOGLE_INTERVAL_MS,
+      maxItems: 6,
+    },
+  ]),
+];
+
+const newsHub = {
+  items: [] as MarketNewsItem[],
+  lastFetchedAt: new Map<string, number>(),
+  lastPollAt: 0,
+  lastDemandAt: 0,
+  polling: null as Promise<void> | null,
+  initialized: false,
+  clients: new Set<express.Response>(),
+};
+
+async function fetchNewsSource(source: NewsSource): Promise<MarketNewsItem[]> {
+  const res = await fetchWithTimeout(source.url, {}, 6000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const xml = await res.text();
+  return parseRssItems(xml, source.maxItems, { sourceName: source.sourceName })
+    .map((item) => {
+      const tags = tagHeadline(item.title);
+      if (source.asset) tags.unshift(source.asset.shortName.toUpperCase());
+      const geoAlert = detectGeoAlert(item.title) ?? undefined;
+      if (geoAlert) tags.push(GEO_TAG);
+      return { ...item, id: `${source.id}-${item.id}`, assetTags: [...new Set(tags)], geoAlert };
     })
-    .sort((a, b) => (b.publishedAtMs ?? 0) - (a.publishedAtMs ?? 0))
-    .slice(0, NEWS_PER_ASSET);
-
-  if (items.length === 0) return cached?.data ?? [];
-  newsCache.set(asset.symbol, { data: items, expiresAt: now + NEWS_CACHE_MS });
-  return items;
+    // keep only market-relevant headlines
+    .filter((item) => (source.highAlertsOnly ? item.geoAlert === 'high' : item.assetTags.length > 0));
 }
+
+/** One polling round over the sources that are due; broadcasts newly seen headlines. */
+async function pollNews(force = false): Promise<void> {
+  if (newsHub.polling) return newsHub.polling;
+  newsHub.polling = (async () => {
+    const now = Date.now();
+    const due = NEWS_SOURCES.filter(
+      (s) => force || now - (newsHub.lastFetchedAt.get(s.id) ?? 0) >= s.minIntervalMs
+    );
+    const results = await Promise.all(
+      due.map(async (s) => {
+        try {
+          const items = await fetchNewsSource(s);
+          newsHub.lastFetchedAt.set(s.id, now);
+          return items;
+        } catch (err) {
+          console.warn(`[News] ${s.id} failed:`, err instanceof Error ? err.message : err);
+          return [];
+        }
+      })
+    );
+    const { items, added } = mergeNewsItems(newsHub.items, results.flat(), Date.now(), {
+      maxItems: 400,
+    });
+    newsHub.items = items;
+    newsHub.lastPollAt = Date.now();
+
+    // The first round is the baseline; only later rounds count as "breaking"
+    if (newsHub.initialized && added.length > 0) {
+      for (const tag of new Set(added.flatMap((a) => a.assetTags ?? []))) {
+        const asset = ASSETS.find((a) => a.shortName.toUpperCase() === tag);
+        if (asset) intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
+        if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
+      }
+      broadcastNews('news', added);
+    }
+    newsHub.initialized = true;
+  })().finally(() => {
+    newsHub.polling = null;
+  });
+  return newsHub.polling;
+}
+
+/** Makes sure the hub data is at most one feed interval old (used by REST endpoints). */
+async function ensureNewsFresh(): Promise<void> {
+  newsHub.lastDemandAt = Date.now();
+  if (!newsHub.initialized) await pollNews(true);
+  else if (Date.now() - newsHub.lastPollAt >= FEED_INTERVAL_MS) await pollNews();
+}
+
+function broadcastNews(event: 'news' | 'snapshot', items: MarketNewsItem[]): void {
+  const payload = `event: ${event}\ndata: ${JSON.stringify({ items, serverTime: Date.now() })}\n\n`;
+  for (const client of newsHub.clients) client.write(payload);
+}
+
+function getNewsFeed(): MarketNewsItem[] {
+  return newsHub.items.slice(0, NEWS_FEED_LIMIT);
+}
+
+/** Latest headlines tagged with this asset (newest first). */
+async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
+  await ensureNewsFresh();
+  const code = asset.shortName.toUpperCase();
+  return newsHub.items.filter((i) => i.assetTags?.includes(code)).slice(0, NEWS_PER_ASSET);
+}
+
+// Background loop: keeps polling while browsers are connected or recently asked for news
+setInterval(() => {
+  const active =
+    newsHub.clients.size > 0 || Date.now() - newsHub.lastDemandAt < NEWS_IDLE_AFTER_MS;
+  if (active) pollNews().catch(() => {});
+}, 15_000);
 
 // App timeframe -> Yahoo Finance & Indodax parameters (rangeSec ≈ the Yahoo range)
 const DAY_SEC = 86_400;
@@ -280,28 +391,6 @@ async function getCorrelationMatrix(): Promise<CorrelationMatrix> {
   };
   correlationCache.entry = { data, expiresAt: now + 6 * 60 * 60_000 };
   return data;
-}
-
-async function getNewsFeed(): Promise<MarketNewsItem[]> {
-  const now = Date.now();
-  if (newsFeedCache.entry && newsFeedCache.entry.expiresAt > now) return newsFeedCache.entry.data;
-  const lists = await Promise.all(ASSETS.map((a) => fetchNewsForAsset(a)));
-  const byKey = new Map<string, MarketNewsItem>();
-  for (const item of lists.flat()) {
-    const key = item.link || item.title;
-    const existing = byKey.get(key);
-    if (existing) {
-      const tags = new Set([...(existing.assetTags ?? []), ...(item.assetTags ?? [])]);
-      byKey.set(key, { ...existing, assetTags: [...tags] });
-    } else {
-      byKey.set(key, item);
-    }
-  }
-  const feed = [...byKey.values()]
-    .sort((a, b) => (b.publishedAtMs ?? 0) - (a.publishedAtMs ?? 0))
-    .slice(0, 20);
-  newsFeedCache.entry = { data: feed, expiresAt: now + NEWS_CACHE_MS };
-  return feed;
 }
 
 async function fetchWithTimeout(
@@ -965,12 +1054,45 @@ async function startServer() {
   // 8. Combined news feed for all assets (10-minute cache)
   app.get('/api/market/news-feed', async (_req, res) => {
     try {
-      res.json({ items: await getNewsFeed(), updatedAt: Date.now() });
+      await ensureNewsFresh();
+      res.json({ items: getNewsFeed(), updatedAt: newsHub.lastPollAt || Date.now() });
     } catch (err) {
       res.status(502).json({
         error: err instanceof Error ? err.message : 'Failed to load the news feed',
       });
     }
+  });
+
+  // 9. Live news stream (Server-Sent Events): a snapshot first, then every new headline
+  app.get('/api/market/news-stream', async (req, res) => {
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no', // ask proxies not to buffer the stream
+    });
+    res.flushHeaders();
+    res.write('retry: 5000\n\n');
+    newsHub.clients.add(res);
+    newsHub.lastDemandAt = Date.now();
+
+    // Heartbeat so the browser can tell a live stream from a stalled proxy
+    const heartbeat = setInterval(() => {
+      res.write(`event: ping\ndata: ${JSON.stringify({ serverTime: Date.now() })}\n\n`);
+    }, 20_000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      newsHub.clients.delete(res);
+    });
+
+    try {
+      await ensureNewsFresh();
+    } catch {
+      // Snapshot below still sends whatever the hub has
+    }
+    res.write(
+      `event: snapshot\ndata: ${JSON.stringify({ items: getNewsFeed(), serverTime: Date.now() })}\n\n`
+    );
   });
 
   // Vite middleware in development, static dist in production

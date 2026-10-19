@@ -33,6 +33,21 @@ export function isIdxMarketOpen(nowMs: number = Date.now()): boolean {
 }
 
 /**
+ * Compact age of a news item, Terminal style: "now", "45s", "3m", "2h", "1d".
+ */
+export function formatAge(atMs: number | undefined, nowMs: number = Date.now()): string {
+  if (!atMs || !Number.isFinite(atMs)) return '—';
+  const sec = Math.max(0, Math.floor((nowMs - atMs) / 1000));
+  if (sec < 10) return 'now';
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}h`;
+  return `${Math.floor(hour / 24)}d`;
+}
+
+/**
  * Formats relative time ("updated just now", "updated 5 seconds ago", "updated 2 minutes ago").
  */
 export function formatRelativeTime(updatedAtMs: number, nowMs: number = Date.now()): string {

@@ -111,7 +111,27 @@
 .terminal-flash-up { animation: terminal-flash-up 0.9s ease-out; }
 .terminal-flash-down { animation: terminal-flash-down 0.9s ease-out; }
 
+/* Breaking headline: amber flash on arrival, then a steady accent edge while NEW */
+@keyframes news-arrive {
+  0%, 30% { background-color: rgba(245, 158, 11, 0.32); }
+  100% { background-color: transparent; }
+}
+
+.news-breaking {
+  animation: news-arrive 4s ease-out;
+  box-shadow: inset 3px 0 0 var(--accent-radar);
+}
+
+@keyframes news-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.news-live-dot { animation: news-live-pulse 1.6s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
+  .news-breaking { animation: none; }
+  .news-live-dot { animation: none; }
   .terminal-ticker-track { animation: none; flex-wrap: wrap; width: 100%; }
   .terminal-ticker-dup { display: none; }
   .terminal-flash-up,

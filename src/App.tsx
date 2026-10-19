@@ -36,6 +36,7 @@ import { WatchlistView } from './components/WatchlistView.tsx';
 import { RiskProfileView } from './components/RiskProfileView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { TerminalView } from './components/terminal/TerminalView.tsx';
+import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -238,6 +239,9 @@ export default function App() {
         themePreference={themePreference}
         onToggleThemeQuick={handleToggleThemeQuick}
       />
+
+      {/* Sudden war / attack alert (every page, including Terminal) */}
+      <GeoAlertBanner ticks={ticks} />
 
       {/* Top Header Bar (Terminal has its own status bar) */}
       {!isTerminal && (

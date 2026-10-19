@@ -43,7 +43,9 @@ export interface MarketNewsItem {
   source: string;
   publishedAt: string;
   publishedAtMs?: number; // epoch ms (used to sort the news feed)
-  assetTags?: string[]; // related asset codes, e.g. ["BTC"]
+  assetTags?: string[]; // related asset codes, e.g. ["BTC"], or "MACRO" for market-wide news
+  firstSeenAt?: number; // epoch ms when the server's news hub first saw the story
+  geoAlert?: 'high' | 'elevated'; // war/attack headline: "high" = new war or major escalation
   sentiment: SentimentLabel;
 }
 

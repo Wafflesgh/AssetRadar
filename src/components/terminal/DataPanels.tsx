@@ -1,19 +1,22 @@
 /**
  * DataPanels.tsx — Terminal panels for CHART (PriceChart + timeframes), ECONOMIC CALENDAR
- * (TradingView widget), CORRELATION 30D (matrix) and NEWS FEED (all assets).
+ *  (TradingView widget), CORRELATION 30D (matrix) and the live NEWS FEED (all assets).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AssetConfig,
   CorrelationMatrix,
-  MarketNewsItem,
+  PriceTick,
   TIMEFRAME_OPTIONS,
   TimeframeInterval,
 } from '../../config/assets.ts';
-import { fetchCorrelation, fetchNewsFeed } from '../../services/marketDataService.ts';
+import { fetchCorrelation } from '../../services/marketDataService.ts';
+import { filterNewsByCode, newsStore } from '../../services/newsStream.ts';
+import { isBreaking, useLiveNews, useNow } from '../../hooks/useLiveNews.ts';
+import { MACRO_TAG } from '../../utils/newsTags.ts';
 import { PriceChart } from '../PriceChart.tsx';
-import { NewsRow } from './IntelligencePanels.tsx';
-import { PanelMessage, RetryButton, TerminalPanel, formatWibStamp } from './TerminalPanel.tsx';
+import { LiveBadge, NewsRow } from './IntelligencePanels.tsx';
+import { PanelMessage, TerminalPanel, formatWibStamp } from './TerminalPanel.tsx';
 
 export function ChartPanel({
   asset,
@@ -204,48 +207,86 @@ export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
   );
 }
 
-const NEWS_FEED_REFRESH_MS = 10 * 60_000;
+type FeedFilter = 'all' | 'asset' | 'macro';
 
-export function NewsFeedPanel({ highlighted }: { highlighted?: boolean }) {
-  const [items, setItems] = useState<MarketNewsItem[]>([]);
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+/** Live market-moving headlines for all assets (stream-fed), filterable by the selected asset. */
+export function NewsFeedPanel({
+  asset,
+  ticks,
+  highlighted,
+}: {
+  asset: AssetConfig;
+  ticks: Record<string, PriceTick>;
+  highlighted?: boolean;
+}) {
+  const news = useLiveNews();
+  const now = useNow();
+  const [filter, setFilter] = useState<FeedFilter>('all');
+  const code = asset.shortName.toUpperCase();
+  const items = (
+    filter === 'asset'
+      ? filterNewsByCode(news.items, code)
+      : filter === 'macro'
+        ? filterNewsByCode(news.items, MACRO_TAG)
+        : news.items
+  ).slice(0, 40);
+  const breakingCount = news.items.filter((i) => isBreaking(news, i.id, now)).length;
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setState('loading');
-    try {
-      setItems(await fetchNewsFeed());
-      setState('ready');
-    } catch {
-      // A failed periodic refresh keeps showing the last news
-      if (!silent) setState('error');
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const timer = setInterval(() => load(true), NEWS_FEED_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [load]);
+  const filterButton = (value: FeedFilter, label: string) => (
+    <button
+      type="button"
+      aria-pressed={filter === value}
+      onClick={() => setFilter(value)}
+      className="px-1.5 h-5 text-[10px] font-bold"
+      style={{
+        backgroundColor: filter === value ? 'var(--t-amber)' : 'transparent',
+        color: filter === value ? '#05070A' : 'var(--t-muted)',
+        borderRadius: 2,
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <TerminalPanel
       id="panel-top"
       title="News Feed"
-      subtitle="all assets · latest"
+      subtitle={
+        news.updatedAt
+          ? `${breakingCount > 0 ? `${breakingCount} new · ` : ''}updated ${formatWibStamp(news.updatedAt)} WIB`
+          : 'all assets · latest'
+      }
       highlighted={highlighted}
-      right={state === 'ready' && <RetryButton onClick={() => load()} label="Reload" />}
+      right={
+        <div className="flex items-center gap-1.5 terminal-mono">
+          <div role="group" aria-label="News filter" className="flex">
+            {filterButton('all', 'ALL')}
+            {filterButton('asset', code)}
+            {filterButton('macro', MACRO_TAG)}
+          </div>
+          <LiveBadge />
+        </div>
+      }
       bodyClassName="overflow-y-auto max-h-96"
     >
-      {state === 'loading' ? (
+      {news.items.length === 0 && news.status !== 'offline' ? (
         <PanelMessage kind="loading" />
-      ) : state === 'error' ? (
-        <PanelMessage kind="error" onRetry={() => load()} />
+      ) : news.items.length === 0 ? (
+        <PanelMessage kind="error" onRetry={newsStore.refresh} />
       ) : items.length === 0 ? (
-        <PanelMessage kind="empty" text="No news yet." />
+        <PanelMessage kind="empty" text="No news for this filter yet." />
       ) : (
         <ul>
           {items.map((item) => (
-            <NewsRow key={item.id} item={item} showTags />
+            <NewsRow
+              key={item.id}
+              item={item}
+              ticks={ticks}
+              now={now}
+              breaking={isBreaking(news, item.id, now)}
+              showTags
+            />
           ))}
         </ul>
       )}

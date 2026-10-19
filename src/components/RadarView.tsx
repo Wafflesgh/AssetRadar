@@ -1,6 +1,7 @@
 /**
  * RadarView.tsx — The Radar dashboard: market summary (assets up/down), price cards per
- * group with a 24h sparkline and price flash on change, and the sentiment + news section.
+ * group with a 24h sparkline and price flash on change, the live headline tape, and the
+ * sentiment + news section.
  */
 import { useState, useEffect, useRef } from 'react';
 import { ArrowUpRight, LineChart, Star, RefreshCw, AlertCircle } from 'lucide-react';
@@ -19,6 +20,7 @@ import {
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { SparklineChart } from './SparklineChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
+import { NewsTape } from './NewsTape.tsx';
 
 interface RadarViewProps {
   ticks: Record<string, PriceTick>;
@@ -65,6 +67,8 @@ export function RadarView({
 
   return (
     <div className="space-y-8">
+      {/* Live headline tape (Bloomberg style) */}
+      <NewsTape className="rounded-xl border" />
       {/* Summary Header Banner */}
       <section
         aria-label="Market radar summary"

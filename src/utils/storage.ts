@@ -1,7 +1,7 @@
 /**
  * storage.ts — Every localStorage read/write in the app, always wrapped in try/catch:
  * theme, default timeframe, watchlist, last price snapshot (offline mode),
- * start-in-Terminal option and the saved risk-profile result.
+ * start-in-Terminal option, the saved risk-profile result and dismissed geopolitical alerts.
  */
 import { DEFAULT_TIMEFRAME, isValidTimeframe, TimeframeInterval, PriceTick } from '../config/assets.ts';
 
@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   TICK_SNAPSHOT: 'assetradar_last_ticks_v2',
   START_IN_TERMINAL: 'assetradar_start_terminal',
   RISK_RESULT: 'assetradar_risk_result',
+  DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -200,4 +201,20 @@ export function saveWatchlist(symbols: string[]): void {
   } catch {
     // Ignore storage write errors
   }
+}
+
+/** Ids of geopolitical alerts the viewer dismissed (newest last, capped). */
+export function getDismissedAlerts(): string[] {
+  const raw = safeGet(STORAGE_KEYS.DISMISSED_ALERTS);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDismissedAlerts(ids: string[]): void {
+  safeSet(STORAGE_KEYS.DISMISSED_ALERTS, JSON.stringify(ids.slice(-100)));
 }

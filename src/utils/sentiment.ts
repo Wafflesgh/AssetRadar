@@ -225,9 +225,15 @@ export function computeMarketSentiment(params: {
 }
 
 /**
- * Parses Google News / Yahoo RSS XML string into clean MarketNewsItem entries.
+ * Parses Google News / publisher RSS XML into clean MarketNewsItem entries.
+ * With `sourceName` (a publisher's own feed) the title is kept whole; otherwise the
+ * Google News "Title - Source" suffix is split off into `source`.
  */
-export function parseRssItems(xml: string, maxItems: number = 6): MarketNewsItem[] {
+export function parseRssItems(
+  xml: string,
+  maxItems: number = 6,
+  opts: { sourceName?: string } = {}
+): MarketNewsItem[] {
   const items: MarketNewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
   let match: RegExpExecArray | null;
@@ -243,10 +249,14 @@ export function parseRssItems(xml: string, maxItems: number = 6): MarketNewsItem
 
     // Clean "- Source Name" suffix from Google News titles if present
     let cleanTitle = decodeHtmlEntities(rawTitle).trim();
-    let source = decodeHtmlEntities(sourceTag || 'Market News').trim();
+    let source = opts.sourceName ?? decodeHtmlEntities(sourceTag || 'Market News').trim();
 
     const dashIdx = cleanTitle.lastIndexOf(' - ');
-    if (dashIdx > 20) {
+    const sourceSuffix = sourceTag ? ` - ${decodeHtmlEntities(sourceTag).trim()}` : '';
+    if (!opts.sourceName && sourceSuffix && cleanTitle.endsWith(sourceSuffix)) {
+      // Google News always appends " - Source"; strip it even for short headlines
+      cleanTitle = cleanTitle.slice(0, -sourceSuffix.length).trim();
+    } else if (!opts.sourceName && dashIdx > 20) {
       if (!sourceTag) {
         source = cleanTitle.slice(dashIdx + 3).trim();
       }
