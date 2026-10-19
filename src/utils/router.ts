@@ -1,13 +1,13 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio.
+ * #/idx, #/portfolio, #/calendar.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -49,6 +49,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (cleaned === 'portfolio' || cleaned === 'portofolio') {
     return { tab: 'portfolio' };
+  }
+  if (cleaned === 'calendar' || cleaned === 'kalender') {
+    return { tab: 'calendar' };
   }
   const assetPrefix = ['asset/', 'aset/'].find((p) => cleaned.startsWith(p));
   if (assetPrefix) {
@@ -93,6 +96,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/idx';
     case 'portfolio':
       return '#/portfolio';
+    case 'calendar':
+      return '#/calendar';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];

@@ -6,8 +6,8 @@
  */
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
 
-export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp';
-export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv';
+export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal';
+export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal';
 export type TerminalPanel = AssetPanel | MarketPanel;
 
 export type TerminalCommand =
@@ -28,6 +28,7 @@ export const PANEL_COMMANDS: Record<string, { panel: MarketPanel; description: s
   WEI: { panel: 'wei', description: 'World equity indices' },
   FXC: { panel: 'fxc', description: 'Currency cross rates' },
   CURV: { panel: 'curv', description: 'US Treasury yield curve' },
+  CAL: { panel: 'cal', description: 'IDX corporate calendar (earnings, dividends)' },
   HM: { panel: 'heatmap', description: '24-hour change heatmap' },
   ECO: { panel: 'eco', description: 'Economic calendar' },
   CORR: { panel: 'corr', description: '30-day correlation' },
@@ -42,8 +43,9 @@ const ASSET_FUNCTIONS: Record<string, { panel: AssetPanel; description: string }
   TA: { panel: 'intel', description: 'technical analysis' },
   FA: { panel: 'intel', description: 'fundamental analysis' },
   HP: { panel: 'hp', description: 'historical prices' },
+  CAL: { panel: 'cal', description: 'corporate calendar' },
 };
-const SUGGESTED_FUNCTIONS = ['GP', 'N', 'INTEL', 'HP'];
+const SUGGESTED_FUNCTIONS = ['GP', 'N', 'INTEL', 'HP', 'CAL'];
 
 export interface CommandHelpItem {
   command: string;
@@ -56,6 +58,7 @@ export const TERMINAL_HELP: CommandHelpItem[] = [
   { command: '<CODE> N', description: 'Asset news, e.g. JCI N' },
   { command: '<CODE> INTEL', description: 'Technical patterns, scorecard and fundamentals (also TA / FA)' },
   { command: '<CODE> HP', description: 'Historical daily prices, e.g. SPX HP' },
+  { command: '<CODE> CAL', description: 'Corporate calendar of a stock, e.g. BBCA CAL' },
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
   { command: 'HELP', description: 'List of commands' },
   { command: 'AI', description: 'Open the AI Advisor (backtested outlook)' },
@@ -85,7 +88,7 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   if (rest.length > 0 || (fn && !ASSET_FUNCTIONS[fn])) {
     return {
       type: 'error',
-      message: `Unknown function "${[fn, ...rest].join(' ')}" for ${code}. Use GP (chart), N (news), INTEL (analysis) or HP (history).`,
+      message: `Unknown function "${[fn, ...rest].join(' ')}" for ${code}. Use GP (chart), N (news), INTEL (analysis), HP (history) or CAL (calendar).`,
     };
   }
   return { type: 'asset', symbol: asset.symbol, code, panel: fn ? ASSET_FUNCTIONS[fn].panel : 'monitor' };

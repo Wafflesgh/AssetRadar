@@ -41,7 +41,11 @@ Node 24 · `lint / test / build` awal: lulus (85 test)
   - Dibuat: `src/ai/forwardTest.ts` (+ test): snapshot verdict sekali per hari per horizon & profil (tanggal WIB, verdict, chance, harga live), tidak pernah diisi mundur; penilaian setelah N hari bursa memakai close harian sungguhan (close hari snapshot vs close N bar kemudian, hasil disimpan permanen di log); track record per verdict vs base rate; ambang 30 hasil. Komponen `LiveTrackRecord.tsx` di AI Advisor (rekam otomatis saat ≥60% harga live tersedia, cek hasil hanya untuk snapshot yang cukup tua, Export/Import JSON). Disimpan di perangkat (`getForwardLogRaw`/`saveForwardLogRaw`, maks 15.000 entri).
   - Verifikasi: membuka AI Advisor menyimpan 55 verdict untuk 2026-10-20 (horizon 20, moderate); hasil pertama baru muncul ±20 hari bursa kemudian.
   - Butuh keputusan pemilik: penyimpanan di server (database gratis, mis. Firestore/Supabase dengan kunci di Secrets) agar riwayat tidak hilang saat ganti HP/browser dan tetap terekam walau aplikasi tidak dibuka. Belum dipasang — perlu persetujuan.
-- [ ] 6. Kalender emiten IDX
+- [x] 6. Kalender emiten IDX
+  - Sumber: Yahoo Finance — `quoteSummary?modules=calendarEvents` (perlu cookie + crumb sesi, dikelola server, diperbarui tiap 6 jam): tanggal laporan keuangan berikutnya (ditandai "estimated" bila perkiraan sumber), ex-dividend, tanggal pembayaran dividen; `chart?events=div,split` 5 tahun: riwayat dividen (ex-date + nilai per saham) dan stock split. idx.co.id menolak server (Cloudflare 403); KSEI tidak punya API publik.
+  - Dibuat: `src/utils/corporateCalendar.ts` (+ test), server `GET /api/idx/calendar?symbol=` (per saham, cache 12 jam) dan `GET /api/idx/calendar` (semua emiten −30…+90 hari; dipindai pelan 2 paralel + jeda, sekali per 12 jam, hanya bila ada penonton ≤1 jam). Halaman `#/calendar` (minggu ini / bulan ini / 90 hari / 30 hari lalu, filter semua/watchlist/portofolio, filter jenis), bagian "Corporate Calendar" di detail saham, panel Terminal CAL (`CAL`, `<KODE> CAL`, tombol QuickBar).
+  - Verifikasi: TLKM → earnings 29 Okt 2026 + 5 dividen terakhir; halaman kalender terisi bertahap (±8 menit untuk 962 emiten).
+  - Tidak tersedia dari sumber gratis (ditulis di UI): RUPS, cum date, recording date, rights issue. Nilai dividen mendatang hanya muncul jika sumber sudah mencatatnya.
 - [ ] 7. Data makro Indonesia
 - [ ] 8. Laporan keuangan perusahaan + rasio
 - [ ] 9. Harga ±5 detik lewat push dari server (SSE) + Finnhub opsional

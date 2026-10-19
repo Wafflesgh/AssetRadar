@@ -22,6 +22,7 @@ import { formatRelativeTime } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
+import { CorporateCalendarPanel } from './CorporateCalendarPanel.tsx';
 
 interface AssetDetailViewProps {
   asset: AssetConfig;
@@ -60,6 +61,7 @@ export function AssetDetailView({
       : asset.tvSymbol;
 
   const isGold = asset.symbol === 'XAU/USD';
+  const isStock = asset.group === 'idStock' || asset.group === 'usStock' || asset.group === 'globalStock';
   const isLoaded = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
 
   const formatVal = (val: number | undefined) => {
@@ -447,6 +449,8 @@ export function AssetDetailView({
           theme={effectiveTheme}
         />
       </section>
+
+      {isStock && <CorporateCalendarPanel asset={asset} />}
 
       {/* Sentiment Analysis & Market News Panel for Selected Asset */}
       <AssetIntelligencePanel

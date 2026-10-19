@@ -43,6 +43,7 @@ import { AdvisorView } from './components/AdvisorView.tsx';
 import { QuantSimView } from './components/QuantSimView.tsx';
 import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
 import { HeaderSearch } from './components/HeaderSearch.tsx';
+import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
@@ -308,6 +309,7 @@ export default function App() {
               {activeTab === 'quant' && 'Quant Lab · Portfolio Simulator'}
               {activeTab === 'idx' && 'Indonesian Stocks'}
               {activeTab === 'portfolio' && 'My Portfolio'}
+              {activeTab === 'calendar' && 'IDX Corporate Calendar'}
             </span>
           </div>
         </div>
@@ -433,6 +435,7 @@ export default function App() {
             <PortfolioView ticks={ticks} onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
+        {activeTab === 'calendar' && <IdxCalendarView onSelectAsset={handleSelectAsset} watchlist={watchlist} />}
         {activeTab === 'idx' && (
           <IndonesianStocksView
             ticks={ticks}

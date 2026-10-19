@@ -63,6 +63,14 @@ import {
 import { analyzeNewsDrivers } from './src/ai/newsDrivers.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
+  addDays,
+  eventsBetween,
+  mergeEvents,
+  parseCalendarEvents,
+  parseChartEvents,
+  type CalendarEvent,
+} from './src/utils/corporateCalendar.ts';
+import {
   addMonths,
   buildFactorSeries,
   despike,
@@ -1751,6 +1759,92 @@ setInterval(() => {
   if (now - idxSweep.lastRunAt >= every) runIdxSweep().catch(() => {});
 }, 30_000);
 
+// ---- IDX corporate calendar (Yahoo calendarEvents + chart dividend/split events) ----------
+
+/** Yahoo's quoteSummary needs a session cookie and a matching crumb (refreshed every 6 h). */
+const yahooSession = { cookie: '', crumb: '', expiresAt: 0, pending: null as Promise<void> | null };
+
+async function ensureYahooSession(force = false): Promise<void> {
+  if (!force && yahooSession.crumb && yahooSession.expiresAt > Date.now()) return;
+  if (yahooSession.pending) return yahooSession.pending;
+  yahooSession.pending = (async () => {
+    const res = await fetchWithTimeout('https://fc.yahoo.com', { redirect: 'manual' }, 8000);
+    const cookies = (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+    const cookie = cookies.map((c) => c.split(';')[0]).join('; ');
+    if (!cookie) throw new Error('Yahoo session cookie unavailable');
+    const crumbRes = await fetchWithTimeout('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers: { Cookie: cookie } }, 8000);
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumbRes.ok || !crumb || crumb.includes('<')) throw new Error('Yahoo crumb unavailable');
+    Object.assign(yahooSession, { cookie, crumb, expiresAt: Date.now() + 6 * 3600_000 });
+  })().finally(() => {
+    yahooSession.pending = null;
+  });
+  return yahooSession.pending;
+}
+
+async function fetchQuoteSummary(yahooSymbol: string, modules: string): Promise<unknown> {
+  await ensureYahooSession();
+  const url = () =>
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=${modules}&crumb=${encodeURIComponent(yahooSession.crumb)}`;
+  let res = await fetchWithTimeout(url(), { headers: { Cookie: yahooSession.cookie } }, 8000);
+  if (res.status === 401 || res.status === 403) {
+    await ensureYahooSession(true);
+    res = await fetchWithTimeout(url(), { headers: { Cookie: yahooSession.cookie } }, 8000);
+  }
+  if (!res.ok) throw new Error(`quoteSummary HTTP ${res.status}`);
+  return res.json();
+}
+
+const CALENDAR_TTL_MS = 12 * 3600_000;
+const calendarCache = new Map<string, CacheEntry<CalendarEvent[]>>();
+
+/** Upcoming events plus 5 years of dividends and splits for one stock (cached 12 h). */
+async function getCalendarFor(asset: Asset): Promise<CalendarEvent[]> {
+  const cached = calendarCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const tz = EXCHANGE_HOURS[asset.exchange as keyof typeof EXCHANGE_HOURS]?.timeZone ?? 'Asia/Jakarta';
+  const sym = asset.yahooSymbol as string;
+  const [upcoming, history] = await Promise.all([
+    fetchQuoteSummary(sym, 'calendarEvents')
+      .then((j) => parseCalendarEvents(asset.symbol, j, tz))
+      .catch(() => [] as CalendarEvent[]),
+    fetchWithTimeout(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5y&interval=1mo&events=div,split`, {}, 8000)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => (j ? parseChartEvents(asset.symbol, j, tz) : []))
+      .catch(() => [] as CalendarEvent[]),
+  ]);
+  const data = mergeEvents(upcoming, history);
+  calendarCache.set(asset.symbol, { data, expiresAt: Date.now() + CALENDAR_TTL_MS });
+  return data;
+}
+
+/** Whole-exchange scan: slow and steady (2 at a time), once per 12 h, only while someone looks. */
+const calendarScan = { done: 0, startedAt: 0, finishedAt: 0, lastDemandAt: 0, running: null as Promise<void> | null };
+
+function runCalendarScan(): Promise<void> {
+  if (calendarScan.running) return calendarScan.running;
+  calendarScan.done = 0;
+  calendarScan.startedAt = Date.now();
+  calendarScan.running = mapLimit(IDX_ALL, 2, async (a) => {
+    await getCalendarFor(a).catch(() => []);
+    calendarScan.done += 1;
+    await new Promise((r) => setTimeout(r, 250));
+  })
+    .then(() => {
+      calendarScan.finishedAt = Date.now();
+    })
+    .finally(() => {
+      calendarScan.running = null;
+    });
+  return calendarScan.running;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  if (now - calendarScan.lastDemandAt > 60 * 60_000) return;
+  if (!calendarScan.running && now - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
+}, 60_000);
+
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -2171,6 +2265,43 @@ async function startServer() {
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'IDX data unavailable' });
+    }
+  });
+
+  // 5g. Corporate calendar: one stock (?symbol=) or every IDX stock in a date window
+  app.get('/api/idx/calendar', async (req, res) => {
+    const symbol = String(req.query.symbol || '');
+    try {
+      if (symbol) {
+        const asset = getAssetBySymbol(symbol);
+        if (!asset?.yahooSymbol || !['idStock', 'usStock', 'globalStock'].includes(asset.group)) {
+          res.status(400).json({ error: 'Calendar is available for stocks only' });
+          return;
+        }
+        res.json({ symbol: asset.symbol, events: await getCalendarFor(asset), source: 'Yahoo Finance' });
+        return;
+      }
+      calendarScan.lastDemandAt = Date.now();
+      if (!calendarScan.running && Date.now() - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      const from = addDays(today, -30);
+      const to = addDays(today, 90);
+      const events: CalendarEvent[] = [];
+      for (const a of IDX_ALL) {
+        const c = calendarCache.get(a.symbol)?.data;
+        if (c) events.push(...eventsBetween(c, from, to));
+      }
+      res.json({
+        events: events.sort((x, y) => x.date.localeCompare(y.date)),
+        from,
+        to,
+        scanned: IDX_ALL.filter((a) => calendarCache.has(a.symbol)).length,
+        total: IDX_ALL.length,
+        scanning: Boolean(calendarScan.running),
+        source: 'Yahoo Finance',
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Calendar unavailable' });
     }
   });
 

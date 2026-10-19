@@ -15,7 +15,7 @@ import { latestNewsKey, useLiveNews } from '../../hooks/useLiveNews.ts';
 import { CommandLine } from './CommandLine.tsx';
 import { GroupTabs, HeatmapPanel, MonitorPanel, type TerminalGroup } from './MarketPanels.tsx';
 import { FxCrossPanel, MoversTerminalPanel, WorldIndicesPanel, YieldCurvePanel } from './MarketFunctionPanels.tsx';
-import { HistoryPanel, IntelPanel } from './AnalysisPanels.tsx';
+import { CalendarTerminalPanel, HistoryPanel, IntelPanel } from './AnalysisPanels.tsx';
 import { AssetNewsPanel, SentimentPanel, useAssetIntelligence } from './IntelligencePanels.tsx';
 import { ChartPanel, CorrelationPanel, EconomicCalendarPanel, NewsFeedPanel } from './DataPanels.tsx';
 
@@ -45,6 +45,7 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   wei: 'panel-wei',
   fxc: 'panel-fxc',
   curv: 'panel-curv',
+  cal: 'panel-cal',
 };
 
 const PANEL_NAME: Record<PanelId, string> = {
@@ -61,6 +62,7 @@ const PANEL_NAME: Record<PanelId, string> = {
   wei: 'WORLD INDICES',
   fxc: 'FX CROSS',
   curv: 'US YIELD CURVE',
+  cal: 'CALENDAR',
 };
 
 /** QuickBar: one click runs the function (asset functions apply to the selected asset). */
@@ -69,6 +71,7 @@ const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string;
   { label: 'N', command: (c) => `${c} N`, title: 'Asset news' },
   { label: 'INTEL', command: (c) => `${c} INTEL`, title: 'Technical & fundamental analysis' },
   { label: 'HP', command: (c) => `${c} HP`, title: 'Historical prices' },
+  { label: 'CAL', command: (c) => `${c} CAL`, title: 'Corporate calendar' },
   { label: 'MOV', command: () => 'MOV', title: 'Biggest movers' },
   { label: 'WEI', command: () => 'WEI', title: 'World indices' },
   { label: 'FXC', command: () => 'FXC', title: 'FX cross rates' },
@@ -244,6 +247,7 @@ export function TerminalView({
         <FxCrossPanel ticks={ticks} highlighted={highlight === 'fxc'} />
         <YieldCurvePanel highlighted={highlight === 'curv'} />
         <HistoryPanel asset={asset} highlighted={highlight === 'hp'} />
+        <CalendarTerminalPanel asset={asset} onSelect={selectAsset} highlighted={highlight === 'cal'} />
         <CorrelationPanel highlighted={highlight === 'corr'} />
         <EconomicCalendarPanel highlighted={highlight === 'eco'} />
         <NewsFeedPanel asset={asset} ticks={ticks} highlighted={highlight === 'top'} />

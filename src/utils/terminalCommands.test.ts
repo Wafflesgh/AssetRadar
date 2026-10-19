@@ -43,7 +43,7 @@ test('getCommandSuggestions returns prefix matches', () => {
   assert.deepEqual(getCommandSuggestions(''), []);
   assert.deepEqual(
     getCommandSuggestions('eth').map((s) => s.command),
-    ['ETH GP', 'ETH N', 'ETH INTEL', 'ETH HP']
+    ['ETH GP', 'ETH N', 'ETH INTEL', 'ETH HP', 'ETH CAL']
   );
   assert.deepEqual(
     getCommandSuggestions('co').map((s) => s.command).slice(0, 2),
@@ -73,6 +73,8 @@ test('new market functions and asset analysis commands', () => {
   assert.equal((parseTerminalCommand('bbca intel') as { panel: string }).panel, 'intel');
   assert.equal((parseTerminalCommand('NVDA TA') as { panel: string }).panel, 'intel');
   assert.equal((parseTerminalCommand('spx hp') as { panel: string }).panel, 'hp');
-  assert.deepEqual(getCommandSuggestions('btc').map((s) => s.command), ['BTC GP', 'BTC N', 'BTC INTEL', 'BTC HP']);
+  assert.deepEqual(getCommandSuggestions('btc').map((s) => s.command), ['BTC GP', 'BTC N', 'BTC INTEL', 'BTC HP', 'BTC CAL']);
+  assert.deepEqual(parseTerminalCommand('cal'), { type: 'panel', panel: 'cal' });
+  assert.equal((parseTerminalCommand('bbca cal') as { panel: string }).panel, 'cal');
   assert.deepEqual(getCommandSuggestions('cu').map((s) => s.command)[0], 'CURV');
 });

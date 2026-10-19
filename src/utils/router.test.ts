@@ -55,3 +55,8 @@ test('portfolio route', () => {
   assert.deepEqual(parseHashRoute('#/portofolio'), { tab: 'portfolio' });
   assert.equal(buildHashRoute('portfolio'), '#/portfolio');
 });
+
+test('calendar route', () => {
+  assert.deepEqual(parseHashRoute('#/calendar'), { tab: 'calendar' });
+  assert.equal(buildHashRoute('calendar'), '#/calendar');
+});

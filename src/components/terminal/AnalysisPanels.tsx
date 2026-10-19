@@ -1,13 +1,15 @@
 /**
  * AnalysisPanels.tsx — Terminal panels for the selected asset: INTEL (evidence score, chart
  * patterns, indicator scorecard, historical hit rate, Piotroski F-score and top news drivers,
- * from /api/market/analysis) and HP (historical daily prices: open, high, low, close, change).
+ * from /api/market/analysis), HP (historical daily prices: open, high, low, close, change) and
+ * CAL (corporate calendar of the selected stock and upcoming IDX events).
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { AssetAnalysis } from '../../ai/analysis.ts';
 import { DRIVER_LABELS } from '../../ai/newsDrivers.ts';
 import { AssetConfig, OhlcCandle } from '../../config/assets.ts';
-import { fetchAssetAnalysis, fetchHistory } from '../../services/marketDataService.ts';
+import { fetchAssetAnalysis, fetchCorporateCalendar, fetchHistory, type CalendarResponse } from '../../services/marketDataService.ts';
+import { EVENT_LABELS, addDays, type CalendarEvent } from '../../utils/corporateCalendar.ts';
 import { PanelMessage, TerminalPanel, changeColor, formatTerminalPct, formatTerminalPrice, toneColor } from './TerminalPanel.tsx';
 
 const biasText = (b: number) => (b > 0 ? 'BULL' : b < 0 ? 'BEAR' : 'NEUT');
@@ -201,6 +203,124 @@ export function HistoryPanel({ asset, highlighted, className }: { asset: AssetCo
             ))}
           </tbody>
         </table>
+      )}
+    </TerminalPanel>
+  );
+}
+
+/** CAL: the selected stock's corporate calendar plus upcoming IDX events (next 14 days). */
+export function CalendarTerminalPanel({
+  asset,
+  onSelect,
+  highlighted,
+  className,
+}: {
+  asset: AssetConfig;
+  onSelect: (symbol: string) => void;
+  highlighted?: boolean;
+  className?: string;
+}) {
+  const isStock = asset.group === 'idStock' || asset.group === 'usStock' || asset.group === 'globalStock';
+  const [own, setOwn] = useState<CalendarEvent[] | null>(null);
+  const [all, setAll] = useState<CalendarResponse | null>(null);
+  const [error, setError] = useState(false);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+
+  useEffect(() => {
+    let alive = true;
+    setOwn(null);
+    if (isStock) fetchCorporateCalendar(asset.symbol).then((r) => alive && setOwn(r.events)).catch(() => alive && setOwn([]));
+    return () => {
+      alive = false;
+    };
+  }, [asset.symbol, isStock]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetchCorporateCalendar()
+        .then((r) => {
+          if (!alive) return;
+          setAll(r);
+          setError(false);
+        })
+        .catch(() => alive && setError(true));
+    load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+
+  const until = addDays(today, 14);
+  const upcoming = (all?.events ?? []).filter((e) => e.date >= today && e.date <= until && e.type !== 'dividend' && e.type !== 'split').slice(0, 40);
+  const mine = (own ?? []).filter((e) => e.date >= addDays(today, -365)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+
+  return (
+    <TerminalPanel
+      id="panel-cal"
+      className={className}
+      title="Calendar"
+      subtitle={all ? `CAL · ${all.scanned}/${all.total} IDX stocks checked${all.scanning ? ' …' : ''}` : 'CAL · corporate calendar'}
+      highlighted={highlighted}
+      bodyClassName="overflow-auto max-h-80"
+    >
+      {error && !all ? (
+        <PanelMessage kind="error" onRetry={() => setError(false)} />
+      ) : (
+        <div className="p-2 space-y-2 text-[11px]">
+          {isStock && (
+            <div>
+              <div className="text-[10px] font-bold tracking-widest" style={{ color: 'var(--t-amber)' }}>
+                {asset.shortName}
+              </div>
+              {!own ? (
+                <div style={{ color: 'var(--t-muted)' }}>Loading...</div>
+              ) : mine.length === 0 ? (
+                <div style={{ color: 'var(--t-muted)' }}>No events in the last year or ahead.</div>
+              ) : (
+                mine.map((e) => (
+                  <div key={e.type + e.date} className="flex justify-between gap-2">
+                    <span style={{ color: e.date >= today ? 'var(--t-text)' : 'var(--t-muted)' }}>
+                      {EVENT_LABELS[e.type].toUpperCase()}
+                      {e.estimate ? ' (EST)' : ''}
+                      {e.amount !== undefined ? ` ${formatTerminalPrice(e.amount, asset)}` : ''}
+                      {e.ratio ? ` ${e.ratio}` : ''}
+                    </span>
+                    <span style={{ color: 'var(--t-muted)' }}>{e.date}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+          <div>
+            <div className="text-[10px] font-bold tracking-widest" style={{ color: 'var(--t-amber)' }}>
+              IDX NEXT 14 DAYS
+            </div>
+            {!all ? (
+              <div style={{ color: 'var(--t-muted)' }}>Loading...</div>
+            ) : upcoming.length === 0 ? (
+              <div style={{ color: 'var(--t-muted)' }}>No events found yet.</div>
+            ) : (
+              <table className="w-full">
+                <tbody>
+                  {upcoming.map((e) => (
+                    <tr key={e.symbol + e.type + e.date} onClick={() => onSelect(e.symbol)} className="cursor-pointer border-t" style={{ borderColor: 'var(--t-line)' }}>
+                      <td className="py-0.5 pr-2" style={{ color: 'var(--t-muted)' }}>{e.date.slice(5)}</td>
+                      <td className="py-0.5 pr-2 font-bold" style={{ color: 'var(--t-amber)' }}>{e.symbol.replace('.JK', '')}</td>
+                      <td className="py-0.5" style={{ color: 'var(--t-text)' }}>
+                        {EVENT_LABELS[e.type]}
+                        {e.estimate ? ' (est.)' : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div style={{ color: 'var(--t-muted)' }}>Source: Yahoo Finance. RUPS, cum/recording dates and rights issues not available.</div>
+        </div>
       )}
     </TerminalPanel>
   );

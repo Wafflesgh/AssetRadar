@@ -19,6 +19,7 @@ import {
 } from '../config/assets.ts';
 import type { AssetAnalysis } from '../ai/analysis.ts';
 import type { QuantFactorsPayload, QuantUniverse } from '../ai/factorPortfolio.ts';
+import type { CalendarEvent } from '../utils/corporateCalendar.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 
@@ -596,6 +597,23 @@ export interface IdxSnapshot {
 /** Every listed Indonesian stock from the server's background sweep. */
 export async function fetchIdxSnapshot(): Promise<IdxSnapshot> {
   const res = await fetch('/api/market/idx');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export interface CalendarResponse {
+  events: CalendarEvent[];
+  from?: string;
+  to?: string;
+  scanned?: number;
+  total?: number;
+  scanning?: boolean;
+  source: string;
+}
+
+/** Corporate calendar for one stock, or (no symbol) every IDX stock from -30 to +90 days. */
+export async function fetchCorporateCalendar(symbol?: string): Promise<CalendarResponse> {
+  const res = await fetch(symbol ? `/api/idx/calendar?symbol=${encodeURIComponent(symbol)}` : '/api/idx/calendar');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
