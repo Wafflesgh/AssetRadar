@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
   AI_PREFS: 'assetradar_ai_prefs',
   SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
+  INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -94,6 +95,15 @@ export function getSidebarCollapsed(): boolean {
 export function saveSidebarCollapsed(collapsed: boolean): void {
   if (collapsed) safeSet(STORAGE_KEYS.SIDEBAR_COLLAPSED, '1');
   else safeRemove(STORAGE_KEYS.SIDEBAR_COLLAPSED);
+}
+
+/** The "Install AssetRadar" banner on the Radar was closed. */
+export function getInstallBannerDismissed(): boolean {
+  return safeGet(STORAGE_KEYS.INSTALL_BANNER_DISMISSED) === '1';
+}
+
+export function saveInstallBannerDismissed(): void {
+  safeSet(STORAGE_KEYS.INSTALL_BANNER_DISMISSED, '1');
 }
 
 export interface SavedRiskResult {

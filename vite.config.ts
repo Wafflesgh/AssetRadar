@@ -1,12 +1,45 @@
-// vite.config.ts — Vite build config: React + Tailwind plugins and the "@" path alias.
+// vite.config.ts — Vite build config: React + Tailwind plugins, the "@" path alias, and the PWA
+// step that stamps the build id and the list of built files into dist/sw.js.
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, type Plugin} from 'vite';
+
+/** After the build, fill BUILD_ID and PRECACHE in dist/sw.js (public/sw.js is copied as-is). */
+function serviceWorkerManifest(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'assetradar-sw-manifest',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const swPath = path.join(outDir, 'sw.js');
+      if (!fs.existsSync(swPath)) return;
+      const files: string[] = [];
+      const walk = (dir: string) => {
+        for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else files.push('/' + path.relative(outDir, full).split(path.sep).join('/'));
+        }
+      };
+      walk(outDir);
+      const precache = ['/', ...files.filter((f) => f !== '/sw.js')];
+      const sw = fs
+        .readFileSync(swPath, 'utf8')
+        .replace("'__BUILD_ID__'", JSON.stringify(Date.now().toString(36)))
+        .replace("['__PRECACHE__']", JSON.stringify(precache));
+      fs.writeFileSync(swPath, sw);
+    },
+  };
+}
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), serviceWorkerManifest()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

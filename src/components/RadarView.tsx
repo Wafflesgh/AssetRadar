@@ -14,6 +14,7 @@ import { AssetSearch } from './AssetSearch.tsx';
 import { MarketTable } from './MarketTable.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
 import { NewsTape } from './NewsTape.tsx';
+import { InstallAppBanner } from './InstallApp.tsx';
 
 interface RadarViewProps {
   ticks: Record<string, PriceTick>;
@@ -67,6 +68,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
   return (
     <div className="space-y-8">
       <NewsTape className="rounded-xl border" />
+      <InstallAppBanner />
 
       {/* Summary, search and quick charts */}
       <section

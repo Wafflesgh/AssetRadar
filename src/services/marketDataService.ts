@@ -22,6 +22,16 @@ import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
 
+/**
+ * Fetches a live price endpoint. Offline copies served by the service worker are rejected, so
+ * old prices are never shown as live; the saved snapshot (marked fromSnapshot) is used instead.
+ */
+async function fetchLivePrices(url: string): Promise<Response> {
+  const res = await fetch(url);
+  if (res.headers.get('X-AssetRadar-Offline') === '1') throw new Error('offline copy');
+  return res;
+}
+
 const INDODAX_WS_URL = 'wss://ws3.indodax.com/ws/';
 // Official public static token from btcid/indodax-official-api-docs Market Data WebSocket documentation
 const INDODAX_PUBLIC_WS_TOKEN =
@@ -142,7 +152,7 @@ export class MarketDataManager {
 
   private async fetchInitialSnapshot(): Promise<void> {
     try {
-      const res = await fetch('/api/market/snapshot');
+      const res = await fetchLivePrices('/api/market/snapshot');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data?.ticks) {
@@ -380,7 +390,7 @@ export class MarketDataManager {
 
   private async pollIndodaxRest(): Promise<void> {
     try {
-      const res = await fetch('/api/market/indodax');
+      const res = await fetchLivePrices('/api/market/indodax');
       if (!res.ok) return;
       const data = await res.json();
       if (data?.ticks) {
@@ -399,7 +409,7 @@ export class MarketDataManager {
 
   private async pollYahoo(): Promise<void> {
     try {
-      const res = await fetch('/api/market/yahoo');
+      const res = await fetchLivePrices('/api/market/yahoo');
       if (!res.ok) return;
       const data = await res.json();
       if (data?.ticks) {
@@ -413,7 +423,7 @@ export class MarketDataManager {
 
   private async pollGold(): Promise<void> {
     try {
-      const res = await fetch('/api/market/gold');
+      const res = await fetchLivePrices('/api/market/gold');
       if (!res.ok) return;
       const data = await res.json();
       if (data?.tick) {

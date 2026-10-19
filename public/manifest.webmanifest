@@ -1,0 +1,17 @@
+{
+  "name": "AssetRadar",
+  "short_name": "AssetRadar",
+  "description": "Track the world's largest assets, Indonesian stocks, crypto and global markets on one radar.",
+  "start_url": "/#/radar",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "categories": ["finance", "business"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

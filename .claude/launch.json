@@ -4,8 +4,20 @@
     {
       "name": "assetradar",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "assetradar-prod",
+      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
+      "runtimeArgs": [
+        "/c",
+        "set NODE_ENV=production&& set PORT=3001&& npx tsx server.ts"
+      ],
+      "port": 3001
     }
   ]
 }

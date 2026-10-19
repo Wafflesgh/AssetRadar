@@ -5,6 +5,7 @@
 import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal } from 'lucide-react';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
+import { InstallAppCard } from './InstallApp.tsx';
 
 interface SettingsViewProps {
   themePreference: ThemePreference;
@@ -62,6 +63,8 @@ export function SettingsView({
           Adjust the color theme and the default time interval for the candlestick charts.
         </p>
       </header>
+
+      <InstallAppCard />
 
       {/* Theme Selection */}
       <section
