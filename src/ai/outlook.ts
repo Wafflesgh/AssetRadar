@@ -5,7 +5,11 @@
  * final model trained on all
  * known data, today's probability of a positive return over the horizon, the main drivers,
  * risk stats and the Fed event study. Also holds the pure personalization step (risk profile
- * → ranking and "favorable / watch / unfavorable") shared by the server and the browser.
+ * → ranking and "favorable / watch / unfavorable / no proven edge") shared by the server and
+ * the browser. A verdict needs a *proven* edge from one of two tests — the walk-forward
+ * backtested strategy (holdout) or the fixed technical scorecard on the asset's own history —
+ * and is then checked against the evidence-weighted analysis (technicals, factors,
+ * fundamentals, news drivers). Every check is listed in `checks` so the UI can show why.
  * This is a statistical screen, not a guarantee or personal financial advice.
  */
 import {
@@ -67,9 +71,19 @@ export interface AssetOutlook {
     maxDrawdown: number;
   };
   fedReactions: EventReaction[];
-  /** Current news mood 0–100 (from the live sentiment), if available. */
-  newsScore?: number | null;
+  /** Evidence-weighted analysis summary (see analysis.ts), if it could be computed. */
+  evidence?: OutlookEvidence | null;
   note?: string;
+}
+
+export interface OutlookEvidence {
+  /** −1 … +1 composite and its 0–100 / label form. */
+  composite: number;
+  score: number;
+  label: 'Bullish' | 'Neutral' | 'Bearish';
+  summary: string;
+  /** Technical scorecard lean today and how that lean did on this asset's history. */
+  scorecard: { lean: 'bullish' | 'bearish' | 'neutral'; upRate: number; baseUpRate: number; samples: number; horizonDays: number } | null;
 }
 
 /** Annualization: crypto trades every day, other markets ~252 days a year. */
@@ -187,15 +201,36 @@ export const RISK_PROFILES: Record<
 
 export type Verdict = 'favorable' | 'watch' | 'unfavorable' | 'not-suitable' | 'no-signal';
 
+export interface VerdictCheck {
+  label: string;
+  /** true = passed, false = failed, null = not applicable. */
+  pass: boolean | null;
+  detail: string;
+}
+
 export interface RankedOutlook extends AssetOutlook {
-  /** Probability shrunk toward 50% by how much the model beat the base rate out-of-sample. */
+  /** Chance of a gain: model probability shrunk by its holdout edge, or the scorecard's historical rate. */
   adjustedProbability: number | null;
   /** 0–1: how much the backtest supports trusting this model (0 = no proven edge). */
   reliability: number;
-  /** Small, transparent tilt from the live news mood and geopolitical alerts (in probability). */
-  newsTilt: number;
+  /** Edge of today's scorecard lean on the asset's history (in hit-rate points, ≥ 0.03 = proven). */
+  scorecardEdge: number;
+  /** Small, transparent tilt from the evidence score and geopolitical alerts (in probability). */
+  evidenceTilt: number;
   verdict: Verdict;
   reasons: string[];
+  /** The tests behind the verdict, in order. */
+  checks: VerdictCheck[];
+}
+
+/** A historical lean edge of 3 hit-rate points over at least 60 days counts as proven. */
+export const SCORECARD_MIN_EDGE = 0.03;
+export const SCORECARD_MIN_SAMPLES = 60;
+
+/** How much better than the base rate today's scorecard lean has done (in its own direction). */
+export function scorecardEdgeOf(sc: OutlookEvidence['scorecard'] | undefined | null): number {
+  if (!sc || sc.samples < SCORECARD_MIN_SAMPLES || sc.lean === 'neutral') return 0;
+  return sc.lean === 'bullish' ? sc.upRate - sc.baseUpRate : sc.baseUpRate - sc.upRate;
 }
 
 /** Model edge out-of-sample: favorable-signal hit rate above the base rate, scaled 0–1. */
@@ -213,46 +248,109 @@ export function rankOutlooks(
   opts: { geoAlertActive?: boolean } = {}
 ): RankedOutlook[] {
   const rules = RISK_PROFILES[profile];
+  const p100 = (x: number) => `${Math.round(x * 100)}%`;
   const ranked = outlooks.map((o): RankedOutlook => {
     const reliability = reliabilityOf(o.backtest);
+    const sc = o.evidence?.scorecard ?? null;
+    const scorecardEdge = scorecardEdgeOf(sc);
+    const ev = o.evidence;
     const reasons: string[] = [];
-    // News mood shifts the probability by at most ±3 points; it is not backtested
-    let newsTilt = typeof o.newsScore === 'number' ? ((o.newsScore - 50) / 50) * 0.03 : 0;
+    const checks: VerdictCheck[] = [];
     const vol = o.stats.volatility ?? 0;
+
+    // Evidence shifts the chance by at most ±3 points; it is not backtested, so it stays small
+    let evidenceTilt = ev ? ev.composite * 0.03 : 0;
     if (opts.geoAlertActive && vol > 0.25 && o.symbol !== 'XAU/USD') {
-      newsTilt -= 0.02;
+      evidenceTilt -= 0.02;
       reasons.push('Geopolitical alert active: extra caution on volatile assets.');
     }
-    const adjustedProbability =
-      o.probabilityUp === null ? null : 0.5 + (o.probabilityUp - 0.5) * reliability + newsTilt;
+
+    // 1. Risk profile
+    const suitable = !((o.group === 'crypto' && !rules.allowCrypto) || vol > rules.maxVolatility);
+    checks.push({
+      label: 'Fits your risk profile',
+      pass: suitable,
+      detail:
+        o.group === 'crypto' && !rules.allowCrypto
+          ? `${rules.label} profile excludes crypto`
+          : `Volatility ${p100(vol)}/yr vs ${rules.label} limit ${p100(rules.maxVolatility)}`,
+    });
+
+    // 2. Backtested strategy (walk-forward, judged on the holdout only)
+    const bt = o.backtest;
+    const modelProven = reliability > 0;
+    checks.push({
+      label: 'Backtested strategy beats the base rate',
+      pass: bt ? modelProven : null,
+      detail:
+        bt && bt.signalHitRate !== null
+          ? `${o.strategyLabel ?? 'Model'}: holdout hit rate ${p100(bt.signalHitRate)} vs base ${p100(bt.baseRate)} over ${bt.signalCount} signals${
+              bt.signalCount < 30 ? ' (fewer than 30)' : ''
+            }`
+          : 'Not enough history for a holdout test',
+    });
+
+    // 3. Technical scorecard lean on the asset's own history
+    const scProven = scorecardEdge >= SCORECARD_MIN_EDGE;
+    checks.push({
+      label: "Scorecard lean has worked on this asset",
+      pass: sc && sc.lean !== 'neutral' ? scProven : null,
+      detail: sc
+        ? sc.lean === 'neutral'
+          ? 'Scorecard is neutral today'
+          : `Leans ${sc.lean}: up ${p100(sc.upRate)} of ${sc.samples} same-lean days vs ${p100(sc.baseUpRate)} on all days`
+        : 'No scorecard history',
+    });
+
+    // Directional votes from the proven tests only
+    const modelVote = modelProven ? (o.signal === 'bullish' ? 1 : o.signal === 'bearish' ? -1 : 0) : 0;
+    const scVote = scProven && sc ? (sc.lean === 'bullish' ? 1 : -1) : 0;
+
+    // 4. Evidence-weighted analysis must not contradict a bullish call
+    checks.push({
+      label: 'Evidence score does not contradict',
+      pass: ev ? ev.composite > -0.15 : null,
+      detail: ev ? `${ev.score}/100 (${ev.label}) — technicals, momentum, value, quality, news` : 'Evidence unavailable',
+    });
+
+    const modelChance = o.probabilityUp === null ? null : 0.5 + (o.probabilityUp - 0.5) * reliability;
+    const scChance = sc ? sc.upRate : null;
+    const baseChance = modelProven && modelVote !== 0 ? modelChance : scProven ? scChance : modelChance;
+    const adjustedProbability = baseChance === null ? null : Math.max(0, Math.min(1, baseChance + evidenceTilt));
 
     let verdict: Verdict;
-    if (o.probabilityUp === null || adjustedProbability === null) {
+    if (o.probabilityUp === null && !sc) {
       verdict = 'no-signal';
-      reasons.push(o.note ?? 'No model output.');
-    } else if ((o.group === 'crypto' && !rules.allowCrypto) || vol > rules.maxVolatility) {
+      reasons.push(o.note ?? 'Not enough data for any test.');
+    } else if (!suitable) {
       verdict = 'not-suitable';
-      reasons.push(
-        `Volatility ${(vol * 100).toFixed(0)}%/yr is above the ${rules.label} limit of ${(rules.maxVolatility * 100).toFixed(0)}%.`
-      );
-    } else if (reliability === 0) {
+      reasons.push(checks[0].detail + '.');
+    } else if (!modelProven && !scProven) {
       verdict = 'no-signal';
-      reasons.push('No strategy showed a reliable out-of-sample edge for this asset.');
-    } else if (o.signal === 'bearish') {
+      reasons.push('Neither the backtested strategy nor the scorecard has beaten the base rate on this asset, so the AI makes no call.');
+    } else if ((modelVote < 0 || scVote < 0) && modelVote <= 0 && scVote <= 0) {
       verdict = 'unfavorable';
-      reasons.push(`Active bearish setup (${o.strategyLabel ?? 'model'}).`);
-    } else if (o.signal === 'bullish' && adjustedProbability >= 0.55) {
+      reasons.push(
+        modelVote < 0
+          ? `Proven strategy (${o.strategyLabel ?? 'model'}) has an active bearish setup.`
+          : 'The scorecard leans bearish, and that lean has preceded weaker-than-usual returns on this asset.'
+      );
+    } else if ((modelVote > 0 || scVote > 0) && modelVote >= 0 && scVote >= 0 && (!ev || ev.composite > -0.15) && (adjustedProbability ?? 0) >= 0.55) {
       verdict = 'favorable';
-      reasons.push(`Active bullish setup (${o.strategyLabel ?? 'model'}).`);
+      reasons.push(
+        modelVote > 0
+          ? `Proven strategy (${o.strategyLabel ?? 'model'}) has an active bullish setup.`
+          : 'The scorecard leans bullish, and that lean has preceded better-than-usual returns on this asset.'
+      );
     } else {
       verdict = 'watch';
-      reasons.push(
-        o.signal === 'none'
-          ? `Proven strategy, but no active setup right now (${o.strategyLabel ?? 'model'}).`
-          : 'Bullish setup weakened by the news mood or alerts.'
-      );
+      if (modelVote > 0 && scVote < 0) reasons.push('Proven tests disagree (strategy bullish, scorecard bearish).');
+      else if (modelVote < 0 && scVote > 0) reasons.push('Proven tests disagree (strategy bearish, scorecard bullish).');
+      else if (ev && ev.composite <= -0.15) reasons.push('A proven bullish setup, but the evidence score is bearish.');
+      else if (modelVote === 0 && scVote === 0) reasons.push(`A proven method exists but has no active setup now (${o.strategyLabel ?? 'model'}).`);
+      else reasons.push('Bullish setup, but the chance of a gain is below 55% after adjustments.');
     }
-    return { ...o, adjustedProbability, reliability, newsTilt, verdict, reasons };
+    return { ...o, adjustedProbability, reliability, scorecardEdge, evidenceTilt, verdict, reasons, checks };
   });
   const order: Record<Verdict, number> = { favorable: 0, watch: 1, unfavorable: 2, 'no-signal': 3, 'not-suitable': 4 };
   return ranked.sort(

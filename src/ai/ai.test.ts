@@ -144,3 +144,30 @@ test('selectStrategy picks on validation and reports holdout only', () => {
   assert.ok((sel?.holdout?.predictions ?? 0) < preds.length);
   assert.equal(sel?.holdout?.signalHitRate, 1);
 });
+
+test('rankOutlooks: a proven scorecard lean can decide, and checks explain the verdict', () => {
+  const sc = (lean: 'bullish' | 'bearish', upRate: number) => ({
+    composite: 0.2,
+    score: 60,
+    label: 'Bullish' as const,
+    summary: '',
+    scorecard: { lean, upRate, baseUpRate: 0.55, samples: 400, horizonDays: 20 },
+  });
+  const noEdge = (code: string) => outlook(code, 'index', 0.5, 0.15, 0); // backtest without edge
+  const list = [
+    { ...noEdge('DAX'), evidence: sc('bullish', 0.65) },
+    { ...noEdge('HSI'), evidence: sc('bearish', 0.45) },
+    { ...noEdge('N225'), evidence: sc('bullish', 0.56) }, // lean without a 3-point edge
+    { ...outlook('SPX', 'index', 0.7, 0.16, 0.1), evidence: { ...sc('bullish', 0.6), composite: -0.4, label: 'Bearish' as const } },
+  ];
+  const v = Object.fromEntries(rankOutlooks(list, 'moderate').map((o) => [o.code, o]));
+  assert.equal(v.DAX.verdict, 'favorable');
+  assert.ok(Math.abs((v.DAX.adjustedProbability ?? 0) - (0.65 + 0.2 * 0.03)) < 1e-9);
+  assert.equal(v.HSI.verdict, 'unfavorable');
+  assert.equal(v.N225.verdict, 'no-signal');
+  // A proven bullish setup contradicted by a bearish evidence score goes to the watch list
+  assert.equal(v.SPX.verdict, 'watch');
+  assert.equal(v.DAX.checks.length, 4);
+  assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Backtested'))?.pass, false);
+  assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Scorecard'))?.pass, true);
+});

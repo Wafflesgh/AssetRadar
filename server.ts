@@ -1314,21 +1314,6 @@ function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
     : [...bars, { date, close: live.price }];
 }
 
-/** Live news mood 0–100 per asset from the news hub (same rule-based score as the panels). */
-function newsScoreFor(asset: Asset): number | null {
-  const news = newsHub.items.filter((i) => i.assetTags?.includes(asset.code)).slice(0, 6);
-  if (news.length === 0) return null;
-  const tick = asset.indodaxPair ? indodaxCache.entry?.data?.[asset.symbol] : yahooCache.get(asset.symbol)?.data;
-  return computeMarketSentiment({
-    assetName: asset.name,
-    symbol: asset.symbol,
-    changePct24h: tick?.changePct24h,
-    price: tick?.price,
-    high24h: tick?.high24h,
-    low24h: tick?.low24h,
-    news,
-  }).score;
-}
 
 // ---- Asset analysis: technical scorecard + chart patterns + fundamentals + news drivers ----
 
@@ -1342,16 +1327,19 @@ const onDemandNewsAt = new Map<string, number>();
 
 const STOCK_GROUPS: AssetGroup[] = ['idStock', 'usStock', 'globalStock'];
 
-/** Daily closes (about 5 years) with today's live price as the last bar. */
+/** About 5 years of daily bars (without today's live bar). */
+async function dailyHistoryFor(asset: Asset): Promise<DailyBar[]> {
+  if (asset.indodaxPair) return fetchIndodaxDaily(asset.indodaxPair);
+  // Spot gold uses the GC=F futures history
+  if (asset.symbol === 'XAU/USD') return fetchYahooDaily('GC=F');
+  // SAR is pegged at 3.75 per USD, so its Rupiah history is USD/IDR ÷ 3.75
+  if (asset.symbol === 'SAR/IDR') return (await fetchYahooDaily('IDR=X')).map((b) => ({ date: b.date, close: b.close / SAR_PER_USD }));
+  return asset.yahooSymbol ? fetchYahooDaily(asset.yahooSymbol) : [];
+}
+
+/** Daily closes with today's live price as the last bar. */
 async function dailyClosesFor(asset: Asset): Promise<number[]> {
-  // Spot gold uses the GC=F futures history; SAR is pegged, so USD/IDR has the same shape
-  const yahoo = asset.symbol === 'XAU/USD' ? 'GC=F' : asset.symbol === 'SAR/IDR' ? 'IDR=X' : asset.yahooSymbol;
-  const raw = asset.indodaxPair
-    ? await fetchIndodaxDaily(asset.indodaxPair)
-    : yahoo
-      ? await fetchYahooDaily(yahoo)
-      : [];
-  return withLiveBar(raw, asset).map((b) => b.close);
+  return withLiveBar(await dailyHistoryFor(asset), asset).map((b) => b.close);
 }
 
 /** Annual statements from Yahoo's fundamentals-timeseries (stocks only, cached 12 h). */
@@ -1444,9 +1432,19 @@ async function computeAssetAnalysis(asset: Asset): Promise<AssetAnalysis> {
       .then(() => ensureAssetNews(asset))
       .catch(() => {}),
   ]);
+  return analysisFromCloses(asset, closes, fund, 20);
+}
+
+/** The analysis itself, from closes already loaded (also used by the AI screen with its horizon). */
+async function analysisFromCloses(
+  asset: Asset,
+  closes: number[],
+  fund: { years: AnnualFigures[]; currency: string } | null,
+  horizonDays: number
+): Promise<AssetAnalysis> {
   if (closes.length < 60) throw new Error(`Not enough price history for ${asset.name}`);
   const yearBars = asset.group === 'crypto' ? 365 : 252;
-  const technical = analyzeTechnicals(closes, 20, yearBars);
+  const technical = analyzeTechnicals(closes, horizonDays, yearBars);
 
   let fundamentals = null;
   if (fund) {
@@ -1511,10 +1509,7 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   const candidates = ASSETS.filter((a) => a.ai && (a.indodaxPair || a.yahooSymbol));
   const outlooks = await mapLimit(candidates, 6, async (asset): Promise<AssetOutlook | null> => {
     try {
-      const raw = asset.indodaxPair
-        ? await fetchIndodaxDaily(asset.indodaxPair)
-        : await fetchYahooDaily(asset.yahooSymbol as string);
-      const bars = withLiveBar(raw, asset);
+      const bars = withLiveBar(await dailyHistoryFor(asset), asset);
       const dates = bars.map((b) => b.date);
       const macro = {
         tbill: alignByDate(dates, tbillBars),
@@ -1532,7 +1527,30 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
         horizonDays: horizon,
         fedReactions: eventStudy(bars, meetings),
       });
-      return { ...outlook, newsScore: newsScoreFor(asset) };
+      // Evidence-weighted analysis on the same bars (fundamentals from the 12 h cache, hub news only)
+      const evidence = await analysisFromCloses(
+        asset,
+        bars.map((b) => b.close),
+        await fundamentalsFor(asset).catch(() => null),
+        horizon
+      )
+        .then((a) => ({
+          composite: a.composite,
+          score: a.score,
+          label: a.label,
+          summary: a.summary,
+          scorecard: a.technical?.edge
+            ? {
+                lean: a.technical.edge.lean,
+                upRate: a.technical.edge.upRate,
+                baseUpRate: a.technical.edge.baseUpRate,
+                samples: a.technical.edge.samples,
+                horizonDays: a.technical.edge.horizonDays,
+              }
+            : null,
+        }))
+        .catch(() => null);
+      return { ...outlook, evidence };
     } catch (err) {
       console.warn(`[AI] ${asset.code} failed:`, err instanceof Error ? err.message : err);
       return null;
@@ -1590,15 +1608,24 @@ function ruleBasedSummary(payload: AiOutlookPayload, profile: RiskProfile): stri
     parts.push(
       `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, the strongest statistical setups now are ${favorable
         .slice(0, 3)
-        .map((o) => `${o.name} (${pct(o.adjustedProbability)} adjusted probability of a gain; in backtests its favorable signals were right ${pct(o.backtest?.signalHitRate)} of the time vs a ${pct(o.backtest?.baseRate)} base rate)`)
+        .map((o) => {
+          const sc = o.evidence?.scorecard;
+          const proof =
+            o.reliability > 0 && o.signal === 'bullish'
+              ? `in backtests its favorable signals were right ${pct(o.backtest?.signalHitRate)} of the time vs a ${pct(o.backtest?.baseRate)} base rate`
+              : sc
+                ? `after past days with the same bullish scorecard it rose ${pct(sc.upRate)} of the time vs ${pct(sc.baseUpRate)} on all days`
+                : 'proven edge';
+          return `${o.name} (${pct(o.adjustedProbability)} chance of a gain; ${proof})`;
+        })
         .join(', ')}.`
     );
   } else {
     parts.push(
-      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, no instrument currently has an active buy setup from a strategy with a proven out-of-sample edge — waiting is a valid choice. The watch list below shows where such a setup is most likely to appear.`
+      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, no instrument currently has a bullish setup from a test with a proven edge (backtested strategy or technical scorecard) that the evidence score does not contradict — waiting is a valid choice. The watch list below shows where such a setup is most likely to appear.`
     );
   }
-  if (watch.length) parts.push(`Watch list (a strategy with a proven edge exists, but no active buy setup yet): ${watch.slice(0, 4).map((o) => o.name).join(", ")}.`);
+  if (watch.length) parts.push(`Watch list (a proven test exists, but no active setup, the tests disagree, or the evidence contradicts): ${watch.slice(0, 4).map((o) => o.name).join(", ")}.`);
   if (weak.length) parts.push(`Active bearish setups (better avoided for now): ${weak.slice(0, 4).map((o) => o.name).join(", ")}.`);
   if (payload.nextFomc) {
     parts.push(
@@ -1629,9 +1656,10 @@ async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile) {
     volatility: o.stats.volatility?.toFixed(2),
     return1y: o.stats.return1y?.toFixed(2),
     topDrivers: o.drivers.slice(0, 2).map((d) => `${d.label} (${d.impact > 0 ? '+' : '-'})`),
-    newsMood: o.newsScore,
+    evidenceScore: o.evidence?.score,
+    checks: o.checks.map((c) => `${c.label}: ${c.pass === null ? 'n/a' : c.pass ? 'pass' : 'fail'} (${c.detail})`),
   }));
-  const prompt = `You are a quantitative market analyst. Using ONLY the data below (a walk-forward backtested logistic model of the probability that each instrument rises over the next ${payload.horizonDays} trading days), write 4-6 plain-English sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the probability and backtest hit rate vs base rate), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "This is a statistical screen, not personal financial advice."
+  const prompt = `You are a quantitative market analyst. Using ONLY the data below (for each instrument: its verdict and the checks behind it — a walk-forward backtested strategy judged on a holdout, a technical scorecard tested on the asset's own history, and an evidence score from technicals, momentum, value, quality and news — for the next ${payload.horizonDays} trading days), write 4-6 plain-English sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the chance of a gain and the hit rate vs base rate from the passing check), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "This is a statistical screen, not personal financial advice."
 DATA: ${JSON.stringify(facts)}`;
   try {
     const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });

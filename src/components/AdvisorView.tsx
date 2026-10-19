@@ -2,8 +2,10 @@
  * AdvisorView.tsx — The AI Advisor page (#/advisor): a personalized, backtested outlook for
  * every instrument. Shows the summary of what currently looks statistically attractive, the
  * ranking per risk profile and horizon, each asset's chosen strategy with its holdout hit
- * rate vs base rate, risk stats, Fed-decision reactions and the methodology. Refreshes every
- * 10 minutes with the latest prices and news. A statistical screen, not personal advice.
+ * rate vs base rate, risk stats, Fed-decision reactions and the methodology. A "How verdicts
+ * are decided" box and a pass/fail checklist on every card show exactly why an asset is
+ * favorable, on the watch list, unfavorable or has no proven edge. Refreshes every 10 minutes
+ * with the latest prices and news. A statistical screen, not personal advice.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -37,25 +39,25 @@ const VERDICT_META: Record<Verdict, { title: string; color: string; soft: string
     title: 'Favorable now',
     color: 'var(--color-up)',
     soft: 'var(--color-up-soft)',
-    hint: 'Active buy setup from a strategy with a proven out-of-sample edge.',
+    hint: 'A proven test signals bullish, none bearish, the evidence score is not bearish and the chance of a gain is at least 55%.',
   },
   watch: {
     title: 'Watch list',
     color: 'var(--color-gold)',
     soft: 'var(--color-gold-soft)',
-    hint: 'A proven strategy exists, but there is no active buy setup yet.',
+    hint: 'A proven test exists, but there is no active setup, the tests disagree, or the evidence score contradicts.',
   },
   unfavorable: {
     title: 'Unfavorable now',
     color: 'var(--color-down)',
     soft: 'var(--color-down-soft)',
-    hint: 'Active bearish setup — better avoided for now.',
+    hint: 'A proven test signals bearish and none signals bullish — better avoided for now.',
   },
   'no-signal': {
     title: 'No proven edge',
     color: 'var(--text-secondary)',
     soft: 'var(--bg-surface-subtle)',
-    hint: 'No strategy beat the base rate out-of-sample, so the AI makes no call.',
+    hint: "Neither the backtested strategy nor the scorecard beat the base rate on this asset's history, so the AI makes no call.",
   },
   'not-suitable': {
     title: 'Not suitable for your profile',
@@ -242,6 +244,7 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
       ) : data ? (
         <>
           <SummaryCard data={data} refreshing={refreshing} onRefresh={() => load(true)} />
+          <VerdictRules />
           {(['favorable', 'watch', 'unfavorable', 'no-signal', 'not-suitable'] as Verdict[]).map((v) =>
             groups[v].length === 0 ? null : (
               <section key={v} aria-labelledby={`verdict-${v}`} className="space-y-3">
@@ -411,9 +414,12 @@ function OutlookCard({
         />
         <Metric label="Volatility / yr" value={pct(o.stats.volatility)} sub={`max drawdown ${pct(o.stats.maxDrawdown)}`} />
         <Metric
-          label="1-year return"
-          value={pct(o.stats.return1y)}
-          sub={typeof o.newsScore === 'number' ? `news mood ${o.newsScore}/100` : undefined}
+          label="Evidence score"
+          value={o.evidence ? `${o.evidence.score}/100` : '—'}
+          sub={o.evidence ? `${o.evidence.label} · 1y return ${pct(o.stats.return1y)}` : `1y return ${pct(o.stats.return1y)}`}
+          color={
+            o.evidence?.label === 'Bullish' ? 'var(--color-up)' : o.evidence?.label === 'Bearish' ? 'var(--color-down)' : undefined
+          }
         />
       </div>
 
@@ -452,12 +458,35 @@ function OutlookCard({
       )}
 
       {o.reasons.length > 0 && (
-        <ul className="text-[11px] space-y-0.5" style={{ color: 'var(--text-secondary)' }}>
+        <ul className="text-[11px] space-y-0.5 font-semibold" style={{ color: meta.color }}>
           {o.reasons.map((r) => (
             <li key={r}>› {r}</li>
           ))}
         </ul>
       )}
+
+      <details className="text-[11px]">
+        <summary className="cursor-pointer font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          Why this verdict — {o.checks.filter((c) => c.pass).length} of {o.checks.filter((c) => c.pass !== null).length} checks passed
+        </summary>
+        <ul className="mt-1.5 space-y-1">
+          {o.checks.map((c) => (
+            <li key={c.label} className="flex items-start gap-1.5">
+              <span
+                aria-label={c.pass === null ? 'Not applicable' : c.pass ? 'Passed' : 'Failed'}
+                className="font-bold w-3 shrink-0"
+                style={{ color: c.pass === null ? 'var(--text-secondary)' : c.pass ? 'var(--color-up)' : 'var(--color-down)' }}
+              >
+                {c.pass === null ? '–' : c.pass ? '✓' : '✗'}
+              </span>
+              <span>
+                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{c.label}</span>
+                <span className="block" style={{ color: 'var(--text-secondary)' }}>{c.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
 
       <button
         type="button"
@@ -486,6 +515,53 @@ function Metric({ label, value, sub, color }: { label: string; value: string; su
         </div>
       )}
     </div>
+  );
+}
+
+/** The decision rules, always visible above the cards. */
+function VerdictRules() {
+  const rows: Array<{ v: Verdict; rule: string }> = [
+    { v: 'not-suitable', rule: "Checked first: the asset's volatility is above your profile's limit (or crypto for Conservative)." },
+    {
+      v: 'no-signal',
+      rule: 'Neither proven test exists: the backtested strategy did not beat the base rate on the holdout (≥ 30 signals, higher hit rate and higher return), and the technical scorecard\'s current lean did not beat the base rate by ≥ 3 points on the asset\'s own history.',
+    },
+    { v: 'unfavorable', rule: 'At least one proven test points down (active bearish setup) and none points up.' },
+    {
+      v: 'favorable',
+      rule: 'At least one proven test points up and none points down, the evidence score (technicals, momentum, value, quality, news) is not bearish, and the adjusted chance of a gain is ≥ 55%.',
+    },
+    { v: 'watch', rule: 'Everything else: a proven test exists but has no active setup, the tests disagree, or the evidence score contradicts a bullish setup.' },
+  ];
+  return (
+    <section
+      aria-labelledby="verdict-rules-heading"
+      className="rounded-xl border p-4 md:p-5 space-y-3"
+      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+    >
+      <div>
+        <h2 id="verdict-rules-heading" className="text-sm md:text-base font-bold">
+          How verdicts are decided
+        </h2>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          Two independent tests can prove an edge; the evidence-weighted analysis can only veto or slightly tilt (±3 points),
+          because it is not backtested. Open "Why this verdict" on any card for its pass/fail checklist.
+        </p>
+      </div>
+      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+        {rows.map((r) => (
+          <div key={r.v} className="flex gap-2">
+            <dt
+              className="px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap h-fit"
+              style={{ backgroundColor: VERDICT_META[r.v].soft, color: VERDICT_META[r.v].color }}
+            >
+              {VERDICT_META[r.v].title}
+            </dt>
+            <dd style={{ color: 'var(--text-secondary)' }}>{r.rule}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -532,11 +608,21 @@ function Methodology({ open, onToggle }: { open: boolean; onToggle: () => void }
             out-of-sample predictions; the hit rate you see comes only from the last 40% (holdout).
           </p>
           <p>
-            <strong style={{ color: 'var(--text-primary)' }}>5. Trust & personalization.</strong> A
-            method only counts if its holdout signals beat the base rate (how often the asset rose
+            <strong style={{ color: 'var(--text-primary)' }}>5. Second test: the technical scorecard.</strong>{' '}
+            Nine fixed rules (200/50-day trend, MACD, RSI, Bollinger Bands, 12-1 month momentum,
+            52-week range, 55-day breakout) give today's lean. The same rules are replayed on every
+            past day of the asset's history; the lean only counts if, after past days with the same
+            lean, the price rose at least 3 points more (or less, for bearish) often than on all days.
+          </p>
+          <p>
+            <strong style={{ color: 'var(--text-primary)' }}>6. Evidence & personalization.</strong> A
+            strategy only counts if its holdout signals beat the base rate (how often the asset rose
             anyway) and earned more than average, with at least 30 signals. The probability is
-            shrunk toward 50% by that trust, nudged slightly by the live news mood (±3 points) and
-            geopolitical alerts, and filtered by your profile's volatility limit.
+            shrunk toward 50% by that trust, then tilted by the evidence-weighted analysis
+            (technicals, value and momentum per Asness, Moskowitz &amp; Pedersen 2013, Piotroski
+            F-score for stocks, classified news drivers; at most ±3 points) and geopolitical alerts,
+            and filtered by your profile's volatility limit. Fundamental and technical evidence are
+            combined because they are complements (Bettman, Sault &amp; Schultz 2009).
           </p>
           <p>
             <strong style={{ color: 'var(--text-primary)' }}>Limits.</strong> Markets change; a
