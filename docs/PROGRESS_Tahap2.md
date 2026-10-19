@@ -33,7 +33,10 @@ Node 24 · `lint / test / build` awal: lulus (85 test)
 - [x] 3. Search bar di semua halaman
   - Dibuat: `HeaderSearch.tsx` di header semua halaman (kecuali Terminal yang punya baris perintah sendiri): kotak inline di PC, tombol kaca pembesar → pencarian layar penuh di HP (portal ke <body>). Pintasan `/` dan Ctrl/⌘+K. Mencari semua aset + 962 emiten BEI berdasarkan kode, nama, kata kunci, sektor & industri (contoh "nikel" → INCO, ANTM, MBMA, NCKL). Hasil menampilkan grup/sektor, harga live & % 24 jam (saham universe langsung dipolling saat tampil). Enter/klik → detail. 5 pencarian terakhir disimpan (`getRecentSearches`/`saveRecentSearch` di storage.ts). Label koneksi di header HP jadi ikon saja agar muat.
   - Verifikasi: PC — `/` memfokuskan kotak, "nikel" → 4 hasil dengan harga, Enter membuka INCO dan tersimpan di Recent; HP 375px — overlay layar penuh, tanpa scroll horizontal.
-- [ ] 4. Portofolio pribadi
+- [x] 4. Portofolio pribadi
+  - Dibuat: `src/utils/portfolio.ts` (metode rata-rata tertimbang seperti broker Indonesia, realized/unrealized, konversi ke Rupiah dengan kurs live, kelas aset, validasi: angka positif, tanggal tidak di masa depan, tidak bisa jual melebihi kepemilikan pada tanggal itu, format export/import) + test. Halaman `#/portfolio` (lazy-load): tambah/edit/hapus transaksi (saham BEI dalam lot = 100 lembar, crypto desimal, emas dalam gram dengan harga Rp/gram, saham AS/dunia & kurs), tombol "Use live", ringkasan nilai/modal/P&L, tabel posisi (rata-rata vs live, nilai Rp, P/L, skor bukti & F-score sebagai informasi), donut alokasi, perbandingan dengan alokasi Profil Risiko tersimpan, riwayat transaksi, Export/Import JSON. Data hanya di perangkat (`getPortfolioTxs`/`savePortfolioTxs`).
+  - Verifikasi: uji di browser — 10 lot BBCA @Rp5.000 → nilai Rp4.820.000, P/L −Rp180.000 (−3,6%) dengan skor bukti; data uji dihapus lagi.
+  - Keterbatasan: posisi dalam KRW/HKD (Samsung, Tencent) tidak masuk total Rupiah karena tidak ada kurs IDR untuk mata uang itu (diberi catatan). Tidak memperhitungkan dividen/aksi korporasi otomatis.
 - [ ] 5. Uji nyata (forward test) AI Advisor
 - [ ] 6. Kalender emiten IDX
 - [ ] 7. Data makro Indonesia

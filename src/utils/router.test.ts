@@ -49,3 +49,9 @@ test('IDX page and universe stock detail routes', () => {
   // A plain IDX code also works
   assert.deepEqual(parseHashRoute('#/asset/bumi'), { tab: 'detail', assetSymbol: 'BUMI.JK' });
 });
+
+test('portfolio route', () => {
+  assert.deepEqual(parseHashRoute('#/portfolio'), { tab: 'portfolio' });
+  assert.deepEqual(parseHashRoute('#/portofolio'), { tab: 'portfolio' });
+  assert.equal(buildHashRoute('portfolio'), '#/portfolio');
+});

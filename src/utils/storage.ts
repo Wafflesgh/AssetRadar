@@ -21,6 +21,7 @@ const STORAGE_KEYS = {
   SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
+  PORTFOLIO: 'assetradar_portfolio_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -120,6 +121,22 @@ export function getRecentSearches(): string[] {
 export function saveRecentSearch(symbol: string): void {
   const next = [symbol, ...getRecentSearches().filter((s) => s !== symbol)].slice(0, 5);
   safeSet(STORAGE_KEYS.RECENT_SEARCHES, JSON.stringify(next));
+}
+
+/** Portfolio transactions (only on this device; see utils/portfolio.ts for the shape). */
+export function getPortfolioTxs<T extends { id: string; symbol: string }>(): T[] {
+  try {
+    const parsed = JSON.parse(safeGet(STORAGE_KEYS.PORTFOLIO) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((t) => t && typeof t.id === 'string' && typeof t.symbol === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Returns false when the browser refused to store the data (private mode, storage full). */
+export function savePortfolioTxs(txs: unknown[]): boolean {
+  safeSet(STORAGE_KEYS.PORTFOLIO, JSON.stringify(txs));
+  return safeGet(STORAGE_KEYS.PORTFOLIO) !== null;
 }
 
 export interface SavedRiskResult {

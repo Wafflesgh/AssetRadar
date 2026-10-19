@@ -49,6 +49,8 @@ import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 const RiskProfileView = lazy(() =>
   import('./components/RiskProfileView.tsx').then((m) => ({ default: m.RiskProfileView }))
 );
+// recharts-heavy pages load on demand
+const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -305,6 +307,7 @@ export default function App() {
               {activeTab === 'advisor' && 'AI Advisor'}
               {activeTab === 'quant' && 'Quant Lab · Portfolio Simulator'}
               {activeTab === 'idx' && 'Indonesian Stocks'}
+              {activeTab === 'portfolio' && 'My Portfolio'}
             </span>
           </div>
         </div>
@@ -419,6 +422,17 @@ export default function App() {
         )}
 
         {activeTab === 'quant' && <QuantSimView />}
+        {activeTab === 'portfolio' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <PortfolioView ticks={ticks} onSelectAsset={handleSelectAsset} />
+          </Suspense>
+        )}
         {activeTab === 'idx' && (
           <IndonesianStocksView
             ticks={ticks}

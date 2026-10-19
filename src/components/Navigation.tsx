@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Landmark,
+  Wallet,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -24,7 +25,7 @@ import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -53,6 +54,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'idx', label: 'IDX Stocks', shortLabel: 'IDX', icon: Landmark, mobile: true },
   { id: 'terminal', label: 'Terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit, mobile: true },
+  { id: 'portfolio', label: 'Portfolio', icon: Wallet },
   { id: 'quant', label: 'Quant Lab', shortLabel: 'Quant', icon: FlaskConical },
   { id: 'watchlist', label: 'Watchlist', shortLabel: 'Watch', icon: Star },
   { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },
