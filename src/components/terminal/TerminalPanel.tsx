@@ -5,16 +5,23 @@
 import { ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AssetConfig, PriceTick, SentimentLabel } from '../../config/assets.ts';
+import { formatNumber } from '../../utils/format.ts';
 
 const idNumber = (digits: number) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const NUM_0 = idNumber(0);
 const NUM_2 = idNumber(2);
 
-/** Compact Terminal price: Rupiah without "Rp" (decimals only under 1,000), others 2 decimals. */
+/**
+ * Compact Terminal price without a currency sign: whole numbers from 1,000 for Rupiah/Won,
+ * 2 decimals otherwise, and 4–6 decimals for sub-1 prices (PEPE, SHIB, DOGE in USD).
+ */
 export function formatTerminalPrice(value: number | undefined, asset: AssetConfig): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
-  if (asset.currency === 'IDR') return Math.abs(value) < 1000 ? NUM_2.format(value) : NUM_0.format(value);
+  const abs = Math.abs(value);
+  if ((asset.currency === 'IDR' || asset.currency === 'KRW') && abs >= 1000) return NUM_0.format(value);
+  if (abs < 0.01) return formatNumber(value, 6);
+  if (abs < 1) return formatNumber(value, 4);
   return NUM_2.format(value);
 }
 

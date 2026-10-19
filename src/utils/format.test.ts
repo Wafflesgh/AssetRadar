@@ -7,6 +7,8 @@ import {
   formatPoints,
   formatPercent,
   formatNumber,
+  formatPrice,
+  formatUsdCompact,
   convertXauUsdToIdrPerGram,
 } from './format.ts';
 
@@ -17,6 +19,8 @@ test('formatRupiah formats numbers with English separators and no space', () => 
   assert.equal(formatRupiah(114.031), 'Rp114.03');
   assert.equal(formatRupiah(114.031, 0), 'Rp114');
   assert.equal(formatRupiah(NaN), '—');
+  assert.equal(formatRupiah(0.16342), 'Rp0.1634');
+  assert.equal(formatRupiah(0.0012345), 'Rp0.001235');
 });
 
 test('formatPercent formats positive, negative, and zero percentages', () => {
@@ -39,4 +43,16 @@ test('convertXauUsdToIdrPerGram applies exact troy ounce conversion formula', ()
   const expected = (2700 / 31.1034768) * 15800;
   assert.equal(Math.abs(convertXauUsdToIdrPerGram(xauUsd, usdIdr) - expected) < 0.001, true);
   assert.equal(convertXauUsdToIdrPerGram(0, 15800), 0);
+});
+
+test('formatPrice handles every quote currency and unit', () => {
+  assert.equal(formatPrice(2750.5, 'USD', '/oz'), 'US$2,750.50/oz');
+  assert.equal(formatPrice(0.1234567, 'USD'), 'US$0.1235');
+  assert.equal(formatPrice(305.55, 'USX', '/lb'), '305.55¢/lb');
+  assert.equal(formatPrice(1480501000, 'IDR'), 'Rp1,480,501,000');
+  assert.equal(formatPrice(7321.456, 'PTS'), '7,321.46');
+  assert.equal(formatPrice(85300, 'KRW'), 'KRW 85,300');
+  assert.equal(formatPrice(27.4, 'SAR'), 'SAR 27.40');
+  assert.equal(formatUsdCompact(29.24e12), '$29.24T');
+  assert.equal(formatUsdCompact(845.3e9), '$845.3B');
 });

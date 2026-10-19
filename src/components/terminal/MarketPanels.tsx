@@ -2,7 +2,6 @@
  * MarketPanels.tsx — Terminal MONITOR table (all assets, price flash, click/1–9 to select)
  * and HEATMAP grid (color intensity by 24h % change).
  */
-import { useEffect, useRef, useState } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import {
   RetryButton,
@@ -13,32 +12,7 @@ import {
   formatWibStamp,
   isTickUsable,
 } from './TerminalPanel.tsx';
-
-type Flash = { dir: 'up' | 'down'; n: number };
-
-/** Tracks the last price change direction per symbol for the flash effect. */
-function usePriceFlash(ticks: Record<string, PriceTick>): Record<string, Flash> {
-  const prevRef = useRef<Record<string, number>>({});
-  const [flash, setFlash] = useState<Record<string, Flash>>({});
-
-  useEffect(() => {
-    const changes: Record<string, 'up' | 'down'> = {};
-    for (const [sym, tick] of Object.entries(ticks)) {
-      if (!isTickUsable(tick)) continue;
-      const prev = prevRef.current[sym];
-      if (prev !== undefined && prev !== tick.price) changes[sym] = tick.price > prev ? 'up' : 'down';
-      prevRef.current[sym] = tick.price;
-    }
-    if (Object.keys(changes).length === 0) return;
-    setFlash((old) => {
-      const next = { ...old };
-      for (const [sym, dir] of Object.entries(changes)) next[sym] = { dir, n: (old[sym]?.n ?? 0) + 1 };
-      return next;
-    });
-  }, [ticks]);
-
-  return flash;
-}
+import { usePriceFlash } from '../../hooks/usePriceFlash.ts';
 
 interface MarketPanelProps {
   ticks: Record<string, PriceTick>;

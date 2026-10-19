@@ -8,10 +8,11 @@ import {
   getAssetBySymbol,
   isValidTimeframe,
   getAssetByCode,
+  searchAssets,
 } from './assets.ts';
 
 test('ASSETS contains the core instruments with exact TradingView symbols', () => {
-  assert.equal(ASSETS.length, 21);
+  assert.ok(ASSETS.length >= 100, `expected a broad universe, got ${ASSETS.length}`);
   // Codes are unique (Terminal commands and news tags rely on this)
   assert.equal(new Set(ASSETS.map((a) => a.code)).size, ASSETS.length);
 
@@ -76,4 +77,20 @@ test('global indices and currencies are configured', () => {
   }
   assert.equal(getAssetByCode('ihsg')?.symbol, '^JKSE');
   assert.equal(getAssetByCode('nikkei')?.exchange, 'TSE');
+});
+
+test('asset universe covers every group with searchable names', () => {
+  for (const group of ['commodity', 'crypto', 'idStock', 'usStock', 'globalStock', 'index', 'forex']) {
+    assert.ok(ASSETS.some((a) => a.group === group), group);
+  }
+  assert.equal(getAssetByCode('BBCA')?.symbol, 'BBCA.JK');
+  assert.equal(getAssetByCode('NVDA')?.exchange, 'NYSE');
+  assert.equal(searchAssets('bank central')[0]?.code, 'BBCA');
+  assert.equal(searchAssets('nvda')[0]?.code, 'NVDA');
+  assert.equal(searchAssets('crude')[0]?.code, 'OIL');
+  assert.equal(searchAssets('', 5).length, 5);
+  // Stocks with a market cap need a share count
+  for (const a of ASSETS.filter((x) => x.group === 'usStock' || x.group === 'idStock')) {
+    assert.ok(a.supply && a.supply > 0, a.code);
+  }
 });

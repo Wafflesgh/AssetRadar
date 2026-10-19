@@ -5,9 +5,7 @@
 import { Star, Trash2, ArrowUpRight, Radar } from 'lucide-react';
 import { ASSETS, PriceTick } from '../config/assets.ts';
 import {
-  formatRupiah,
-  formatUsdPerOz,
-  formatPoints,
+  formatAssetPrice,
   formatPercent,
 } from '../utils/format.ts';
 
@@ -96,11 +94,7 @@ export function WatchlistView({
             const isLoaded = tick && tick.status !== 'error' && Number.isFinite(tick.price);
             const priceDisplay = !isLoaded
               ? 'Loading...'
-              : asset.currency === 'IDR'
-                ? formatRupiah(tick.price)
-                : asset.currency === 'PTS'
-                  ? formatPoints(tick.price)
-                  : formatUsdPerOz(tick.price);
+              : formatAssetPrice(tick.price, asset);
 
             const pct = tick?.changePct24h;
             const pctColor =

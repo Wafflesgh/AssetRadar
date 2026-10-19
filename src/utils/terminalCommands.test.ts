@@ -34,7 +34,7 @@ test('parseTerminalCommand handles panel, help, radar and errors', () => {
   assert.deepEqual(parseTerminalCommand('help'), { type: 'help' });
   assert.deepEqual(parseTerminalCommand('Radar'), { type: 'radar' });
   assert.deepEqual(parseTerminalCommand('ai'), { type: 'advisor' });
-  assert.equal(parseTerminalCommand('DOGE')?.type, 'error');
+  assert.equal(parseTerminalCommand('NOTACODE')?.type, 'error');
   assert.equal(parseTerminalCommand('BTC XYZ')?.type, 'error');
   assert.equal(parseTerminalCommand('BTC GP N')?.type, 'error');
 });
@@ -46,11 +46,12 @@ test('getCommandSuggestions returns prefix matches', () => {
     ['ETH GP', 'ETH N']
   );
   assert.deepEqual(
-    getCommandSuggestions('c').map((s) => s.command),
-    ['CNY', 'CNY GP', 'CNY N', 'CORR']
+    getCommandSuggestions('co').map((s) => s.command).slice(0, 2),
+    ['CORR', 'COPPER']
   );
   assert.deepEqual(getCommandSuggestions('ec').map((s) => s.command), ['ECO']);
-  assert.ok(getCommandSuggestions('G').some((s) => s.command === 'GOLD GP'));
+  assert.ok(getCommandSuggestions('G').some((s) => s.command === 'GOLD'));
+  assert.deepEqual(getCommandSuggestions('gold g').map((s) => s.command), ['GOLD GP']);
   assert.ok(getCommandSuggestions('E').length <= 6);
 });
 

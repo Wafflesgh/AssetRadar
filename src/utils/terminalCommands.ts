@@ -72,21 +72,32 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   return { type: 'asset', symbol, code, panel: fn === 'GP' ? 'chart' : fn === 'N' ? 'news' : 'monitor' };
 }
 
-const ALL_SUGGESTIONS: CommandHelpItem[] = [
-  ...TERMINAL_ASSET_CODES.flatMap(({ code, label }) => [
-    { command: code, description: label },
-    { command: `${code} GP`, description: `${label} chart` },
-    { command: `${code} N`, description: `${label} news` },
-  ]),
+const COMMAND_SUGGESTIONS: CommandHelpItem[] = [
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
   { command: 'HELP', description: 'List of commands' },
   { command: 'AI', description: 'AI Advisor' },
   { command: 'RADAR', description: 'Back to Radar' },
 ];
 
-/** Autocomplete: commands that start with the text being typed. */
+/**
+ * Autocomplete. Once the text names a full asset code ("ETH", "ETH G"), it suggests that
+ * asset's functions; otherwise panel commands first, then asset codes that start with the text.
+ */
 export function getCommandSuggestions(input: string, limit = 6): CommandHelpItem[] {
   const text = normalize(input);
   if (!text) return [];
-  return ALL_SUGGESTIONS.filter((s) => s.command.startsWith(text) && s.command !== text).slice(0, limit);
+  const code = text.split(' ')[0];
+  const asset = TERMINAL_ASSET_CODES.find((a) => a.code === code);
+  if (asset) {
+    return [
+      { command: `${code} GP`, description: `${asset.label} chart` },
+      { command: `${code} N`, description: `${asset.label} news` },
+    ].filter((s) => s.command.startsWith(text) && s.command !== text);
+  }
+  const commands = COMMAND_SUGGESTIONS.filter((s) => s.command.startsWith(text) && s.command !== text);
+  const assets = TERMINAL_ASSET_CODES.filter((a) => a.code.startsWith(text) && a.code !== text).map((a) => ({
+    command: a.code,
+    description: a.label,
+  }));
+  return [...commands, ...assets].slice(0, limit);
 }

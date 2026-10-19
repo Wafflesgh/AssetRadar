@@ -132,7 +132,9 @@ const NEWS_SOURCES: NewsSource[] = [
     maxItems: 30,
   },
   // Google News search per asset, Indonesian and English editions, last 24 hours
-  ...ASSETS.flatMap((asset): NewsSource[] => [
+  // Only assets with their own search phrases (others are tagged from the feeds above;
+  // building a query from a missing phrase searched for "undefined" and tagged random news)
+  ...ASSETS.filter((a) => a.newsQuery && a.newsQueryId).flatMap((asset): NewsSource[] => [
     {
       id: `gn-id-${asset.id}`,
       url: `https://news.google.com/rss/search?q=${encodeURIComponent(`${asset.newsQueryId} when:1d`)}&hl=id&gl=ID&ceid=ID:id`,
@@ -496,11 +498,16 @@ async function getIndodaxPrices(): Promise<Record<string, PriceTick>> {
   const tickers = json?.tickers || {};
   const prices24h = json?.prices_24h || {};
 
-  const pairs: Array<{ symbol: string; tickerKey: string; price24hKey: string; tvHistorySymbol: string }> = [
-    { symbol: 'BTC/IDR', tickerKey: 'btc_idr', price24hKey: 'btcidr', tvHistorySymbol: 'BTCIDR' },
-    { symbol: 'ETH/IDR', tickerKey: 'eth_idr', price24hKey: 'ethidr', tvHistorySymbol: 'ETHIDR' },
-    { symbol: 'SOL/IDR', tickerKey: 'sol_idr', price24hKey: 'solidr', tvHistorySymbol: 'SOLIDR' },
-  ];
+  // Every crypto asset in the config (Indodax summaries cover all pairs in one request)
+  const pairs = ASSETS.filter((a) => a.indodaxPair).map((a) => {
+    const pair = a.indodaxPair as string;
+    return {
+      symbol: a.symbol,
+      tickerKey: pair.replace(/idr$/, '_idr'),
+      price24hKey: pair,
+      tvHistorySymbol: pair.toUpperCase(),
+    };
+  });
 
   const sparklines = await Promise.all(
     pairs.map((p) => fetchIndodaxSparkline(p.tvHistorySymbol))
@@ -550,43 +557,287 @@ function marketOpenFor(appSymbol: string, nowMs: number): boolean | undefined {
 /** Yahoo stock/index quotes are delayed (≈15 min); FX and futures are close to real time. */
 function isDelayedFeed(appSymbol: string): boolean {
   const group = getAssetBySymbol(appSymbol)?.group;
-  return group === 'stock' || group === 'index';
+  return group === 'idStock' || group === 'usStock' || group === 'globalStock' || group === 'index';
 }
 
-// Assets priced from Yahoo Finance (gold uses its own spot source; crypto uses Indodax)
-const YAHOO_ASSETS = ASSETS.filter((a) => a.yahooSymbol && !a.indodaxPair && a.group !== 'gold');
+// Assets priced from Yahoo Finance (spot gold has its own source; crypto uses Indodax)
+const YAHOO_ASSETS = ASSETS.filter((a) => a.yahooSymbol && !a.indodaxPair && a.symbol !== 'XAU/USD');
+// Exchange rates needed only to convert market caps to USD (not shown as assets)
+const FX_HELPERS = ['KRW=X', 'HKD=X'];
 
-/** Cache 30 s while the asset's market is open (near real time), 5 min while closed. */
+/** Cache 15 s while the asset's market is open (near real time), 5 min while closed. */
 function yahooCacheMs(asset: Asset, nowMs = Date.now()): number {
-  return isExchangeOpen(asset.exchange, nowMs) ? 30_000 : 5 * 60_000;
+  return isExchangeOpen(asset.exchange, nowMs) ? 15_000 : 5 * 60_000;
 }
 
-/** Quotes for every Yahoo-priced asset; failures become "unavailable" ticks. */
+interface SparkSeries {
+  meta: Record<string, unknown>;
+  timestamps: number[];
+  closes: Array<number | null>;
+}
+
+/** Yahoo "spark" endpoint: up to 20 symbols per request (one request instead of 20). */
+async function fetchYahooSpark(symbols: string[], range: string, interval: string): Promise<Map<string, SparkSeries>> {
+  const out = new Map<string, SparkSeries>();
+  const batches: string[][] = [];
+  for (let i = 0; i < symbols.length; i += 20) batches.push(symbols.slice(i, i + 20));
+  await Promise.all(
+    batches.map(async (batch) => {
+      const url = `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${batch
+        .map(encodeURIComponent)
+        .join(',')}&range=${range}&interval=${interval}`;
+      try {
+        const res = await fetchWithTimeout(url, {}, 8000);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        for (const r of json?.spark?.result ?? []) {
+          const resp = r?.response?.[0];
+          if (!resp?.meta) continue;
+          out.set(r.symbol, {
+            meta: resp.meta,
+            timestamps: resp.timestamp ?? [],
+            closes: resp.indicators?.quote?.[0]?.close ?? [],
+          });
+        }
+      } catch (err) {
+        console.warn(`[Yahoo] spark batch failed (${batch.length} symbols):`, err instanceof Error ? err.message : err);
+      }
+    })
+  );
+  return out;
+}
+
+/** Builds a price tick from a Yahoo chart/spark response. */
+function tickFromYahoo(asset: Asset, s: SparkSeries, now: number): PriceTick | null {
+  const meta = s.meta as Record<string, number | undefined>;
+  const price = Number(meta.regularMarketPrice);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const prevClose = Number(meta.previousClose ?? meta.chartPreviousClose ?? price);
+  const changePct24h = Number.isFinite(Number(meta.regularMarketChangePercent))
+    ? Number(meta.regularMarketChangePercent)
+    : prevClose > 0
+      ? ((price - prevClose) / prevClose) * 100
+      : 0;
+  const sparkline: SparklinePoint[] = [];
+  let lastT = 0;
+  s.timestamps.forEach((t, i) => {
+    const c = s.closes[i];
+    if (Number.isFinite(t) && c !== null && c !== undefined && Number.isFinite(c) && t > lastT) {
+      sparkline.push({ time: t, value: Number(c) });
+      lastT = t;
+    }
+  });
+  const recent = sparkline.slice(-48);
+  const values = recent.map((p) => p.value);
+  return {
+    symbol: asset.symbol,
+    group: asset.group,
+    price,
+    changePct24h,
+    changePct1h: hourChange(recent, price, now),
+    high24h: Number.isFinite(Number(meta.regularMarketDayHigh)) ? Number(meta.regularMarketDayHigh) : values.length ? Math.max(...values) : undefined,
+    low24h: Number.isFinite(Number(meta.regularMarketDayLow)) ? Number(meta.regularMarketDayLow) : values.length ? Math.min(...values) : undefined,
+    sparkline: recent,
+    isMarketOpen: marketOpenFor(asset.symbol, now),
+    currency: asset.currency,
+    source: 'Yahoo Finance',
+    updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
+    status: isDelayedFeed(asset.symbol) ? 'delayed' : 'live',
+  };
+}
+
+const fxHelperCache = new Map<string, number>();
+const SAR_PER_USD = 3.75;
+const weeklyCache: { entry: CacheEntry<Map<string, { d7?: number; d30?: number }>> | null } = { entry: null };
+
+/** 7-day and 30-day % changes from daily closes (cached 30 min; one batched request per 20 symbols). */
+async function getWeeklyChanges(): Promise<Map<string, { d7?: number; d30?: number }>> {
+  if (weeklyCache.entry && weeklyCache.entry.expiresAt > Date.now()) return weeklyCache.entry.data;
+  // Spot gold is priced from gold-api.com, so its weekly change comes from the GC=F futures
+  const targets = [
+    ...YAHOO_ASSETS.map((a) => ({ yahoo: a.yahooSymbol as string, symbol: a.symbol })),
+    { yahoo: 'GC=F', symbol: 'XAU/USD' },
+  ];
+  const series = await fetchYahooSpark(targets.map((t) => t.yahoo), '1mo', '1d');
+  const out = new Map<string, { d7?: number; d30?: number }>();
+  const nowSec = Date.now() / 1000;
+  for (const a of targets) {
+    const s = series.get(a.yahoo);
+    if (!s) continue;
+    const pts = s.timestamps
+      .map((t, i) => ({ t, c: s.closes[i] }))
+      .filter((p): p is { t: number; c: number } => p.c !== null && Number.isFinite(p.c) && p.c > 0);
+    if (pts.length < 2) continue;
+    const last = Number((s.meta as { regularMarketPrice?: number }).regularMarketPrice) || pts[pts.length - 1].c;
+    const weekAgo = pts.filter((p) => p.t <= nowSec - 7 * 86400).pop();
+    out.set(a.symbol, {
+      d7: weekAgo ? (last / weekAgo.c - 1) * 100 : undefined,
+      d30: (last / pts[0].c - 1) * 100,
+    });
+  }
+  if (out.size > 0) weeklyCache.entry = { data: out, expiresAt: Date.now() + 30 * 60_000 };
+  return out;
+}
+
+/** Quotes for every Yahoo-priced asset in a few batched requests; failures keep the last price. */
 async function getYahooTicks(): Promise<Record<string, PriceTick>> {
   const now = Date.now();
-  const results = await Promise.allSettled(
-    YAHOO_ASSETS.map((a) =>
-      getYahooQuote(a.yahooSymbol as string, a.symbol, a.group, a.currency, yahooCacheMs(a, now))
-    )
-  );
-  const ticks: Record<string, PriceTick> = {};
-  results.forEach((r, i) => {
-    const a = YAHOO_ASSETS[i];
-    ticks[a.symbol] =
-      r.status === 'fulfilled'
-        ? r.value
-        : {
-            symbol: a.symbol,
-            group: a.group,
-            price: NaN,
-            currency: a.currency,
-            source: 'Yahoo Finance',
-            updatedAt: now,
-            status: 'error',
-            errorMessage: `${a.name} data unavailable`,
-          };
+  const stale = YAHOO_ASSETS.filter((a) => {
+    if (a.symbol === 'SAR/IDR') return false; // derived from USD/IDR below
+    const c = yahooCache.get(a.symbol);
+    return !c || c.expiresAt <= now;
   });
+  if (stale.length > 0) {
+    const series = await fetchYahooSpark(
+      [...stale.map((a) => a.yahooSymbol as string), ...FX_HELPERS],
+      '2d',
+      '15m'
+    );
+    for (const a of stale) {
+      const s = series.get(a.yahooSymbol as string);
+      const tick = s ? tickFromYahoo(a, s, now) : null;
+      if (tick) yahooCache.set(a.symbol, { data: tick, expiresAt: now + yahooCacheMs(a, now) });
+    }
+    for (const fx of FX_HELPERS) {
+      const p = Number((series.get(fx)?.meta as { regularMarketPrice?: number } | undefined)?.regularMarketPrice);
+      if (Number.isFinite(p) && p > 0) fxHelperCache.set(fx, p);
+    }
+  }
+  const weekly = await getWeeklyChanges().catch(() => new Map<string, { d7?: number; d30?: number }>());
+  const ticks: Record<string, PriceTick> = {};
+  // Saudi Riyal has been pegged at 3.75 per US Dollar since 1986; Yahoo has no SARIDR=X quote
+  const usd = yahooCache.get('USD/IDR')?.data;
+  const sar = YAHOO_ASSETS.find((a) => a.symbol === 'SAR/IDR');
+  if (usd && sar) {
+    yahooCache.set('SAR/IDR', {
+      data: {
+        ...usd,
+        symbol: 'SAR/IDR',
+        price: usd.price / SAR_PER_USD,
+        high24h: usd.high24h !== undefined ? usd.high24h / SAR_PER_USD : undefined,
+        low24h: usd.low24h !== undefined ? usd.low24h / SAR_PER_USD : undefined,
+        sparkline: usd.sparkline?.map((p) => ({ time: p.time, value: p.value / SAR_PER_USD })),
+        source: 'USD/IDR ÷ 3.75 (SAR peg)',
+      },
+      expiresAt: now + 15_000,
+    });
+    const w = weekly.get('USD/IDR');
+    if (w) weekly.set('SAR/IDR', w);
+  }
+  for (const a of YAHOO_ASSETS) {
+    const cached = yahooCache.get(a.symbol)?.data;
+    const w = weekly.get(a.symbol);
+    ticks[a.symbol] = cached
+      ? { ...cached, isMarketOpen: marketOpenFor(a.symbol, now), changePct7d: w?.d7, changePct30d: w?.d30 }
+      : {
+          symbol: a.symbol,
+          group: a.group,
+          price: NaN,
+          currency: a.currency,
+          source: 'Yahoo Finance',
+          updatedAt: now,
+          status: 'error',
+          errorMessage: `${a.name} data unavailable`,
+        };
+  }
   return ticks;
+}
+
+// ---- Market caps ----------------------------------------------------------------------
+
+interface CoinStats {
+  marketCapUsd?: number;
+  ch1h?: number;
+  ch7d?: number;
+  ch30d?: number;
+}
+const coinCache: { entry: CacheEntry<Map<string, CoinStats>> | null } = { entry: null };
+
+/** CoinGecko public API: market caps and 1h/7d/30d changes for all crypto in one request (2 min cache). */
+async function getCoinStats(): Promise<Map<string, CoinStats>> {
+  if (coinCache.entry && coinCache.entry.expiresAt > Date.now()) return coinCache.entry.data;
+  const ids = ASSETS.filter((a) => a.coingeckoId).map((a) => a.coingeckoId as string);
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(',')}&price_change_percentage=1h,7d,30d&per_page=100`;
+  try {
+    const res = await fetchWithTimeout(url, {}, 8000);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    const out = new Map<string, CoinStats>();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      out.set(r.id, {
+        marketCapUsd: Number(r.market_cap) || undefined,
+        ch1h: Number.isFinite(r.price_change_percentage_1h_in_currency) ? r.price_change_percentage_1h_in_currency : undefined,
+        ch7d: Number.isFinite(r.price_change_percentage_7d_in_currency) ? r.price_change_percentage_7d_in_currency : undefined,
+        ch30d: Number.isFinite(r.price_change_percentage_30d_in_currency) ? r.price_change_percentage_30d_in_currency : undefined,
+      });
+    }
+    coinCache.entry = { data: out, expiresAt: Date.now() + 120_000 };
+    return out;
+  } catch (err) {
+    console.warn('[CoinGecko] failed:', err instanceof Error ? err.message : err);
+    return coinCache.entry?.data ?? new Map();
+  }
+}
+
+/** USD value of one unit of a quote currency (null when the rate is unknown). */
+function usdPerUnit(currency: PriceCurrency, usdIdr: number): number | null {
+  switch (currency) {
+    case 'USD':
+      return 1;
+    case 'USX':
+      return 0.01;
+    case 'IDR':
+      return usdIdr > 0 ? 1 / usdIdr : null;
+    case 'SAR':
+      return 1 / 3.75; // pegged
+    case 'KRW':
+      return fxHelperCache.get('KRW=X') ? 1 / (fxHelperCache.get('KRW=X') as number) : null;
+    case 'HKD':
+      return fxHelperCache.get('HKD=X') ? 1 / (fxHelperCache.get('HKD=X') as number) : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * % change against the intraday point about one hour ago (15-minute bars). Undefined when the
+ * market has not traded in the last ~75 minutes, so a closed market shows "—" instead of 0%.
+ */
+function hourChange(points: Array<{ time: number; value: number }> | undefined, price: number, now = Date.now()): number | undefined {
+  if (!points || points.length < 2) return undefined;
+  const nowSec = now / 1000;
+  if (points[points.length - 1].time < nowSec - 75 * 60) return undefined;
+  const base = points.filter((p) => p.time <= nowSec - 3600).pop();
+  return base && base.value > 0 ? (price / base.value - 1) * 100 : undefined;
+}
+
+/** Adds live market caps (and crypto 1h/7d/30d changes) to the ticks in place. */
+async function addMarketCaps(ticks: Record<string, PriceTick>): Promise<void> {
+  const usdIdr = ticks['USD/IDR']?.price ?? yahooCache.get('USD/IDR')?.data.price ?? 0;
+  const coins = await getCoinStats();
+  const gold = ticks['XAU/USD'];
+  if (gold && Number.isFinite(gold.price)) {
+    const w = (await getWeeklyChanges().catch(() => null))?.get('XAU/USD');
+    gold.changePct7d = gold.changePct7d ?? w?.d7;
+    gold.changePct30d = gold.changePct30d ?? w?.d30;
+    gold.changePct1h = gold.changePct1h ?? hourChange(gold.sparkline, gold.price);
+  }
+  for (const a of ASSETS) {
+    const t = ticks[a.symbol];
+    if (!t || !Number.isFinite(t.price)) continue;
+    if (a.coingeckoId) {
+      const c = coins.get(a.coingeckoId);
+      if (c) {
+        t.marketCapUsd = c.marketCapUsd;
+        t.changePct1h = t.changePct1h ?? c.ch1h;
+        t.changePct7d = c.ch7d;
+        t.changePct30d = c.ch30d;
+      }
+    } else if (a.supply) {
+      const rate = usdPerUnit(a.currency, usdIdr);
+      if (rate) t.marketCapUsd = t.price * rate * a.supply;
+    }
+  }
 }
 
 async function getYahooQuote(
@@ -695,7 +946,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
   // Get 24h chart & fallback stats from Yahoo Finance GC=F / XAU
   let yahooGold: PriceTick | null = null;
   try {
-    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'gold', 'USD', 300_000);
+    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'commodity', 'USD', 30_000);
   } catch {
     yahooGold = null;
   }
@@ -762,7 +1013,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
 
   const goldTick: PriceTick = {
     symbol: 'XAU/USD',
-    group: 'gold',
+    group: 'commodity',
     price: spotPriceUsd,
     priceIdrPerGram,
     changePct24h: yahooGold?.changePct24h,
@@ -775,10 +1026,10 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
     status: 'live',
   };
 
-  // Cache 5 minutes (300_000 ms) per spec 3.3
+  // Cache 30 s (gold-api.com spot) so the gold price stays close to real time
   goldCache.entry = {
     data: goldTick,
-    expiresAt: now + 300_000,
+    expiresAt: now + 30_000,
   };
 
   return goldTick;
@@ -955,7 +1206,11 @@ interface AiOutlookPayload {
 /** Local trading-day date (YYYY-MM-DD) for an exchange. */
 function localDate(ms: number, exchange: ExchangeId): string {
   const tz =
-    exchange === 'CRYPTO' ? 'Asia/Jakarta' : exchange === 'FX' ? 'America/New_York' : EXCHANGE_HOURS[exchange].timeZone;
+    exchange === 'CRYPTO'
+      ? 'Asia/Jakarta'
+      : exchange === 'FX' || exchange === 'FUTURES'
+        ? 'America/New_York'
+        : EXCHANGE_HOURS[exchange].timeZone;
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
 }
 
@@ -1037,6 +1292,20 @@ function newsScoreFor(asset: Asset): number | null {
   }).score;
 }
 
+/** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   // Kick off price caches so live bars are available (ignore failures)
   await Promise.allSettled([getIndodaxPrices(), getYahooTicks(), ensureNewsFresh()]);
@@ -1049,38 +1318,37 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   const today = new Date().toISOString().slice(0, 10);
   const meetings = resolveMeetings(tbillBars, today);
 
-  const candidates = ASSETS.filter((a) => a.indodaxPair || a.yahooSymbol);
-  const outlooks = await Promise.all(
-    candidates.map(async (asset): Promise<AssetOutlook | null> => {
-      try {
-        const raw = asset.indodaxPair
-          ? await fetchIndodaxDaily(asset.indodaxPair)
-          : await fetchYahooDaily(asset.yahooSymbol as string);
-        const bars = withLiveBar(raw, asset);
-        const dates = bars.map((b) => b.date);
-        const macro = {
-          tbill: alignByDate(dates, tbillBars),
-          yield10y: alignByDate(dates, yieldBars),
-          dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
-          fedStance: fedStanceSeries(dates, meetings),
-        };
-        const outlook = buildAssetOutlook({
-          symbol: asset.symbol,
-          code: asset.code,
-          name: asset.name,
-          group: asset.group,
-          bars,
-          macro,
-          horizonDays: horizon,
-          fedReactions: eventStudy(bars, meetings),
-        });
-        return { ...outlook, newsScore: newsScoreFor(asset) };
-      } catch (err) {
-        console.warn(`[AI] ${asset.code} failed:`, err instanceof Error ? err.message : err);
-        return null;
-      }
-    })
-  );
+  // The AI screen covers the assets flagged `ai` (major markets with 5 years of clean daily data)
+  const candidates = ASSETS.filter((a) => a.ai && (a.indodaxPair || a.yahooSymbol));
+  const outlooks = await mapLimit(candidates, 6, async (asset): Promise<AssetOutlook | null> => {
+    try {
+      const raw = asset.indodaxPair
+        ? await fetchIndodaxDaily(asset.indodaxPair)
+        : await fetchYahooDaily(asset.yahooSymbol as string);
+      const bars = withLiveBar(raw, asset);
+      const dates = bars.map((b) => b.date);
+      const macro = {
+        tbill: alignByDate(dates, tbillBars),
+        yield10y: alignByDate(dates, yieldBars),
+        dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
+        fedStance: fedStanceSeries(dates, meetings),
+      };
+      const outlook = buildAssetOutlook({
+        symbol: asset.symbol,
+        code: asset.code,
+        name: asset.name,
+        group: asset.group,
+        bars,
+        macro,
+        horizonDays: horizon,
+        fedReactions: eventStudy(bars, meetings),
+      });
+      return { ...outlook, newsScore: newsScoreFor(asset) };
+    } catch (err) {
+      console.warn(`[AI] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+      return null;
+    }
+  });
 
   const next = nextMeeting(today);
   return {
@@ -1214,7 +1482,7 @@ async function startServer() {
     if (indodaxResult.status === 'fulfilled') {
       Object.assign(ticks, indodaxResult.value);
     } else {
-      for (const sym of ['BTC/IDR', 'ETH/IDR', 'SOL/IDR']) {
+      for (const sym of ASSETS.filter((a) => a.indodaxPair).map((a) => a.symbol)) {
         ticks[sym] = {
           symbol: sym,
           group: 'crypto',
@@ -1237,7 +1505,7 @@ async function startServer() {
     } catch {
       ticks['XAU/USD'] = {
         symbol: 'XAU/USD',
-        group: 'gold',
+        group: 'commodity',
         price: NaN,
         currency: 'USD',
         source: 'Spot XAU',
@@ -1247,6 +1515,7 @@ async function startServer() {
       };
     }
 
+    await addMarketCaps(ticks);
     res.json({
       ticks,
       serverTime: now,
@@ -1257,7 +1526,8 @@ async function startServer() {
   // 2. Indodax-only endpoint (for 10s REST fallback polling)
   app.get('/api/market/indodax', async (_req, res) => {
     try {
-      const ticks = await getIndodaxPrices();
+      const ticks = { ...(await getIndodaxPrices()) };
+      await addMarketCaps(ticks);
       res.json({ ticks, serverTime: Date.now() });
     } catch (err) {
       res.status(502).json({
@@ -1272,6 +1542,7 @@ async function startServer() {
     const all = await getYahooTicks();
     // Failed quotes are left out so the client keeps its last good price
     const ticks = Object.fromEntries(Object.entries(all).filter(([, t]) => t.status !== 'error'));
+    await addMarketCaps(ticks);
     res.json({ ticks, serverTime: now, idxMarketOpen: isIdxMarketOpen(now) });
   });
 

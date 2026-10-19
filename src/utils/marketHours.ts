@@ -39,12 +39,14 @@ interface ExchangeHours {
   /** Trading sessions in local minutes from midnight, [start, end). */
   sessions: Array<[number, number]>;
   label: string;
+  /** Trading weekdays (default Mon–Fri). */
+  days?: string[];
 }
 
 const hm = (h: number, m = 0) => h * 60 + m;
 
-/** Regular trading hours per venue (local time, Mon–Fri; public holidays are not modeled). */
-export const EXCHANGE_HOURS: Record<Exclude<ExchangeId, 'CRYPTO' | 'FX'>, ExchangeHours> = {
+/** Regular trading hours per venue (local time, Mon–Fri unless `days` says otherwise; public holidays are not modeled). */
+export const EXCHANGE_HOURS: Record<Exclude<ExchangeId, 'CRYPTO' | 'FX' | 'FUTURES'>, ExchangeHours> = {
   IDX: { timeZone: 'Asia/Jakarta', sessions: [[hm(9), hm(16)]], label: 'IDX' },
   NYSE: { timeZone: 'America/New_York', sessions: [[hm(9, 30), hm(16)]], label: 'NYSE' },
   TSE: { timeZone: 'Asia/Tokyo', sessions: [[hm(9), hm(11, 30)], [hm(12, 30), hm(15, 30)]], label: 'Tokyo' },
@@ -52,6 +54,12 @@ export const EXCHANGE_HOURS: Record<Exclude<ExchangeId, 'CRYPTO' | 'FX'>, Exchan
   XETRA: { timeZone: 'Europe/Berlin', sessions: [[hm(9), hm(17, 30)]], label: 'Xetra' },
   HKEX: { timeZone: 'Asia/Hong_Kong', sessions: [[hm(9, 30), hm(12)], [hm(13), hm(16)]], label: 'Hong Kong' },
   SGX: { timeZone: 'Asia/Singapore', sessions: [[hm(9), hm(12)], [hm(13), hm(17)]], label: 'Singapore' },
+  EURONEXT: { timeZone: 'Europe/Paris', sessions: [[hm(9), hm(17, 30)]], label: 'Paris' },
+  KRX: { timeZone: 'Asia/Seoul', sessions: [[hm(9), hm(15, 30)]], label: 'Seoul' },
+  SSE: { timeZone: 'Asia/Shanghai', sessions: [[hm(9, 30), hm(11, 30)], [hm(13), hm(15)]], label: 'Shanghai' },
+  NSE: { timeZone: 'Asia/Kolkata', sessions: [[hm(9, 15), hm(15, 30)]], label: 'Mumbai' },
+  ASX: { timeZone: 'Australia/Sydney', sessions: [[hm(10), hm(16)]], label: 'Sydney' },
+  TADAWUL: { timeZone: 'Asia/Riyadh', sessions: [[hm(10), hm(15)]], label: 'Riyadh', days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'] },
 };
 
 function localWeekdayMinutes(nowMs: number, timeZone: string): { weekday: string; minutes: number } {
@@ -72,7 +80,8 @@ function localWeekdayMinutes(nowMs: number, timeZone: string): { weekday: string
  */
 export function isExchangeOpen(exchange: ExchangeId, nowMs: number = Date.now()): boolean {
   if (exchange === 'CRYPTO') return true;
-  if (exchange === 'FX') {
+  // Futures (CME/NYMEX/COMEX Globex) trade nearly 24/5 like FX
+  if (exchange === 'FX' || exchange === 'FUTURES') {
     const { weekday, minutes } = localWeekdayMinutes(nowMs, 'America/New_York');
     if (weekday === 'Sat') return false;
     if (weekday === 'Sun') return minutes >= hm(17);
@@ -81,7 +90,7 @@ export function isExchangeOpen(exchange: ExchangeId, nowMs: number = Date.now())
   }
   const hours = EXCHANGE_HOURS[exchange];
   const { weekday, minutes } = localWeekdayMinutes(nowMs, hours.timeZone);
-  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  if (!(hours.days ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']).includes(weekday)) return false;
   return hours.sessions.some(([start, end]) => minutes >= start && minutes < end);
 }
 

@@ -28,6 +28,7 @@ import {
   ConnectionState,
 } from './services/marketDataService.ts';
 import { parseHashRoute, buildHashRoute } from './utils/router.ts';
+import { liveHistory } from './utils/movers.ts';
 import { SidebarNav, BottomNav, NavTab } from './components/Navigation.tsx';
 import { RadarLogo } from './components/RadarLogo.tsx';
 import { RadarView } from './components/RadarView.tsx';
@@ -100,6 +101,8 @@ export default function App() {
   useEffect(() => {
     const manager = new MarketDataManager({
       onTicksUpdate: (updatedTicks) => {
+        // Feed the live buffer behind the "moving fastest right now" tables
+        liveHistory.recordTicks(updatedTicks);
         setTicks({ ...updatedTicks });
       },
       onConnectionStateChange: (state) => {

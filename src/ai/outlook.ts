@@ -219,7 +219,7 @@ export function rankOutlooks(
     // News mood shifts the probability by at most ±3 points; it is not backtested
     let newsTilt = typeof o.newsScore === 'number' ? ((o.newsScore - 50) / 50) * 0.03 : 0;
     const vol = o.stats.volatility ?? 0;
-    if (opts.geoAlertActive && vol > 0.25 && o.group !== 'gold') {
+    if (opts.geoAlertActive && vol > 0.25 && o.symbol !== 'XAU/USD') {
       newsTilt -= 0.02;
       reasons.push('Geopolitical alert active: extra caution on volatile assets.');
     }

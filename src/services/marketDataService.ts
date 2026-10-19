@@ -13,6 +13,7 @@ import {
   MarketNewsItem,
   TimeframeInterval,
   getAssetBySymbol,
+  ASSETS,
 } from '../config/assets.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
@@ -24,11 +25,10 @@ const INDODAX_WS_URL = 'wss://ws3.indodax.com/ws/';
 const INDODAX_PUBLIC_WS_TOKEN =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo';
 
-const PAIR_MAP: Record<string, string> = {
-  btcidr: 'BTC/IDR',
-  ethidr: 'ETH/IDR',
-  solidr: 'SOL/IDR',
-};
+// Indodax WebSocket pair id → app symbol, for every crypto asset in the config
+const PAIR_MAP: Record<string, string> = Object.fromEntries(
+  ASSETS.filter((a) => a.indodaxPair).map((a) => [a.indodaxPair as string, a.symbol])
+);
 
 export interface MarketStreamCallbacks {
   onTicksUpdate: (ticks: Record<string, PriceTick>) => void;
@@ -93,7 +93,7 @@ export class MarketDataManager {
   }
 
   public async retrySymbol(symbol: string): Promise<void> {
-    if (symbol === 'BTC/IDR' || symbol === 'ETH/IDR' || symbol === 'SOL/IDR') {
+    if (getAssetBySymbol(symbol)?.indodaxPair) {
       await this.pollIndodaxRest();
       if (!this.wsConnected) {
         this.connectIndodaxWebSocket();
@@ -349,15 +349,16 @@ export class MarketDataManager {
       }
     }, 10_000);
 
-    // 2. Yahoo Finance polling every 30 seconds (JCI, global indices, currencies)
+    // 2. Yahoo Finance polling every 10 seconds (stocks, indices, commodities, currencies);
+    //    the server only refetches symbols whose 15 s cache expired
     this.yahooPollTimer = setInterval(() => {
       this.pollYahoo();
-    }, 30_000);
+    }, 10_000);
 
-    // 3. Gold XAU/USD polling every 5 minutes (300_000 ms)
+    // 3. Spot gold polling every 30 seconds (server caches gold-api.com for 30 s)
     this.goldPollTimer = setInterval(() => {
       this.pollGold();
-    }, 300_000);
+    }, 30_000);
   }
 
   private clearPollingTimers(): void {

@@ -22,3 +22,13 @@ test('FX trades 24/5 from Sunday 17:00 to Friday 17:00 New York time', () => {
   assert.equal(isExchangeOpen('FX', Date.UTC(2026, 9, 21, 3, 0)), true); // Tuesday
   assert.equal(isExchangeOpen('FX', Date.UTC(2026, 9, 23, 22, 0)), false); // Fri 18:00 NY
 });
+
+test('isExchangeOpen handles Sunday-Thursday venues and futures', () => {
+  // Sunday 18 Oct 2026 11:00 Riyadh (08:00 UTC): Tadawul trades on Sundays
+  assert.equal(isExchangeOpen('TADAWUL', Date.UTC(2026, 9, 18, 8, 0)), true);
+  // Friday 23 Oct 2026 11:00 Riyadh: closed
+  assert.equal(isExchangeOpen('TADAWUL', Date.UTC(2026, 9, 23, 8, 0)), false);
+  assert.equal(isExchangeOpen('KRX', Date.UTC(2026, 9, 19, 2, 0)), true); // 11:00 Seoul
+  assert.equal(isExchangeOpen('FUTURES', Date.UTC(2026, 9, 21, 3, 0)), true); // Tuesday
+  assert.equal(isExchangeOpen('FUTURES', Date.UTC(2026, 9, 17, 12, 0)), false); // Saturday
+});

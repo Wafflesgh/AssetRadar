@@ -15,12 +15,13 @@ import {
 import {
   formatRupiah,
   formatUsdPerOz,
-  formatPoints,
+  formatAssetPrice,
   formatPercent,
 } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
+import { AssetSearch } from './AssetSearch.tsx';
 
 interface AssetDetailViewProps {
   asset: AssetConfig;
@@ -58,14 +59,12 @@ export function AssetDetailView({
       ? asset.tvFallbackSymbol
       : asset.tvSymbol;
 
-  const isGold = asset.group === 'gold';
+  const isGold = asset.symbol === 'XAU/USD';
   const isLoaded = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
 
   const formatVal = (val: number | undefined) => {
     if (val === undefined || !Number.isFinite(val)) return '—';
-    if (asset.currency === 'IDR') return formatRupiah(val);
-    if (asset.currency === 'PTS') return formatPoints(val);
-    return formatUsdPerOz(val);
+    return formatAssetPrice(val, asset);
   };
 
   const changePct = tick?.changePct24h;
@@ -100,38 +99,40 @@ export function AssetDetailView({
           <span>Back to Radar</span>
         </button>
 
-        {/* Quick Asset Switcher Tabs */}
-        <div
-          role="tablist"
-          aria-label="Choose an instrument"
-          className="flex flex-wrap items-center gap-1.5"
-        >
-          {ASSETS.map((item) => {
-            const selected = item.symbol === asset.symbol;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => onSelectAsset(item.symbol)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0"
-                style={{
-                  backgroundColor: selected
-                    ? 'var(--accent-radar-soft)'
-                    : 'var(--bg-surface)',
-                  borderColor: selected
-                    ? 'var(--accent-radar)'
-                    : 'var(--border-subtle)',
-                  color: selected
-                    ? 'var(--accent-radar)'
-                    : 'var(--text-secondary)',
-                }}
-              >
-                {item.shortName}
-              </button>
-            );
-          })}
+        {/* Asset switcher: search any asset, plus the quick-chart shortcuts */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 lg:max-w-3xl w-full lg:justify-end">
+          <div
+            role="tablist"
+            aria-label="Quick instruments"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {ASSETS.filter((item) => item.quick || item.symbol === asset.symbol).map((item) => {
+              const selected = item.symbol === asset.symbol;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => onSelectAsset(item.symbol)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0"
+                  style={{
+                    backgroundColor: selected ? 'var(--accent-radar-soft)' : 'var(--bg-surface)',
+                    borderColor: selected ? 'var(--accent-radar)' : 'var(--border-subtle)',
+                    color: selected ? 'var(--accent-radar)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {item.shortName}
+                </button>
+              );
+            })}
+          </div>
+          <AssetSearch
+            className="w-full sm:w-72 shrink-0"
+            onSelect={(a) => onSelectAsset(a.symbol)}
+            label="Search another asset"
+            placeholder="Search another asset…"
+          />
         </div>
       </div>
 
