@@ -6,6 +6,7 @@
  * the existing list while reporting which ones are new.
  */
 import type { MarketNewsItem } from '../config/assets.ts';
+import { ASSETS } from '../config/assets.ts';
 
 /** Tag for market-wide news (rates, inflation, central banks) that moves every asset. */
 export const MACRO_TAG = 'MACRO';
@@ -41,9 +42,32 @@ const ASSET_PATTERNS: Array<{ tag: string; pattern: RegExp }> = [
 const MACRO_PATTERN =
   /\b(fed|fomc|federal reserve|powell|interest rates?|rate (hike|cut)s?|inflation|inflasi|cpi|nonfarm|payrolls|suku bunga|bi rate|bank indonesia|the fed|treasury yields?|recession|resesi|tariffs?|tarif|ecb|boj|bank of japan|bank of england|boe|central banks?|bank sentral)\b/i;
 
+// Tickers that are also ordinary words are never matched on their own ("cost", "meta")
+const AMBIGUOUS_TICKERS = new Set(['COST', 'META', 'PLAT', 'GOTO']);
+const STOCK_GROUPS = new Set(['idStock', 'usStock', 'globalStock']);
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Patterns for every other asset, built from its configured keywords (company names,
+ * coin names, commodity words in English and Indonesian) plus 4-letter stock tickers.
+ */
+const GENERATED_PATTERNS: Array<{ tag: string; pattern: RegExp }> = ASSETS.filter(
+  (a) => !ASSET_PATTERNS.some((p) => p.tag === a.code)
+)
+  .map((a) => {
+    const words = [...(a.keywords ?? [])];
+    if (STOCK_GROUPS.has(a.group) && a.code.length >= 4 && !AMBIGUOUS_TICKERS.has(a.code)) words.push(a.code.toLowerCase());
+    return { tag: a.code, words: [...new Set(words)] };
+  })
+  .filter((x) => x.words.length > 0)
+  .map((x) => ({ tag: x.tag, pattern: new RegExp(`(^|[^\w])(${x.words.map(escapeRe).join('|')})(?![\w])`, 'i') }));
+
+const ALL_PATTERNS = [...ASSET_PATTERNS, ...GENERATED_PATTERNS];
+
 /** Returns the asset codes (and MACRO) a headline is about; empty when unrelated. */
 export function tagHeadline(title: string): string[] {
-  const tags = ASSET_PATTERNS.filter((a) => a.pattern.test(title)).map((a) => a.tag);
+  const tags = ALL_PATTERNS.filter((a) => a.pattern.test(title)).map((a) => a.tag);
   if (MACRO_PATTERN.test(title)) tags.push(MACRO_TAG);
   return tags;
 }
@@ -94,7 +118,7 @@ const SPORTS_SOURCES =
 
 // Questions and speculation ("Why is X preparing for an invasion?") are analysis, not events
 const SPECULATIVE =
-  /\?\s*$|^\s*(why|what if|could|will|can|is|are|should|how|mengapa|kenapa|apakah|akankah|bisakah|bagaimana)\b|\b(may|might|could|threatens? to|warns? of|fears? of|risk of|bisa|berpotensi|ancam|khawatir)\b/i;
+  /\?\s*$|^\s*(why|what if|could|will|can|is|are|should|how|mengapa|kenapa|apakah|akankah|bisakah|bagaimana)\b|\b(may|might|could|threatens? to|warns? of|fears? of|risk of|scenarios?|prepares? for|preparing for|contingency|war games?|drills?|simulation|bisa|berpotensi|ancam|khawatir|skenario|siapkan|bersiap|antisipasi|simulasi|latihan)\b/i;
 
 /** Detects war / attack headlines that can move markets suddenly. */
 export function detectGeoAlert(title: string, source = ''): GeoAlertLevel | null {

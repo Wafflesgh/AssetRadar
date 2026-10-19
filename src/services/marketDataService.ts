@@ -15,6 +15,7 @@ import {
   getAssetBySymbol,
   ASSETS,
 } from '../config/assets.ts';
+import type { AssetAnalysis } from '../ai/analysis.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 
@@ -428,6 +429,13 @@ export async function fetchAssetIntelligence(symbol: string): Promise<AssetIntel
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
+  return await res.json();
+}
+
+/** Evidence-weighted analysis: technical scorecard, chart patterns, fundamentals and news drivers. */
+export async function fetchAssetAnalysis(symbol: string): Promise<AssetAnalysis> {
+  const res = await fetch(`/api/market/analysis?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
 

@@ -15,7 +15,8 @@ import {
 test('tagHeadline finds assets in English and Indonesian headlines', () => {
   assert.deepEqual(tagHeadline('Bitcoin and Ether slide as ETF outflows grow'), ['BTC', 'ETH']);
   assert.deepEqual(tagHeadline('IHSG Anjlok 5%, Rupiah Melemah ke 18.000'), ['JCI', 'USD']);
-  assert.deepEqual(tagHeadline('Harga emas Antam naik hari ini'), ['GOLD']);
+  // Antam's gold bars are Antam (ANTM) news too
+  assert.deepEqual(tagHeadline('Harga emas Antam naik hari ini'), ['GOLD', 'ANTM']);
   assert.deepEqual(tagHeadline('Gold rangebound as Fed rate cut bets fade'), ['GOLD', MACRO_TAG]);
   assert.deepEqual(tagHeadline('Solana network upgrade goes live'), ['SOL']);
   // Partial words must not match ("bethany", "golden", "solar")
@@ -153,4 +154,17 @@ test('detectGeoAlert ignores sports and needs a state or armed force for high al
   assert.equal(detectGeoAlert('Egypt enters the war', 'Arab News'), 'high');
   assert.equal(detectGeoAlert('Militer Thailand melancarkan invasi ke perbatasan Kamboja'), 'high');
   assert.equal(detectGeoAlert('Inter-state war breaks out as troops cross the border'), 'high');
+});
+
+test('hypothetical invasion scenarios and drills are not "high" alerts', () => {
+  assert.equal(detectGeoAlert('Carney Siapkan Kanada Hadapi Skenario Invasi Amerika Serikat'), 'elevated');
+  assert.notEqual(detectGeoAlert('Taiwan holds drills simulating a full-scale invasion by China'), 'high');
+});
+
+test('generated tags cover stocks, coins and commodities without common-word false positives', () => {
+  assert.deepEqual(tagHeadline('Saham BBCA melemah, asing net sell'), ['BBCA']);
+  assert.deepEqual(tagHeadline('Nvidia shares surge after earnings'), ['NVDA']);
+  assert.deepEqual(tagHeadline('Amazon rainforest fires spread'), []);
+  assert.deepEqual(tagHeadline('Stellar quarter for small caps'), []);
+  assert.ok(tagHeadline('OPEC pangkas produksi minyak mentah').includes('OIL'));
 });

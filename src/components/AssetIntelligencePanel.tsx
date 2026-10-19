@@ -2,7 +2,8 @@
  * AssetIntelligencePanel.tsx — Sentiment + news panel for one asset (Radar and Detail
  * pages): score, label, summary and key drivers, plus related headlines in their original
  * language, updated live from the news stream. Refetches once after 8 s to pick up the
- * background AI-enhanced result, and re-scores silently when breaking news arrives.
+ * background AI-enhanced result, and re-scores silently when breaking news arrives. Below it,
+ * AssetAnalysisPanel shows the evidence behind the score (technical + fundamental analysis).
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -19,6 +20,7 @@ import { fetchAssetIntelligence } from '../services/marketDataService.ts';
 import { filterNewsByCode } from '../services/newsStream.ts';
 import { isBreaking, latestNewsKey, useLiveNews, useNow } from '../hooks/useLiveNews.ts';
 import { formatAge } from '../utils/marketHours.ts';
+import { AssetAnalysisPanel } from './AssetAnalysisPanel.tsx';
 
 interface AssetIntelligencePanelProps {
   symbol: string;
@@ -108,6 +110,7 @@ export function AssetIntelligencePanel({
         : Minus;
 
   return (
+    <div className="space-y-6">
     <section
       aria-label={`${assetName} sentiment analysis and news`}
       className="grid grid-cols-1 lg:grid-cols-12 gap-6"
@@ -457,6 +460,8 @@ export function AssetIntelligencePanel({
         </p>
       </div>
     </section>
+    <AssetAnalysisPanel symbol={symbol} assetName={assetName} refreshKey={newsKey ?? undefined} />
+    </div>
   );
 }
 

@@ -50,6 +50,15 @@ import {
   computeMarketSentiment,
   parseRssItems,
 } from './src/utils/sentiment.ts';
+import { analyzeTechnicals } from './src/ai/technical.ts';
+import {
+  analyzeFundamentals,
+  parseYahooFundamentals,
+  YAHOO_FUNDAMENTAL_TYPES,
+  type AnnualFigures,
+} from './src/ai/fundamentals.ts';
+import { analyzeNewsDrivers } from './src/ai/newsDrivers.ts';
+import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -208,7 +217,10 @@ async function pollNews(force = false): Promise<void> {
     if (newsHub.initialized && added.length > 0) {
       for (const tag of new Set(added.flatMap((a) => a.assetTags ?? []))) {
         const asset = ASSETS.find((a) => a.code === tag);
-        if (asset) intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
+        if (asset) {
+          intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
+          analysisCache.delete(asset.symbol);
+        }
         if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
       }
       broadcastNews('news', added);
@@ -239,6 +251,7 @@ function getNewsFeed(): MarketNewsItem[] {
 /** Latest headlines tagged with this asset (newest first). */
 async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
   await ensureNewsFresh();
+  await ensureAssetNews(asset).catch(() => {});
   const code = asset.code;
   return newsHub.items.filter((i) => i.assetTags?.includes(code)).slice(0, NEWS_PER_ASSET);
 }
@@ -1060,12 +1073,19 @@ async function getAssetIntelligence(
     news: newsItems,
   });
 
+  // Prefer the evidence-weighted analysis (technicals, factors, fundamentals, news drivers);
+  // the simple price + headline-tone score is only a fallback while history is unavailable
+  const analysis = await Promise.race([
+    getAssetAnalysis(asset).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+  ]);
+
   const initialIntelligence: AssetIntelligence = {
     symbol: asset.symbol,
-    sentimentScore: baseSentiment.score,
-    sentimentLabel: baseSentiment.label,
-    summary: baseSentiment.summary,
-    keyFactors: baseSentiment.keyFactors,
+    sentimentScore: analysis?.score ?? baseSentiment.score,
+    sentimentLabel: analysis?.label ?? baseSentiment.label,
+    summary: analysis?.summary ?? baseSentiment.summary,
+    keyFactors: analysis?.keyFactors.length ? analysis.keyFactors : baseSentiment.keyFactors,
     news: newsItems,
     updatedAt: now,
     aiPowered: false,
@@ -1102,8 +1122,16 @@ Current price: ${tick?.price ?? 'N/A'} (${asset.currency}), 24-hour change: ${
         }.
 Latest news:
 ${headlinesList}
+${
+          analysis
+            ? `
+Measured evidence (score ${analysis.score}/100, ${analysis.label}):
+${analysis.components.map((c) => `- ${c.label}: ${c.value.toFixed(2)} (weight ${Math.round(c.weight * 100)}%) — ${c.explanation}`).join('\n')}
+Use this evidence as given; do not invent other numbers.`
+            : ''
+        }
 
-Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), an objective and educational 2-sentence summary (not buy/sell advice), and the 3 main market drivers.`;
+Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), an objective and educational 2-sentence summary that explains WHY using the evidence (not buy/sell advice), and the 3 main market drivers.`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3.8-flash',
@@ -1130,7 +1158,17 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
         const rawText = response.text?.trim();
         if (rawText) {
           const parsed = JSON.parse(rawText);
-          const enriched: AssetIntelligence = {
+          const enriched: AssetIntelligence = analysis
+            ? {
+                // The measured score stays; Gemini only words the explanation
+                ...initialIntelligence,
+                summary:
+                  typeof parsed.summary === 'string' && parsed.summary.length > 15
+                    ? parsed.summary
+                    : initialIntelligence.summary,
+                aiPowered: true,
+              }
+            : {
             ...initialIntelligence,
             sentimentScore:
               typeof parsed.sentimentScore === 'number'
@@ -1290,6 +1328,157 @@ function newsScoreFor(asset: Asset): number | null {
     low24h: tick?.low24h,
     news,
   }).score;
+}
+
+// ---- Asset analysis: technical scorecard + chart patterns + fundamentals + news drivers ----
+
+const ANALYSIS_TTL_MS = 2 * 60_000;
+const FUNDAMENTALS_TTL_MS = 12 * 3600_000;
+const ON_DEMAND_NEWS_MS = 3 * 60_000;
+const analysisCache = new Map<string, CacheEntry<AssetAnalysis>>();
+const analysisJobs = new Map<string, Promise<AssetAnalysis>>();
+const fundamentalsCache = new Map<string, CacheEntry<{ years: AnnualFigures[]; currency: string } | null>>();
+const onDemandNewsAt = new Map<string, number>();
+
+const STOCK_GROUPS: AssetGroup[] = ['idStock', 'usStock', 'globalStock'];
+
+/** Daily closes (about 5 years) with today's live price as the last bar. */
+async function dailyClosesFor(asset: Asset): Promise<number[]> {
+  // Spot gold uses the GC=F futures history; SAR is pegged, so USD/IDR has the same shape
+  const yahoo = asset.symbol === 'XAU/USD' ? 'GC=F' : asset.symbol === 'SAR/IDR' ? 'IDR=X' : asset.yahooSymbol;
+  const raw = asset.indodaxPair
+    ? await fetchIndodaxDaily(asset.indodaxPair)
+    : yahoo
+      ? await fetchYahooDaily(yahoo)
+      : [];
+  return withLiveBar(raw, asset).map((b) => b.close);
+}
+
+/** Annual statements from Yahoo's fundamentals-timeseries (stocks only, cached 12 h). */
+async function fundamentalsFor(asset: Asset): Promise<{ years: AnnualFigures[]; currency: string } | null> {
+  if (!STOCK_GROUPS.includes(asset.group) || !asset.yahooSymbol) return null;
+  const cached = fundamentalsCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const sym = encodeURIComponent(asset.yahooSymbol);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const types = Object.values(YAHOO_FUNDAMENTAL_TYPES).join(',');
+  const url = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${sym}?symbol=${sym}&type=${types}&period1=${nowSec - 6 * 365 * DAY_SEC}&period2=${nowSec}`;
+  let data: { years: AnnualFigures[]; currency: string } | null = null;
+  try {
+    const res = await fetchWithTimeout(url, {}, 8000);
+    if (res.ok) {
+      const parsed = parseYahooFundamentals(await res.json());
+      data = parsed.years.length >= 2 ? parsed : null;
+    }
+  } catch (err) {
+    console.warn(`[Fundamentals] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+  }
+  fundamentalsCache.set(asset.symbol, { data, expiresAt: Date.now() + (data ? FUNDAMENTALS_TTL_MS : 30 * 60_000) });
+  return data;
+}
+
+/** Google News searches for assets that the hub does not poll on its own. */
+function onDemandQueries(asset: Asset): Array<{ q: string; lang: 'en' | 'id' }> {
+  const name = asset.name.replace(/\s*\(.*\)\s*/g, ' ').trim();
+  switch (asset.group) {
+    case 'idStock':
+      return [
+        { q: `saham ${asset.code} when:3d`, lang: 'id' },
+        { q: `"${name}" when:3d`, lang: 'en' },
+      ];
+    case 'usStock':
+    case 'globalStock':
+      return [
+        { q: `"${name}" stock when:2d`, lang: 'en' },
+        { q: `saham ${name} when:3d`, lang: 'id' },
+      ];
+    case 'crypto':
+      return [
+        { q: `${name} ${asset.code} crypto when:2d`, lang: 'en' },
+        { q: `${name} kripto when:3d`, lang: 'id' },
+      ];
+    case 'forex':
+      return [
+        { q: `kurs ${asset.code} rupiah when:2d`, lang: 'id' },
+        { q: `${asset.keywords?.[0] ?? name} when:2d`, lang: 'en' },
+      ];
+    default:
+      return [{ q: `"${name}" when:2d`, lang: 'en' }];
+  }
+}
+
+async function ensureAssetNews(asset: Asset): Promise<void> {
+  if (asset.newsQuery) return; // already polled by the hub
+  const last = onDemandNewsAt.get(asset.id) ?? 0;
+  if (Date.now() - last < ON_DEMAND_NEWS_MS) return;
+  onDemandNewsAt.set(asset.id, Date.now());
+  const sources: NewsSource[] = onDemandQueries(asset).map(({ q, lang }, i) => ({
+    id: `gn-od-${asset.id}-${i}`,
+    url:
+      lang === 'id'
+        ? `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=id&gl=ID&ceid=ID:id`
+        : `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`,
+    asset,
+    minIntervalMs: ON_DEMAND_NEWS_MS,
+    maxItems: 8,
+  }));
+  const results = await Promise.all(sources.map((s) => fetchNewsSource(s).catch(() => [] as MarketNewsItem[])));
+  newsHub.items = mergeNewsItems(newsHub.items, results.flat(), Date.now(), { maxItems: 400 }).items;
+}
+
+/** Headlines for the drivers study: the asset's own news plus the latest market-wide macro news. */
+function driverNewsFor(asset: Asset): MarketNewsItem[] {
+  const own = newsHub.items.filter((i) => i.assetTags?.includes(asset.code)).slice(0, 25);
+  // Market-wide news only when it is purely macro (a gold headline that mentions the Fed is gold news)
+  const macro = newsHub.items
+    .filter((i) => !own.includes(i) && i.assetTags?.includes(MACRO_TAG) && i.assetTags.every((t) => t === MACRO_TAG || t === GEO_TAG))
+    .slice(0, 6);
+  return [...own, ...macro];
+}
+
+async function computeAssetAnalysis(asset: Asset): Promise<AssetAnalysis> {
+  const [closes, fund] = await Promise.all([
+    dailyClosesFor(asset),
+    fundamentalsFor(asset).catch(() => null),
+    ensureNewsFresh()
+      .then(() => ensureAssetNews(asset))
+      .catch(() => {}),
+  ]);
+  if (closes.length < 60) throw new Error(`Not enough price history for ${asset.name}`);
+  const yearBars = asset.group === 'crypto' ? 365 : 252;
+  const technical = analyzeTechnicals(closes, 20, yearBars);
+
+  let fundamentals = null;
+  if (fund) {
+    // P/E and P/B need the market cap in the reporting currency
+    const usdIdr = yahooCache.get('USD/IDR')?.data.price ?? 0;
+    const tick = yahooCache.get(asset.symbol)?.data;
+    const ticks: Record<string, PriceTick> = tick ? { [asset.symbol]: { ...tick } } : {};
+    if (tick) await addMarketCaps(ticks);
+    const mcUsd = ticks[asset.symbol]?.marketCapUsd;
+    const rate = usdPerUnit(fund.currency as PriceCurrency, usdIdr);
+    fundamentals = analyzeFundamentals(fund.years, fund.currency, mcUsd && rate ? mcUsd / rate : undefined);
+  }
+
+  const news = analyzeNewsDrivers(driverNewsFor(asset), asset.group, asset.symbol);
+  return buildAnalysis({ symbol: asset.symbol, group: asset.group, closes, technical, fundamentals, news });
+}
+
+/** Cached analysis (2 minutes); concurrent callers share one computation. */
+async function getAssetAnalysis(asset: Asset): Promise<AssetAnalysis> {
+  const cached = analysisCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  let job = analysisJobs.get(asset.symbol);
+  if (!job) {
+    job = computeAssetAnalysis(asset)
+      .then((data) => {
+        analysisCache.set(asset.symbol, { data, expiresAt: Date.now() + ANALYSIS_TTL_MS });
+        return data;
+      })
+      .finally(() => analysisJobs.delete(asset.symbol));
+    analysisJobs.set(asset.symbol, job);
+  }
+  return job;
 }
 
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
@@ -1587,6 +1776,21 @@ async function startServer() {
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Failed to load sentiment analysis and news',
       });
+    }
+  });
+
+  // 5b. Evidence-weighted analysis: technical scorecard, chart patterns, fundamentals, news drivers
+  app.get('/api/market/analysis', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset) {
+      res.status(404).json({ error: 'Unknown asset' });
+      return;
+    }
+    try {
+      res.json(await getAssetAnalysis(asset));
+    } catch (err) {
+      console.warn(`[Analysis] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Analysis unavailable' });
     }
   });
 
