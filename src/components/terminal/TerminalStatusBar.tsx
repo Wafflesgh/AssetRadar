@@ -1,15 +1,16 @@
+/** TerminalStatusBar.tsx — Terminal top bar: brand, connection state, IDX open/closed and WIB clock. */
 import { useEffect, useState } from 'react';
 import { ConnectionState } from '../../services/marketDataService.ts';
 import { isIdxMarketOpen } from '../../utils/marketHours.ts';
 
-const CLOCK = new Intl.DateTimeFormat('id-ID', {
+const CLOCK = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
   hour12: false,
 });
-const DATE = new Intl.DateTimeFormat('id-ID', {
+const DATE = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
   weekday: 'short',
   day: '2-digit',
@@ -19,12 +20,12 @@ const DATE = new Intl.DateTimeFormat('id-ID', {
 
 const CONNECTION_LABEL: Record<ConnectionState, { text: string; color: string }> = {
   live: { text: 'LIVE', color: 'var(--t-up)' },
-  reconnecting: { text: 'MENYAMBUNG', color: 'var(--t-amber)' },
-  delayed: { text: 'TERTUNDA', color: 'var(--t-muted)' },
+  reconnecting: { text: 'RECONNECTING', color: 'var(--t-amber)' },
+  delayed: { text: 'DELAYED', color: 'var(--t-muted)' },
   offline: { text: 'OFFLINE', color: 'var(--t-muted)' },
 };
 
-/** Baris atas Terminal: merek, status koneksi, status BEI, dan jam WIB berjalan. */
+/** Terminal top bar: brand, connection state, IDX market status and a running WIB clock. */
 export function TerminalStatusBar({ connectionState }: { connectionState: ConnectionState }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -62,15 +63,15 @@ export function TerminalStatusBar({ connectionState }: { connectionState: Connec
       </div>
       <div className="flex items-center gap-3">
         <span>
-          <span style={{ color: 'var(--t-muted)' }}>BEI </span>
+          <span style={{ color: 'var(--t-muted)' }}>IDX </span>
           <span className="font-bold" style={{ color: bei ? 'var(--t-up)' : 'var(--t-down)' }}>
-            {bei ? 'BUKA' : 'TUTUP'}
+            {bei ? 'OPEN' : 'CLOSED'}
           </span>
         </span>
         <span style={{ color: 'var(--t-muted)' }} className="hidden sm:inline">
           {DATE.format(now)}
         </span>
-        <span className="font-bold" style={{ color: 'var(--t-text)' }} aria-label="Jam WIB">
+        <span className="font-bold" style={{ color: 'var(--t-text)' }} aria-label="WIB clock">
           {CLOCK.format(now).replace(/\./g, ':')} WIB
         </span>
       </div>

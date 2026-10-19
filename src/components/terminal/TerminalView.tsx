@@ -1,3 +1,7 @@
+/**
+ * TerminalView.tsx — The #/terminal page: sticky status bar, ticker tape and command line,
+ * the responsive panel grid, number-key shortcuts and command → panel focusing.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSETS, PriceTick, TimeframeInterval, getAssetBySymbol } from '../../config/assets.ts';
 import { ConnectionState } from '../../services/marketDataService.ts';
@@ -22,7 +26,7 @@ interface TerminalViewProps {
 const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   monitor: 'panel-monitor',
   chart: 'panel-chart',
-  news: 'panel-berita',
+  news: 'panel-news',
   heatmap: 'panel-heatmap',
   eco: 'panel-eco',
   corr: 'panel-corr',
@@ -32,11 +36,11 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
 const PANEL_NAME: Record<PanelId, string> = {
   monitor: 'MONITOR',
   chart: 'CHART',
-  news: 'BERITA',
+  news: 'NEWS',
   heatmap: 'HEATMAP',
-  eco: 'KALENDER EKONOMI',
-  corr: 'KORELASI 30H',
-  top: 'UMPAN BERITA',
+  eco: 'ECONOMIC CALENDAR',
+  corr: 'CORRELATION 30D',
+  top: 'NEWS FEED',
 };
 
 function prefersReducedMotion(): boolean {
@@ -47,7 +51,7 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-/** Mode Terminal ala Bloomberg: ticker, baris perintah, dan grid multi-panel. */
+/** Bloomberg-style Terminal mode: ticker, command line and multi-panel grid. */
 export function TerminalView({
   ticks,
   connectionState,
@@ -85,7 +89,7 @@ export function TerminalView({
     []
   );
 
-  // Pintasan angka 1–6 memilih aset sesuai urutan MONITOR
+  // Number keys 1–6 select an asset in MONITOR order
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -105,15 +109,15 @@ export function TerminalView({
     (cmd: Exclude<TerminalCommand, { type: 'help' } | { type: 'error' }>): string => {
       if (cmd.type === 'radar') {
         onGoToRadar();
-        return 'Kembali ke Radar.';
+        return 'Back to Radar.';
       }
       if (cmd.type === 'asset') {
         setSelectedSymbol(cmd.symbol);
         focusPanel(cmd.panel, cmd.panel !== 'monitor');
-        return `${cmd.code} dipilih → ${PANEL_NAME[cmd.panel]}`;
+        return `${cmd.code} selected → ${PANEL_NAME[cmd.panel]}`;
       }
       focusPanel(cmd.panel, true);
-      return `Membuka ${PANEL_NAME[cmd.panel]}`;
+      return `Opening ${PANEL_NAME[cmd.panel]}`;
     },
     [focusPanel, onGoToRadar]
   );

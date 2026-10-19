@@ -1,3 +1,7 @@
+/**
+ * WatchlistView.tsx — The Watchlist page: starred assets (saved in localStorage) with their
+ * latest price and 24h change, a remove button, and an empty state pointing to the Radar.
+ */
 import { Star, Trash2, ArrowUpRight, Radar } from 'lucide-react';
 import { ASSETS, PriceTick } from '../config/assets.ts';
 import {
@@ -33,22 +37,22 @@ export function WatchlistView({
           className="flex items-center gap-2 text-xs font-medium"
           style={{ color: 'var(--text-secondary)' }}
         >
-          <span>Daftar Pantau Pribadi</span>
+          <span>Personal Watchlist</span>
           <span aria-hidden="true">·</span>
-          <span>Tersimpan di Perangkat (localStorage)</span>
+          <span>Saved on this device (localStorage)</span>
         </div>
         <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-          Watchlist Aset Favorit
+          Favorite Assets Watchlist
         </h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Aset yang Anda tandai bintang dari halaman Radar atau Detail muncul di sini beserta
-          harga terkininya.
+          Assets you star on the Radar or Detail page appear here with
+          their latest prices.
         </p>
       </header>
 
       {watchlistedAssets.length === 0 ? (
         <section
-          aria-label="Watchlist Kosong"
+          aria-label="Empty watchlist"
           className="p-8 md:p-12 rounded-xl border text-center space-y-4"
           style={{
             backgroundColor: 'var(--bg-surface)',
@@ -66,10 +70,10 @@ export function WatchlistView({
             <Star className="w-6 h-6" />
           </div>
           <div className="space-y-1.5 max-w-md mx-auto">
-            <h2 className="text-base font-bold">Belum ada aset di Watchlist Anda</h2>
+            <h2 className="text-base font-bold">Your Watchlist is empty</h2>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              Tambahkan instrumen favorit seperti Bitcoin, Emas Spot, atau IHSG dari halaman Radar
-              agar lebih cepat dipantau.
+              Add favorite instruments such as Bitcoin, Spot Gold, or the JCI from the Radar page
+              to track them faster.
             </p>
           </div>
           <button
@@ -82,7 +86,7 @@ export function WatchlistView({
             }}
           >
             <Radar className="w-4 h-4" />
-            <span>Jelajahi Aset di Radar</span>
+            <span>Browse Assets on Radar</span>
           </button>
         </section>
       ) : (
@@ -91,7 +95,7 @@ export function WatchlistView({
             const tick = ticks[asset.symbol];
             const isLoaded = tick && tick.status !== 'error' && Number.isFinite(tick.price);
             const priceDisplay = !isLoaded
-              ? 'Memuat...'
+              ? 'Loading...'
               : asset.currency === 'IDR'
                 ? formatRupiah(tick.price, 0)
                 : asset.currency === 'PTS'
@@ -144,7 +148,7 @@ export function WatchlistView({
                   <button
                     type="button"
                     onClick={() => onRemoveFromWatchlist(asset.symbol)}
-                    aria-label={`Hapus ${asset.name} dari Watchlist`}
+                    aria-label={`Remove ${asset.name} from Watchlist`}
                     className="p-2 rounded-lg border transition-colors"
                     style={{
                       backgroundColor: 'var(--bg-surface-subtle)',
@@ -166,7 +170,7 @@ export function WatchlistView({
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <span>Buka Grafik &amp; Sentimen {asset.shortName}</span>
+                  <span>Open {asset.shortName} Chart &amp; Sentiment</span>
                   <ArrowUpRight
                     className="w-3.5 h-3.5"
                     style={{ color: 'var(--accent-radar)' }}

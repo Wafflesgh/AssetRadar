@@ -1,4 +1,7 @@
-/** Parser baris perintah mode Terminal (gaya Bloomberg: "<KODE> <FUNGSI>"). */
+/**
+ * terminalCommands.ts — Parser and autocomplete for the Terminal command line
+ * (Bloomberg style: "<CODE> <FUNCTION>", e.g. "ETH GP"), plus the HELP command list.
+ */
 
 export type TerminalPanel = 'monitor' | 'chart' | 'news' | 'heatmap' | 'eco' | 'corr' | 'top';
 
@@ -9,29 +12,30 @@ export type TerminalCommand =
   | { type: 'radar' }
   | { type: 'error'; message: string };
 
-/** Kode aset yang dikenali → simbol aplikasi. Urutan = urutan saran. */
+/** Recognized asset codes → app symbol. Order = suggestion order. */
 export const TERMINAL_ASSET_CODES: Array<{ code: string; symbol: string; label: string }> = [
   { code: 'BTC', symbol: 'BTC/IDR', label: 'Bitcoin' },
   { code: 'ETH', symbol: 'ETH/IDR', label: 'Ethereum' },
   { code: 'SOL', symbol: 'SOL/IDR', label: 'Solana' },
-  { code: 'IHSG', symbol: '^JKSE', label: 'IHSG' },
-  { code: 'EMAS', symbol: 'XAU/USD', label: 'Emas spot' },
-  { code: 'XAU', symbol: 'XAU/USD', label: 'Emas spot' },
-  { code: 'USD', symbol: 'USD/IDR', label: 'Kurs USD/IDR' },
+  { code: 'JCI', symbol: '^JKSE', label: 'Jakarta Composite Index' },
+  { code: 'GOLD', symbol: 'XAU/USD', label: 'Spot gold' },
+  { code: 'XAU', symbol: 'XAU/USD', label: 'Spot gold' },
+  { code: 'USD', symbol: 'USD/IDR', label: 'USD/IDR rate' },
 ];
 
-// Alias tambahan yang diterima tetapi tidak ditampilkan di saran
+// Extra aliases that are accepted but not shown in suggestions (incl. legacy Indonesian codes)
 const EXTRA_ALIASES: Record<string, string> = {
+  IHSG: '^JKSE',
   JKSE: '^JKSE',
-  GOLD: 'XAU/USD',
+  EMAS: 'XAU/USD',
   USDIDR: 'USD/IDR',
 };
 
 const PANEL_COMMANDS: Record<string, { panel: 'heatmap' | 'eco' | 'corr' | 'top'; description: string }> = {
-  HM: { panel: 'heatmap', description: 'Heatmap perubahan 24 jam' },
-  ECO: { panel: 'eco', description: 'Kalender ekonomi' },
-  CORR: { panel: 'corr', description: 'Korelasi 30 hari' },
-  TOP: { panel: 'top', description: 'Umpan berita terbaru' },
+  HM: { panel: 'heatmap', description: '24-hour change heatmap' },
+  ECO: { panel: 'eco', description: 'Economic calendar' },
+  CORR: { panel: 'corr', description: '30-day correlation' },
+  TOP: { panel: 'top', description: 'Latest news feed' },
 };
 
 export interface CommandHelpItem {
@@ -40,12 +44,12 @@ export interface CommandHelpItem {
 }
 
 export const TERMINAL_HELP: CommandHelpItem[] = [
-  { command: '<KODE>', description: 'Pilih aset: BTC, ETH, SOL, IHSG, EMAS/XAU, USD' },
-  { command: '<KODE> GP', description: 'Grafik aset, contoh: ETH GP' },
-  { command: '<KODE> N', description: 'Berita aset, contoh: IHSG N' },
+  { command: '<CODE>', description: 'Select an asset: BTC, ETH, SOL, JCI, GOLD/XAU, USD' },
+  { command: '<CODE> GP', description: 'Asset chart, e.g. ETH GP' },
+  { command: '<CODE> N', description: 'Asset news, e.g. JCI N' },
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
-  { command: 'HELP', description: 'Daftar perintah' },
-  { command: 'RADAR', description: 'Kembali ke halaman Radar' },
+  { command: 'HELP', description: 'List of commands' },
+  { command: 'RADAR', description: 'Back to the Radar page' },
 ];
 
 function normalize(input: string): string {
@@ -56,7 +60,7 @@ function lookupAsset(code: string): string | undefined {
   return TERMINAL_ASSET_CODES.find((a) => a.code === code)?.symbol ?? EXTRA_ALIASES[code];
 }
 
-/** Mengurai satu baris perintah. Mengembalikan null untuk input kosong. */
+/** Parses one command line. Returns null for empty input. */
 export function parseTerminalCommand(input: string): TerminalCommand | null {
   const text = normalize(input);
   if (!text) return null;
@@ -67,12 +71,12 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   const [code, fn, ...rest] = text.split(' ');
   const symbol = lookupAsset(code);
   if (!symbol) {
-    return { type: 'error', message: `Perintah tidak dikenal: "${text}". Ketik HELP untuk daftar perintah.` };
+    return { type: 'error', message: `Unknown command: "${text}". Type HELP for the list of commands.` };
   }
   if (rest.length > 0 || (fn && fn !== 'GP' && fn !== 'N')) {
     return {
       type: 'error',
-      message: `Fungsi "${[fn, ...rest].join(' ')}" tidak dikenal untuk ${code}. Gunakan GP (grafik) atau N (berita).`,
+      message: `Unknown function "${[fn, ...rest].join(' ')}" for ${code}. Use GP (chart) or N (news).`,
     };
   }
   return { type: 'asset', symbol, code, panel: fn === 'GP' ? 'chart' : fn === 'N' ? 'news' : 'monitor' };
@@ -81,15 +85,15 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
 const ALL_SUGGESTIONS: CommandHelpItem[] = [
   ...TERMINAL_ASSET_CODES.flatMap(({ code, label }) => [
     { command: code, description: label },
-    { command: `${code} GP`, description: `Grafik ${label}` },
-    { command: `${code} N`, description: `Berita ${label}` },
+    { command: `${code} GP`, description: `${label} chart` },
+    { command: `${code} N`, description: `${label} news` },
   ]),
   ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
-  { command: 'HELP', description: 'Daftar perintah' },
-  { command: 'RADAR', description: 'Kembali ke Radar' },
+  { command: 'HELP', description: 'List of commands' },
+  { command: 'RADAR', description: 'Back to Radar' },
 ];
 
-/** Saran otomatis: perintah yang diawali teks yang sedang diketik. */
+/** Autocomplete: commands that start with the text being typed. */
 export function getCommandSuggestions(input: string, limit = 6): CommandHelpItem[] {
   const text = normalize(input);
   if (!text) return [];

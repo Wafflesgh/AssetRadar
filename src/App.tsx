@@ -1,3 +1,8 @@
+/**
+ * App.tsx — Root component: holds the global state (live prices, connection state, theme,
+ * timeframe, watchlist, selected asset), syncs it with the URL hash, and lays out the page
+ * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sun, Moon, Wifi } from 'lucide-react';
 import {
@@ -35,7 +40,7 @@ import { TerminalView } from './components/terminal/TerminalView.tsx';
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     if (typeof window === 'undefined') return 'radar';
-    // Opsi "Buka aplikasi di mode Terminal" hanya berlaku saat URL tanpa hash
+    // The "Open the app in Terminal mode" option only applies when the URL has no hash
     if (!window.location.hash && getStartInTerminal()) return 'terminal';
     return parseHashRoute(window.location.hash).tab;
   });
@@ -199,7 +204,7 @@ export default function App() {
   const currentAsset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
   const isTerminal = activeTab === 'terminal';
 
-  // Connection status indicator color & label (hijau = live, kuning = menyambung ulang, abu-abu = tertunda)
+  // Connection status indicator color & label (green = live, yellow = reconnecting, grey = delayed/offline)
   const connColor =
     connectionState === 'live'
       ? 'var(--color-up)'
@@ -209,10 +214,12 @@ export default function App() {
 
   const connLabel =
     connectionState === 'live'
-      ? 'Live · Terhubung'
+      ? 'Live · Connected'
       : connectionState === 'reconnecting'
-        ? 'Menyambung ulang...'
-        : 'Tertunda';
+        ? 'Reconnecting...'
+        : connectionState === 'offline'
+          ? 'Offline – last data'
+          : 'Delayed';
 
   return (
     <div
@@ -232,7 +239,7 @@ export default function App() {
         onToggleThemeQuick={handleToggleThemeQuick}
       />
 
-      {/* Top Header Bar (Terminal punya baris status sendiri) */}
+      {/* Top Header Bar (Terminal has its own status bar) */}
       {!isTerminal && (
       <header
         className="sticky top-0 z-10 h-14 md:h-16 px-4 md:px-8 border-b flex items-center justify-between gap-4"
@@ -259,11 +266,11 @@ export default function App() {
               /
             </span>
             <span className="truncate">
-              {activeTab === 'radar' && 'Radar Pasar'}
-              {activeTab === 'detail' && `Detail Aset · ${currentAsset.shortName}`}
-              {activeTab === 'watchlist' && 'Watchlist Favorit'}
-              {activeTab === 'risiko' && 'Edukasi Profil Risiko'}
-              {activeTab === 'pengaturan' && 'Pengaturan & Tentang'}
+              {activeTab === 'radar' && 'Market Radar'}
+              {activeTab === 'detail' && `Asset Detail · ${currentAsset.shortName}`}
+              {activeTab === 'watchlist' && 'Favorite Watchlist'}
+              {activeTab === 'risk' && 'Risk Profile Education'}
+              {activeTab === 'settings' && 'Settings & About'}
             </span>
           </div>
         </div>
@@ -284,8 +291,8 @@ export default function App() {
             onClick={handleToggleThemeQuick}
             aria-label={
               effectiveTheme === 'dark'
-                ? 'Ganti ke tema terang'
-                : 'Ganti ke tema gelap'
+                ? 'Switch to light theme'
+                : 'Switch to dark theme'
             }
             className="p-2 rounded-lg border transition-colors"
             style={{
@@ -358,11 +365,11 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'risiko' && (
+        {activeTab === 'risk' && (
           <RiskProfileView onSelectAsset={handleSelectAsset} />
         )}
 
-        {activeTab === 'pengaturan' && (
+        {activeTab === 'settings' && (
           <SettingsView
             themePreference={themePreference}
             onChangeThemePreference={handleChangeThemePreference}
@@ -385,10 +392,10 @@ export default function App() {
       >
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="font-medium">
-            Data hanya untuk informasi, bukan saran investasi. Grafik oleh TradingView.
+            Data is for information only, not investment advice. Charts by TradingView.
           </p>
           <p className="text-[11px]">
-            AssetRadar · Penggunaan Pribadi (Non-Komersial)
+            AssetRadar · Personal Use (Non-Commercial)
           </p>
         </div>
       </footer>

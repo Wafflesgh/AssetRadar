@@ -1,3 +1,8 @@
+/**
+ * storage.ts — Every localStorage read/write in the app, always wrapped in try/catch:
+ * theme, default timeframe, watchlist, last price snapshot (offline mode),
+ * start-in-Terminal option and the saved risk-profile result.
+ */
 import { DEFAULT_TIMEFRAME, isValidTimeframe, TimeframeInterval, PriceTick } from '../config/assets.ts';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -6,7 +11,8 @@ const STORAGE_KEYS = {
   TIMEFRAME: 'assetradar_timeframe',
   THEME: 'assetradar_theme',
   WATCHLIST: 'assetradar_watchlist',
-  TICK_SNAPSHOT: 'assetradar_last_ticks',
+  // v2: group/status values were renamed to English
+  TICK_SNAPSHOT: 'assetradar_last_ticks_v2',
   START_IN_TERMINAL: 'assetradar_start_terminal',
   RISK_RESULT: 'assetradar_risk_result',
 } as const;
@@ -26,7 +32,7 @@ function safeSet(key: string, value: string): void {
       window.localStorage.setItem(key, value);
     }
   } catch {
-    // Abaikan kegagalan penyimpanan (mode privat, kuota penuh, dll.)
+    // Ignore storage failures (private mode, quota exceeded, etc.)
   }
 }
 
@@ -36,11 +42,11 @@ function safeRemove(key: string): void {
       window.localStorage.removeItem(key);
     }
   } catch {
-    // Abaikan
+    // Ignore
   }
 }
 
-/** Snapshot harga terakhir untuk ditampilkan saat offline. */
+/** Last known prices, shown while offline. */
 export function saveTickSnapshot(ticks: Record<string, PriceTick>): void {
   const valid: Record<string, PriceTick> = {};
   for (const [sym, tick] of Object.entries(ticks)) {
@@ -62,7 +68,7 @@ export function loadTickSnapshot(): Record<string, PriceTick> | null {
       return out;
     }
   } catch {
-    // Abaikan snapshot rusak
+    // Ignore a corrupted snapshot
   }
   return null;
 }
@@ -91,7 +97,7 @@ export function getSavedRiskResult(): SavedRiskResult | null {
       return parsed as SavedRiskResult;
     }
   } catch {
-    // Abaikan
+    // Ignore
   }
   return null;
 }

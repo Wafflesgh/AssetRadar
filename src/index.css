@@ -1,3 +1,7 @@
+/*
+ * index.css — Global styles: Tailwind import, light/dark color tokens, the Terminal-mode
+ * token overrides, ticker/flash animations and reduced-motion handling.
+ */
 @import "tailwindcss";
 
 :root,
@@ -38,8 +42,8 @@
   color-scheme: dark;
 }
 
-/* Mode Terminal (gaya Bloomberg): selalu gelap. Token aplikasi didefinisikan ulang agar
-   komponen bersama (navigasi, grafik, tombol) ikut bergaya Terminal. */
+/* Terminal mode (Bloomberg style): always dark. The app tokens are redefined so that
+   shared components (navigation, charts, buttons) take on the Terminal style. */
 .terminal-root {
   --t-bg: #05070A;
   --t-panel: #0B0F14;
@@ -120,7 +124,7 @@
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    /* clip, bukan hidden: hidden menjadikan body wadah gulir sehingga header sticky tidak menempel */
+    /* clip, not hidden: hidden turns body into a scroll container, so sticky headers stop sticking */
     overflow-x: clip;
     -webkit-font-smoothing: antialiased;
   }

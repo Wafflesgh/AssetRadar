@@ -1,4 +1,9 @@
 /**
+ * marketHours.ts — Indonesia Stock Exchange trading-hours check (WIB) and the
+ * "updated X seconds ago" relative-time label used on price cards.
+ */
+
+/**
  * Checks whether the Indonesia Stock Exchange (IDX / BEI) is currently open.
  * Trading hours: Monday–Friday, 09:00–16:00 WIB (Asia/Jakarta, UTC+7).
  */
@@ -28,15 +33,15 @@ export function isIdxMarketOpen(nowMs: number = Date.now()): boolean {
 }
 
 /**
- * Formats relative time in Indonesian ("baru saja", "diperbarui 5 detik lalu", "2 menit lalu")
+ * Formats relative time ("updated just now", "updated 5 seconds ago", "updated 2 minutes ago").
  */
-export function formatRelativeTimeId(updatedAtMs: number, nowMs: number = Date.now()): string {
-  if (!updatedAtMs || !Number.isFinite(updatedAtMs)) return 'Belum diperbarui';
+export function formatRelativeTime(updatedAtMs: number, nowMs: number = Date.now()): string {
+  if (!updatedAtMs || !Number.isFinite(updatedAtMs)) return 'Not updated yet';
   const diffSec = Math.max(0, Math.floor((nowMs - updatedAtMs) / 1000));
-  if (diffSec < 3) return 'diperbarui baru saja';
-  if (diffSec < 60) return `diperbarui ${diffSec} detik lalu`;
+  if (diffSec < 3) return 'updated just now';
+  if (diffSec < 60) return `updated ${diffSec} seconds ago`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `diperbarui ${diffMin} menit lalu`;
+  if (diffMin < 60) return `updated ${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
   const diffHour = Math.floor(diffMin / 60);
-  return `diperbarui ${diffHour} jam lalu`;
+  return `updated ${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
 }

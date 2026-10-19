@@ -1,8 +1,12 @@
+/**
+ * Navigation.tsx — App navigation: the fixed desktop sidebar (brand, menu, theme toggle)
+ * and the mobile bottom navigation bar. Also defines the NavTab type.
+ */
 import { Radar, Star, ShieldAlert, Settings, Sun, Moon, LineChart, SquareTerminal } from 'lucide-react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risiko' | 'pengaturan' | 'terminal';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -23,8 +27,8 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'radar', label: 'Radar', icon: Radar },
   { id: 'terminal', label: 'Terminal', icon: SquareTerminal },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  { id: 'risiko', label: 'Profil Risiko', icon: ShieldAlert },
-  { id: 'pengaturan', label: 'Pengaturan', icon: Settings },
+  { id: 'risk', label: 'Risk Profile', icon: ShieldAlert },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export function SidebarNav({
@@ -36,7 +40,7 @@ export function SidebarNav({
 }: NavigationProps) {
   return (
     <aside
-      aria-label="Navigasi Utama Desktop"
+      aria-label="Main desktop navigation"
       className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:left-0 border-r select-none z-20"
       style={{
         backgroundColor: 'var(--bg-surface)',
@@ -62,14 +66,14 @@ export function SidebarNav({
               className="text-[11px] font-medium block mt-1"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Emas · Saham · Crypto
+              Gold · Stocks · Crypto
             </span>
           </div>
         </button>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-3 py-5 space-y-1" aria-label="Menu Samping">
+      <nav className="flex-1 px-3 py-5 space-y-1" aria-label="Side menu">
         {MAIN_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -115,7 +119,7 @@ export function SidebarNav({
             }}
           >
             <LineChart className="w-4 h-4 shrink-0" />
-            <span>Detail & Grafik</span>
+            <span>Detail & Chart</span>
           </button>
         </div>
       </nav>
@@ -134,7 +138,7 @@ export function SidebarNav({
             borderColor: 'var(--border-subtle)',
             color: 'var(--text-primary)',
           }}
-          aria-label={effectiveTheme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
+          aria-label={effectiveTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           <span className="flex items-center gap-2">
             {effectiveTheme === 'dark' ? (
@@ -142,13 +146,13 @@ export function SidebarNav({
             ) : (
               <Sun className="w-3.5 h-3.5" style={{ color: 'var(--color-gold)' }} />
             )}
-            <span>Mode {effectiveTheme === 'dark' ? 'Gelap' : 'Terang'}</span>
+            <span>{effectiveTheme === 'dark' ? 'Dark' : 'Light'} Mode</span>
           </span>
-          <span style={{ color: 'var(--text-secondary)' }}>Ubah</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Change</span>
         </button>
 
         <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          Pantau emas, saham, dan crypto dalam satu radar.
+          Track gold, stocks, and crypto on one radar.
         </p>
       </div>
     </aside>
@@ -162,7 +166,7 @@ export function BottomNav({
 }: Pick<NavigationProps, 'activeTab' | 'onSelectTab' | 'watchlistCount'>) {
   return (
     <nav
-      aria-label="Navigasi Bawah Seluler"
+      aria-label="Mobile bottom navigation"
       className="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex items-center justify-around px-1"
       style={{
         backgroundColor: 'var(--bg-surface)',

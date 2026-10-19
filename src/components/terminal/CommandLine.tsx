@@ -1,3 +1,7 @@
+/**
+ * CommandLine.tsx — Terminal command line with autocomplete, keyboard handling ("/" to
+ * focus, Esc, Tab, arrows), feedback/error messages and the HELP table.
+ */
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   TERMINAL_HELP,
@@ -9,7 +13,7 @@ import {
 type Feedback = { kind: 'ok' | 'error'; text: string } | null;
 
 interface CommandLineProps {
-  /** Dipanggil untuk perintah yang valid (bukan HELP/galat). Mengembalikan teks konfirmasi. */
+  /** Called for valid commands (not HELP/errors). Returns a confirmation text. */
   onCommand: (cmd: Exclude<TerminalCommand, { type: 'help' } | { type: 'error' }>) => string;
 }
 
@@ -18,7 +22,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-/** Baris perintah: "/" untuk fokus, Esc mengosongkan, Tab/↑↓ untuk saran otomatis. */
+/** Command line: "/" to focus, Esc to clear, Tab/↑↓ for autocomplete. */
 export function CommandLine({ onCommand }: CommandLineProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState('');
@@ -47,7 +51,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
     if (!cmd) return;
     if (cmd.type === 'help') {
       setShowHelp(true);
-      setFeedback({ kind: 'ok', text: 'Daftar perintah ditampilkan di bawah.' });
+      setFeedback({ kind: 'ok', text: 'Command list shown below.' });
       return;
     }
     if (cmd.type === 'error') {
@@ -104,7 +108,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          placeholder="Ketik perintah, contoh: ETH GP  (tekan / untuk fokus, HELP untuk bantuan)"
+          placeholder="Type a command, e.g. ETH GP  (press / to focus, HELP for help)"
           aria-describedby="terminal-feedback"
           role="combobox"
           aria-expanded={suggestions.length > 0}
@@ -134,7 +138,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
               key={s.command}
               role="option"
               aria-selected={i === activeIndex}
-              // onMouseDown agar tetap jalan sebelum input kehilangan fokus
+              // onMouseDown so it still runs before the input loses focus
               onMouseDown={(e) => {
                 e.preventDefault();
                 run(s.command);
@@ -183,7 +187,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
                 <td className="pr-4 py-0.5 font-bold" style={{ color: 'var(--t-amber)' }}>
                   1–6
                 </td>
-                <td style={{ color: 'var(--t-text)' }}>Pintasan: pilih aset sesuai urutan MONITOR</td>
+                <td style={{ color: 'var(--t-text)' }}>Shortcut: select an asset by its MONITOR order</td>
               </tr>
             </tbody>
           </table>

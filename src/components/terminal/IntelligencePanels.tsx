@@ -1,3 +1,7 @@
+/**
+ * IntelligencePanels.tsx — Terminal SENTIMENT and NEWS panels for the selected asset, the
+ * shared useAssetIntelligence hook and the NewsRow used by the news feed.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AssetConfig, AssetIntelligence, MarketNewsItem } from '../../config/assets.ts';
 import { fetchAssetIntelligence } from '../../services/marketDataService.ts';
@@ -10,7 +14,7 @@ export interface IntelligenceState {
   reload: () => void;
 }
 
-/** Sentimen + berita satu aset; jika belum diperkaya AI, ambil ulang sekali setelah 8 detik. */
+/** Sentiment + news for one asset; if not AI-enhanced yet, refetch once after 8 seconds. */
 export function useAssetIntelligence(symbol: string): IntelligenceState {
   const [data, setData] = useState<AssetIntelligence | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,11 +65,11 @@ export function SentimentPanel({ asset, intel, highlighted }: PanelProps) {
   const { data, loading, error, reload } = intel;
   return (
     <TerminalPanel
-      id="panel-sentimen"
-      title="Sentimen"
-      subtitle={`${asset.shortName.toUpperCase()}${data?.aiPowered ? ' · diperkaya AI' : ''}`}
+      id="panel-sentiment"
+      title="Sentiment"
+      subtitle={`${asset.shortName.toUpperCase()}${data?.aiPowered ? ' · AI-enhanced' : ''}`}
       highlighted={highlighted}
-      right={!loading && <RetryButton onClick={reload} label="Muat" />}
+      right={!loading && <RetryButton onClick={reload} label="Reload" />}
     >
       {loading ? (
         <PanelMessage kind="loading" />
@@ -105,7 +109,7 @@ export function SentimentPanel({ asset, intel, highlighted }: PanelProps) {
             </ul>
           )}
           <p className="text-[10px]" style={{ color: 'var(--t-muted)' }}>
-            Ringkasan suasana berita, bukan sinyal beli/jual.
+            A summary of the news mood, not a buy/sell signal.
           </p>
         </div>
       )}
@@ -113,7 +117,7 @@ export function SentimentPanel({ asset, intel, highlighted }: PanelProps) {
   );
 }
 
-/** Satu baris berita gaya Terminal: jam WIB, label kode, judul, sumber, nada. */
+/** One Terminal-style news row: WIB time, code tags, headline (original language), source, tone. */
 export function NewsRow({ item, showTags }: { item: MarketNewsItem; showTags?: boolean }) {
   const ms = item.publishedAtMs ?? Date.parse(item.publishedAt);
   return (
@@ -152,8 +156,8 @@ export function AssetNewsPanel({ asset, intel, highlighted }: PanelProps) {
   const { data, loading, error, reload } = intel;
   return (
     <TerminalPanel
-      id="panel-berita"
-      title="Berita"
+      id="panel-news"
+      title="News"
       subtitle={`${asset.shortName.toUpperCase()} · Google News`}
       highlighted={highlighted}
       bodyClassName="overflow-y-auto max-h-80"
@@ -163,7 +167,7 @@ export function AssetNewsPanel({ asset, intel, highlighted }: PanelProps) {
       ) : error || !data ? (
         <PanelMessage kind="error" onRetry={reload} />
       ) : data.news.length === 0 ? (
-        <PanelMessage kind="empty" text="Belum ada berita terbaru untuk aset ini." />
+        <PanelMessage kind="empty" text="No recent news for this asset yet." />
       ) : (
         <ul>
           {data.news.map((item) => (

@@ -1,3 +1,4 @@
+/** TickerTape.tsx — Terminal scrolling price tape for all assets (click to select). */
 import { useState } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import { changeColor, formatTerminalPct, formatTerminalPrice, isTickUsable } from './TerminalPanel.tsx';
@@ -7,7 +8,7 @@ interface TickerTapeProps {
   onSelect: (symbol: string) => void;
 }
 
-/** Pita harga berjalan; berhenti saat hover/disentuh, statis jika reduced-motion. */
+/** Scrolling price tape; pauses on hover/touch, static with reduced motion. */
 export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
   const [paused, setPaused] = useState(false);
 
@@ -45,7 +46,7 @@ export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
       }`}
       style={{ backgroundColor: 'var(--t-panel)', borderColor: 'var(--t-line)' }}
       onTouchStart={() => setPaused((p) => !p)}
-      aria-label="Pita harga semua aset"
+      aria-label="Price tape for all assets"
     >
       <div className="terminal-ticker-track flex w-max">
         <div className="flex">{items(0)}</div>

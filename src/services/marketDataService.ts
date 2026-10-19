@@ -1,3 +1,10 @@
+/**
+ * marketDataService.ts — Client-side live market data. MarketDataManager streams Indodax
+ * crypto prices over the official public WebSocket (with backoff and a REST fallback only
+ * while the socket is down), polls Yahoo (JCI, USD/IDR) every 60 s and gold every 5 min,
+ * reports the connection state and keeps an offline price snapshot. Also exports fetch
+ * helpers for sentiment, chart history, correlation and the news feed.
+ */
 import {
   PriceTick,
   AssetIntelligence,
@@ -58,7 +65,7 @@ export class MarketDataManager {
       window.addEventListener('offline', this.handleOffline);
     }
 
-    // Tampilkan harga terakhir yang tersimpan lebih dulu (berguna saat offline)
+    // Show the last saved prices first (useful when offline)
     const snapshot = loadTickSnapshot();
     if (snapshot && Object.keys(snapshot).length > 0) {
       this.ticks = snapshot;
@@ -120,11 +127,11 @@ export class MarketDataManager {
   private handleVisibilityChange(): void {
     if (this.isDestroyed) return;
     if (document.visibilityState === 'hidden') {
-      // Putuskan koneksi saat tab tidak terlihat
+      // Disconnect while the tab is hidden
       this.disconnectWebSocket();
       this.clearPollingTimers();
     } else if (document.visibilityState === 'visible') {
-      // Sambungkan lagi saat terlihat
+      // Reconnect when visible again
       this.fetchInitialSnapshot();
       this.connectIndodaxWebSocket();
       this.startPollingTimers();
@@ -182,7 +189,7 @@ export class MarketDataManager {
     this.ticks = next;
     this.callbacks.onTicksUpdate(this.ticks);
 
-    // Simpan snapshot harga terakhir (maks. tiap 5 detik) untuk mode offline
+    // Save the latest price snapshot (at most every 5 seconds) for offline mode
     const nowMs = Date.now();
     if (nowMs - this.lastSnapshotSave > 5000) {
       this.lastSnapshotSave = nowMs;
@@ -335,7 +342,7 @@ export class MarketDataManager {
   private startPollingTimers(): void {
     this.clearPollingTimers();
 
-    // 1. Indodax REST polling tiap 10 detik HANYA saat WebSocket tidak tersambung
+    // 1. Indodax REST polling every 10 seconds ONLY while the WebSocket is disconnected
     this.indodaxPollTimer = setInterval(() => {
       if (!this.wsConnected) {
         this.pollIndodaxRest();
@@ -343,7 +350,7 @@ export class MarketDataManager {
     }, 10_000);
 
     // 2. Yahoo Finance polling every 60 seconds
-    // IHSG only polled during IDX trading hours (Mon-Fri 09:00-16:00 WIB)
+    // JCI only polled during IDX trading hours (Mon-Fri 09:00-16:00 WIB)
     this.yahooPollTimer = setInterval(() => {
       this.pollYahoo();
     }, 60_000);
@@ -377,7 +384,7 @@ export class MarketDataManager {
       if (data?.ticks) {
         this.mergeTicks(data.ticks);
         if (!this.wsConnected) {
-          // REST berhasil tetapi WebSocket belum tersambung: data tetap mengalir via polling
+          // REST works but the WebSocket is not connected yet: data keeps flowing via polling
           this.callbacks.onConnectionStateChange('delayed');
         }
       }
@@ -398,7 +405,7 @@ export class MarketDataManager {
         if (data.ticks['USD/IDR']) {
           incoming['USD/IDR'] = data.ticks['USD/IDR'];
         }
-        // Only update IHSG during market hours or if we don't have a valid IHSG price yet
+        // Only update JCI during market hours or if we do not have a valid JCI price yet
         const hasIhsg = Number.isFinite(this.ticks['^JKSE']?.price);
         if (data.ticks['^JKSE'] && (isIdxMarketOpen() || !hasIhsg)) {
           incoming['^JKSE'] = data.ticks['^JKSE'];

@@ -1,3 +1,7 @@
+/**
+ * MarketPanels.tsx — Terminal MONITOR table (all assets, price flash, click/1–6 to select)
+ * and HEATMAP grid (color intensity by 24h % change).
+ */
 import { useEffect, useRef, useState } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import {
@@ -12,7 +16,7 @@ import {
 
 type Flash = { dir: 'up' | 'down'; n: number };
 
-/** Mencatat arah perubahan harga terakhir per simbol untuk efek kedip. */
+/** Tracks the last price change direction per symbol for the flash effect. */
 function usePriceFlash(ticks: Record<string, PriceTick>): Record<string, Flash> {
   const prevRef = useRef<Record<string, number>>({});
   const [flash, setFlash] = useState<Record<string, Flash>>({});
@@ -58,7 +62,7 @@ export function MonitorPanel({
       id="panel-monitor"
       className={className}
       title="Monitor"
-      subtitle="Klik baris atau tekan 1–6"
+      subtitle="Click a row or press 1–6"
       highlighted={highlighted}
       bodyClassName="overflow-x-auto"
     >
@@ -66,11 +70,11 @@ export function MonitorPanel({
         <thead>
           <tr style={{ color: 'var(--t-muted)' }} className="text-left">
             <th className="px-2 py-1 font-medium">#</th>
-            <th className="px-2 py-1 font-medium">KODE</th>
-            <th className="px-2 py-1 font-medium text-right">HARGA</th>
-            <th className="px-2 py-1 font-medium text-right">%24J</th>
-            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">TINGGI</th>
-            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">RENDAH</th>
+            <th className="px-2 py-1 font-medium">CODE</th>
+            <th className="px-2 py-1 font-medium text-right">PRICE</th>
+            <th className="px-2 py-1 font-medium text-right">%24H</th>
+            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">HIGH</th>
+            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">LOW</th>
             <th className="px-2 py-1 font-medium text-right hidden lg:table-cell">UPD</th>
             <th className="px-2 py-1 font-medium hidden md:table-cell">STATUS</th>
           </tr>
@@ -102,7 +106,7 @@ export function MonitorPanel({
                 {usable ? (
                   <>
                     <td
-                      // key berubah setiap kedip agar animasi CSS diputar ulang
+                      // the key changes on every flash so the CSS animation replays
                       key={`p-${f?.n ?? 0}`}
                       className={`px-2 py-1.5 text-right whitespace-nowrap ${
                         f ? (f.dir === 'up' ? 'terminal-flash-up' : 'terminal-flash-down') : ''
@@ -127,20 +131,20 @@ export function MonitorPanel({
                       {formatWibStamp(tick.updatedAt)}
                     </td>
                     <td className="px-2 py-1.5 hidden md:table-cell uppercase" style={{ color: 'var(--t-muted)' }}>
-                      {tick.fromSnapshot ? 'TERSIMPAN' : tick.status}
+                      {tick.fromSnapshot ? 'SAVED' : tick.status}
                     </td>
                   </>
                 ) : (
                   <td colSpan={6} className="px-2 py-1.5" style={{ color: 'var(--t-muted)' }}>
                     {tick ? (
                       <span className="inline-flex items-center gap-2">
-                        Data tidak tersedia
+                        Data unavailable
                         <span onClick={(e) => e.stopPropagation()}>
                           <RetryButton onClick={() => onRetry(asset.symbol)} />
                         </span>
                       </span>
                     ) : (
-                      'Memuat...'
+                      'Loading...'
                     )}
                   </td>
                 )}
@@ -153,7 +157,7 @@ export function MonitorPanel({
   );
 }
 
-/** Warna sel heatmap: intensitas mengikuti besar % (dibatasi ±5%). */
+/** Heatmap cell color: intensity follows the size of the % move (capped at ±5%). */
 function heatColor(pct: number | undefined): string {
   if (pct === undefined || !Number.isFinite(pct) || pct === 0) return 'rgba(156, 163, 175, 0.12)';
   const alpha = 0.15 + Math.min(Math.abs(pct), 5) / 5 * 0.7;
@@ -162,7 +166,7 @@ function heatColor(pct: number | undefined): string {
 
 export function HeatmapPanel({ ticks, selectedSymbol, onSelect, highlighted }: MarketPanelProps) {
   return (
-    <TerminalPanel id="panel-heatmap" title="Heatmap" subtitle="% perubahan 24 jam" highlighted={highlighted}>
+    <TerminalPanel id="panel-heatmap" title="Heatmap" subtitle="24-hour % change" highlighted={highlighted}>
       <div className="grid grid-cols-3 gap-1 p-1.5 terminal-mono">
         {ASSETS.map((asset) => {
           const tick = ticks[asset.symbol];

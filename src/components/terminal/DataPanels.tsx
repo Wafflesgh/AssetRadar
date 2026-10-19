@@ -1,3 +1,7 @@
+/**
+ * DataPanels.tsx — Terminal panels for CHART (PriceChart + timeframes), ECONOMIC CALENDAR
+ * (TradingView widget), CORRELATION 30D (matrix) and NEWS FEED (all assets).
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AssetConfig,
@@ -32,7 +36,7 @@ export function ChartPanel({
       subtitle={`${asset.shortName.toUpperCase()} · ${asset.name}`}
       highlighted={highlighted}
       right={
-        <div role="group" aria-label="Pemilih Timeframe Grafik" className="flex flex-wrap terminal-mono">
+        <div role="group" aria-label="Chart timeframe picker" className="flex flex-wrap terminal-mono">
           {TIMEFRAME_OPTIONS.map((tf) => {
             const active = tf.interval === timeframe;
             return (
@@ -62,7 +66,7 @@ export function ChartPanel({
   );
 }
 
-/** Widget resmi TradingView Economic Calendar (atribusi tetap terlihat). */
+/** Official TradingView Economic Calendar widget (attribution stays visible). */
 export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +88,7 @@ export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }
       isTransparent: true,
       width: '100%',
       height: '100%',
-      locale: 'id',
+      locale: 'en',
       importanceFilter: '0,1',
       countryFilter: 'id,us',
     });
@@ -99,35 +103,35 @@ export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }
   return (
     <TerminalPanel
       id="panel-eco"
-      title="Kalender Ekonomi"
-      subtitle="Indonesia & AS · sedang–tinggi"
+      title="Economic Calendar"
+      subtitle="Indonesia & US · medium–high"
       highlighted={highlighted}
       bodyClassName="flex flex-col"
     >
-      {/* color-scheme harus sama dengan dokumen iframe; jika berbeda, browser memberi latar putih
-          pada iframe transparan */}
+      {/* color-scheme must match the iframe document; if it differs, the browser paints a white
+          background behind the transparent iframe */}
       <div ref={containerRef} className="tradingview-widget-container h-96" style={{ colorScheme: 'light' }} />
       <a
-        href="https://id.tradingview.com/economic-calendar/"
+        href="https://www.tradingview.com/economic-calendar/"
         target="_blank"
         rel="noopener nofollow noreferrer"
         className="px-2.5 py-1 text-[10px] hover:underline border-t"
         style={{ color: 'var(--t-amber)', borderColor: 'var(--t-line)' }}
       >
-        Kalender ekonomi oleh TradingView
+        Economic calendar by TradingView
       </a>
     </TerminalPanel>
   );
 }
 
-/** Hijau untuk korelasi positif, merah untuk negatif; intensitas = |r|. */
+/** Green for positive correlation, red for negative; intensity = |r|. */
 function corrColor(v: number | null): string {
   if (v === null || !Number.isFinite(v)) return 'transparent';
   const a = (0.1 + Math.abs(v) * 0.6).toFixed(2);
   return v >= 0 ? `rgba(34, 197, 94, ${a})` : `rgba(239, 68, 68, ${a})`;
 }
 
-const CORR_NUM = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const CORR_NUM = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
   const [data, setData] = useState<CorrelationMatrix | null>(null);
@@ -150,8 +154,8 @@ export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
   return (
     <TerminalPanel
       id="panel-corr"
-      title="Korelasi 30H"
-      subtitle="return harian"
+      title="Correlation 30D"
+      subtitle="daily returns"
       highlighted={highlighted}
       bodyClassName="overflow-x-auto"
     >
@@ -192,7 +196,7 @@ export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
             </tbody>
           </table>
           <p className="mt-1.5 text-[10px]" style={{ color: 'var(--t-muted)' }}>
-            Korelasi bukan hubungan sebab-akibat. Diperbarui {formatWibStamp(data.updatedAt)} WIB.
+            Correlation is not causation. Updated {formatWibStamp(data.updatedAt)} WIB.
           </p>
         </div>
       )}
@@ -212,7 +216,7 @@ export function NewsFeedPanel({ highlighted }: { highlighted?: boolean }) {
       setItems(await fetchNewsFeed());
       setState('ready');
     } catch {
-      // Pembaruan berkala yang gagal: tetap tampilkan berita terakhir
+      // A failed periodic refresh keeps showing the last news
       if (!silent) setState('error');
     }
   }, []);
@@ -226,10 +230,10 @@ export function NewsFeedPanel({ highlighted }: { highlighted?: boolean }) {
   return (
     <TerminalPanel
       id="panel-top"
-      title="Umpan Berita"
-      subtitle="semua aset · terbaru"
+      title="News Feed"
+      subtitle="all assets · latest"
       highlighted={highlighted}
-      right={state === 'ready' && <RetryButton onClick={() => load()} label="Muat" />}
+      right={state === 'ready' && <RetryButton onClick={() => load()} label="Reload" />}
       bodyClassName="overflow-y-auto max-h-96"
     >
       {state === 'loading' ? (
@@ -237,7 +241,7 @@ export function NewsFeedPanel({ highlighted }: { highlighted?: boolean }) {
       ) : state === 'error' ? (
         <PanelMessage kind="error" onRetry={() => load()} />
       ) : items.length === 0 ? (
-        <PanelMessage kind="empty" text="Belum ada berita." />
+        <PanelMessage kind="empty" text="No news yet." />
       ) : (
         <ul>
           {items.map((item) => (

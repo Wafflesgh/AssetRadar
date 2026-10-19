@@ -1,3 +1,8 @@
+/**
+ * FallbackChart.tsx — Alternative candlestick + volume chart (lightweight-charts) fed by
+ * /api/market/history (Indodax for crypto, Yahoo Finance otherwise). Shows WIB time,
+ * follows the theme, refreshes intraday data every 60 s and handles loading/error states.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createChart,
@@ -14,17 +19,17 @@ import { fetchHistory } from '../services/marketDataService.ts';
 import { toWibChartData } from '../utils/candles.ts';
 
 export interface FallbackChartProps {
-  /** Simbol aplikasi, contoh "^JKSE" atau "BTC/IDR". */
+  /** App symbol, e.g. "^JKSE" or "BTC/IDR". */
   symbol: string;
   interval: TimeframeInterval;
   theme: ChartTheme;
-  /** Tinggi tetap dalam piksel; tanpa ini memakai tinggi standar halaman Detail. */
+  /** Fixed height in pixels; without it the standard Detail page height is used. */
   height?: number;
-  /** Nama sumber candle untuk keterangan, contoh "Yahoo Finance" atau "Indodax". */
+  /** Candle source name for the caption, e.g. "Yahoo Finance" or "Indodax". */
   sourceLabel?: string;
 }
 
-// Canvas tidak bisa membaca var(--...), jadi warna disalin dari token di index.css
+// The canvas cannot read var(--...), so the colors are copied from the tokens in index.css
 const CHART_COLORS = {
   light: {
     background: '#FFFFFF',
@@ -44,7 +49,7 @@ const CHART_COLORS = {
     volumeUp: 'rgba(34, 197, 94, 0.35)',
     volumeDown: 'rgba(248, 113, 113, 0.35)',
   },
-  // Mode Terminal (lihat .terminal-root di index.css)
+  // Terminal mode (see .terminal-root in index.css)
   terminal: {
     background: '#0B0F14',
     text: '#9CA3AF',
@@ -65,7 +70,7 @@ function isIntraday(interval: TimeframeInterval): boolean {
 }
 
 function formatChartPrice(value: number): string {
-  return new Intl.NumberFormat('id-ID', {
+  return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: Math.abs(value) < 10 ? 4 : 2,
   }).format(value);
@@ -89,7 +94,7 @@ export function FallbackChart({
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Buat grafik sekali saat komponen dipasang
+  // Create the chart once when the component mounts
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -102,7 +107,7 @@ export function FallbackChart({
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
         fontSize: 11,
       },
-      localization: { locale: 'id-ID', priceFormatter: formatChartPrice },
+      localization: { locale: 'en-US', priceFormatter: formatChartPrice },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, secondsVisible: false },
     });
@@ -132,7 +137,7 @@ export function FallbackChart({
     };
   }, []);
 
-  // Ikuti tema terang/gelap
+  // Follow the light/dark theme
   useEffect(() => {
     const colors = CHART_COLORS[theme];
     chartRef.current?.applyOptions({
@@ -153,7 +158,7 @@ export function FallbackChart({
     });
   }, [theme]);
 
-  // Muat candle; untuk intraday diperbarui tiap 60 detik
+  // Load candles; intraday timeframes refresh every 60 seconds
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
@@ -183,7 +188,7 @@ export function FallbackChart({
         setLoadState(data.candles.length > 0 ? 'ready' : 'empty');
       } catch {
         if (cancelled) return;
-        // Gagal saat pembaruan berkala: grafik lama tetap tampil
+        // A failed periodic refresh keeps the previous chart on screen
         if (firstLoad) setLoadState('error');
         else setRefreshFailed(true);
       }
@@ -200,7 +205,7 @@ export function FallbackChart({
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-    // theme sengaja tidak masuk dependensi: warna volume diperbarui pada muatan berikutnya
+    // theme is deliberately not a dependency: volume colors update on the next load
   },[symbol, interval, reloadKey]);
 
   const handleRetry = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -220,7 +225,7 @@ export function FallbackChart({
       }}
     >
       <div className="relative flex-1 min-h-0">
-        <div ref={containerRef} className="absolute inset-0" aria-label={`Grafik candlestick ${symbol}`} />
+        <div ref={containerRef} className="absolute inset-0" aria-label={`${symbol} candlestick chart`} />
 
         {loadState !== 'ready' && (
           <div
@@ -228,13 +233,13 @@ export function FallbackChart({
             style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
             role={loadState === 'error' ? 'alert' : 'status'}
           >
-            {loadState === 'loading' && <span>Memuat grafik alternatif...</span>}
+            {loadState === 'loading' && <span>Loading alternative chart...</span>}
             {loadState === 'empty' && (
-              <span>Belum ada data candle untuk timeframe ini. Coba timeframe lain.</span>
+              <span>No candle data for this timeframe yet. Try another timeframe.</span>
             )}
             {loadState === 'error' && (
               <>
-                <span>Data tidak tersedia</span>
+                <span>Data unavailable</span>
                 <button
                   type="button"
                   onClick={handleRetry}
@@ -246,7 +251,7 @@ export function FallbackChart({
                   }}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Coba lagi
+                  Try again
                 </button>
               </>
             )}
@@ -258,9 +263,9 @@ export function FallbackChart({
         className="text-xs py-1.5 px-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
         style={{ color: 'var(--text-secondary)' }}
       >
-        <span>Grafik alternatif, data tertunda ({sourceLabel}).</span>
+        <span>Alternative chart, delayed data ({sourceLabel}).</span>
         <span className="font-mono-num text-[11px]">
-          {refreshFailed ? 'Gagal memperbarui · data terakhir' : `Interval ${interval} · WIB`}
+          {refreshFailed ? 'Refresh failed · last data' : `Interval ${interval} · WIB`}
         </span>
       </div>
     </div>

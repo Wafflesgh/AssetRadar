@@ -1,3 +1,8 @@
+/**
+ * AssetIntelligencePanel.tsx — Sentiment + news panel for one asset (Radar and Detail
+ * pages): score, label, summary and key drivers, plus related headlines in their original
+ * language. Refetches once after 8 s to pick up the background AI-enhanced result.
+ */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   TrendingUp,
@@ -34,7 +39,7 @@ export function AssetIntelligencePanel({
       try {
         const res = await fetchAssetIntelligence(symbol);
         setData(res);
-        // Hasil AI Gemini disiapkan di latar belakang server; ambil ulang sekali setelah 8 detik
+        // The Gemini AI result is prepared in the server background; refetch once after 8 seconds
         if (!res.aiPowered && allowAiRetry) {
           if (aiRetryTimer.current) clearTimeout(aiRetryTimer.current);
           aiRetryTimer.current = setTimeout(() => {
@@ -42,7 +47,7 @@ export function AssetIntelligencePanel({
           }, 8000);
         }
       } catch {
-        if (!silent) setError('Data analisis sentimen dan berita belum dapat dimuat.');
+        if (!silent) setError('Sentiment analysis and news could not be loaded yet.');
       } finally {
         if (!silent) setLoading(false);
       }
@@ -73,7 +78,7 @@ export function AssetIntelligencePanel({
 
   return (
     <section
-      aria-label={`Analisis Sentimen dan Berita ${assetName}`}
+      aria-label={`${assetName} sentiment analysis and news`}
       className="grid grid-cols-1 lg:grid-cols-12 gap-6"
     >
       {/* Left Column: Market Sentiment Analysis (5 cols on lg) */}
@@ -95,16 +100,16 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Analisis Sentimen Pasar</span>
+                <span>Market Sentiment Analysis</span>
                 {data?.aiPowered && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span>Diperkaya AI</span>
+                    <span>AI-enhanced</span>
                   </>
                 )}
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                Sentimen {assetName}
+                {assetName} Sentiment
               </h2>
             </div>
 
@@ -112,7 +117,7 @@ export function AssetIntelligencePanel({
               type="button"
               onClick={() => loadIntelligence()}
               disabled={loading}
-              aria-label="Muat ulang analisis sentimen dan berita"
+              aria-label="Reload sentiment analysis and news"
               className="p-2 rounded-lg border text-xs font-medium transition-colors"
               style={{
                 backgroundColor: 'var(--bg-surface-subtle)',
@@ -142,7 +147,7 @@ export function AssetIntelligencePanel({
           ) : error || !data ? (
             <div className="py-6 space-y-3">
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {error || 'Data sentimen tidak tersedia'}
+                {error || 'Sentiment data unavailable'}
               </p>
               <button
                 type="button"
@@ -154,7 +159,7 @@ export function AssetIntelligencePanel({
                   color: 'var(--text-primary)',
                 }}
               >
-                Coba lagi
+                Try again
               </button>
             </div>
           ) : (
@@ -215,7 +220,7 @@ export function AssetIntelligencePanel({
                     style={{ color: 'var(--text-secondary)' }}
                   >
                     <span>Bearish (0–42)</span>
-                    <span>Netral (43–57)</span>
+                    <span>Neutral (43–57)</span>
                     <span>Bullish (58–100)</span>
                   </div>
                 </div>
@@ -233,7 +238,7 @@ export function AssetIntelligencePanel({
                     className="text-xs font-semibold"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Faktor Penggerak Utama:
+                    Key Drivers:
                   </h3>
                   <ul className="space-y-1.5 text-xs">
                     {data.keyFactors.map((factor, idx) => (
@@ -263,8 +268,8 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          Indikator sentimen dihitung dari momentum harga 24 jam dan nada tajuk berita pasar
-          terkini. Bukan rekomendasi jual/beli.
+          The sentiment indicator is computed from 24-hour price momentum and the tone of the latest
+          market headlines. Not a buy/sell recommendation.
         </p>
       </div>
 
@@ -287,12 +292,12 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Berita Pasar Terkait</span>
+                <span>Related Market News</span>
                 <span aria-hidden="true">·</span>
-                <span>Google News Indonesia</span>
+                <span>Google News (original language)</span>
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                Berita yang Mempengaruhi {assetName}
+                News Moving {assetName}
               </h2>
             </div>
           </div>
@@ -316,7 +321,7 @@ export function AssetIntelligencePanel({
               }}
             >
               <p className="text-sm font-medium">
-                Belum ada berita terbaru yang terindeks saat ini.
+                No recent news has been indexed yet.
               </p>
               <button
                 type="button"
@@ -327,7 +332,7 @@ export function AssetIntelligencePanel({
                   borderColor: 'var(--border-subtle)',
                 }}
               >
-                Coba lagi
+                Try again
               </button>
             </div>
           ) : (
@@ -359,7 +364,7 @@ export function AssetIntelligencePanel({
                         <span>{item.publishedAt}</span>
                         <span aria-hidden="true">·</span>
                         <span className="font-semibold" style={{ color: itemColor }}>
-                          Nada: {item.sentiment}
+                          Tone: {item.sentiment}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-3">
@@ -386,7 +391,7 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          Klik judul berita untuk membaca artikel lengkap dari media sumber terkait.
+          Click a headline to read the full article at its original source.
         </p>
       </div>
     </section>

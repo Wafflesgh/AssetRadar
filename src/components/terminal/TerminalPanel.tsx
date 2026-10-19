@@ -1,13 +1,17 @@
+/**
+ * TerminalPanel.tsx — Shared Terminal building blocks: the panel frame, status messages,
+ * retry button, and compact price/percent/WIB-time formatting helpers.
+ */
 import { ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AssetConfig, PriceTick, SentimentLabel } from '../../config/assets.ts';
 
 const idNumber = (digits: number) =>
-  new Intl.NumberFormat('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const NUM_0 = idNumber(0);
 const NUM_2 = idNumber(2);
 
-/** Harga padat ala Terminal: Rupiah tanpa "Rp" & tanpa desimal, aset lain 2 desimal. */
+/** Compact Terminal price: Rupiah without "Rp" or decimals, other assets with 2 decimals. */
 export function formatTerminalPrice(value: number | undefined, asset: AssetConfig): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   return asset.currency === 'IDR' ? NUM_0.format(value) : NUM_2.format(value);
@@ -30,19 +34,19 @@ export function toneColor(label: SentimentLabel | undefined): string {
   return 'var(--t-amber)';
 }
 
-const WIB_TIME = new Intl.DateTimeFormat('id-ID', {
+const WIB_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
 });
-const WIB_DAY = new Intl.DateTimeFormat('id-ID', {
+const WIB_DAY = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
   day: '2-digit',
   month: 'short',
 });
 
-/** "14:05" untuk hari ini, "18 Okt 14:05" untuk hari lain (WIB). */
+/** "14:05" for today, "18 Oct 14:05" for other days (WIB). */
 export function formatWibStamp(ms: number | undefined, nowMs = Date.now()): string {
   if (!ms || !Number.isFinite(ms)) return '--:--';
   const sameDay = WIB_DAY.format(ms) === WIB_DAY.format(nowMs);
@@ -64,7 +68,7 @@ interface TerminalPanelProps {
   children: ReactNode;
 }
 
-/** Bingkai panel Terminal: judul amber, garis tipis, sudut 2px. */
+/** Terminal panel frame: amber title, thin border, 2px corners. */
 export function TerminalPanel({
   id,
   title,
@@ -111,7 +115,7 @@ export function TerminalPanel({
   );
 }
 
-/** Pesan status di dalam panel: memuat, kosong, atau galat + "Coba lagi". */
+/** In-panel status message: loading, empty, or error + "Try again". */
 export function PanelMessage({
   kind,
   text,
@@ -122,7 +126,7 @@ export function PanelMessage({
   onRetry?: () => void;
 }) {
   const fallbackText =
-    kind === 'loading' ? 'Memuat data...' : kind === 'empty' ? 'Belum ada data.' : 'Data tidak tersedia';
+    kind === 'loading' ? 'Loading data...' : kind === 'empty' ? 'No data yet.' : 'Data unavailable';
   return (
     <div
       role={kind === 'error' ? 'alert' : 'status'}
@@ -135,7 +139,7 @@ export function PanelMessage({
   );
 }
 
-export function RetryButton({ onClick, label = 'Coba lagi' }: { onClick: () => void; label?: string }) {
+export function RetryButton({ onClick, label = 'Try again' }: { onClick: () => void; label?: string }) {
   return (
     <button
       type="button"

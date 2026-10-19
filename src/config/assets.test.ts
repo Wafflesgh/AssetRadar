@@ -1,3 +1,4 @@
+/** assets.test.ts — Tests that the asset list, TradingView symbols and timeframes match the spec. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -48,4 +49,15 @@ test('TIMEFRAME_OPTIONS matches all 8 intervals and default is 15m', () => {
   assert.equal(isValidTimeframe('15'), true);
   assert.equal(isValidTimeframe('D'), true);
   assert.equal(isValidTimeframe('invalid'), false);
+});
+
+test('JCI uses English naming with the legacy-free id', () => {
+  const jci = getAssetBySymbol('jci');
+  assert.ok(jci);
+  assert.equal(jci.symbol, '^JKSE');
+  assert.equal(jci.shortName, 'JCI');
+  assert.deepEqual(
+    TIMEFRAME_OPTIONS.map((t) => t.label),
+    ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W']
+  );
 });

@@ -1,3 +1,10 @@
+/**
+ * server.ts — Express server for AssetRadar. Serves the React app (Vite middleware in
+ * development, dist/ in production) and the /api/market/* endpoints: price snapshot
+ * (Indodax, Yahoo Finance, gold-api.com), sentiment + news (Google News, optional Gemini),
+ * OHLC history for the alternative chart, 30-day correlation and the combined news feed.
+ * All upstream data is cached in memory; API keys stay on the server.
+ */
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
@@ -51,32 +58,63 @@ const newsFeedCache: { entry: CacheEntry<MarketNewsItem[]> | null } = { entry: n
 
 const NEWS_CACHE_MS = 10 * 60_000;
 
-/** Ambil berita Google News Indonesia untuk satu aset (cache 10 menit). */
+// Google News editions. Articles are never translated: Indonesian sources stay in
+// Indonesian, international sources stay in English.
+const NEWS_EDITIONS = [
+  { key: 'id', params: 'hl=id&gl=ID&ceid=ID:id', query: (a: (typeof ASSETS)[number]) => a.newsQueryId },
+  { key: 'en', params: 'hl=en-US&gl=US&ceid=US:en', query: (a: (typeof ASSETS)[number]) => a.newsQuery },
+] as const;
+const NEWS_PER_EDITION = 5;
+const NEWS_PER_ASSET = 8;
+
+/** Fetches one Google News RSS edition; returns [] on failure. */
+async function fetchNewsEdition(
+  asset: (typeof ASSETS)[number],
+  edition: (typeof NEWS_EDITIONS)[number]
+): Promise<MarketNewsItem[]> {
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+      edition.query(asset)
+    )}&${edition.params}`;
+    const rssRes = await fetchWithTimeout(rssUrl, {}, 5000);
+    if (!rssRes.ok) throw new Error(`HTTP ${rssRes.status}`);
+    const xml = await rssRes.text();
+    return parseRssItems(xml, NEWS_PER_EDITION).map((item) => ({
+      ...item,
+      id: `${asset.id}-${edition.key}-${item.id}`,
+      assetTags: [asset.shortName.toUpperCase()],
+    }));
+  } catch (err) {
+    console.warn(`[News] Failed to load ${edition.key} RSS for ${asset.symbol}:`, err);
+    return [];
+  }
+}
+
+/** News for one asset from the Indonesian and English editions, newest first (10-minute cache). */
 async function fetchNewsForAsset(asset: (typeof ASSETS)[number]): Promise<MarketNewsItem[]> {
   const now = Date.now();
   const cached = newsCache.get(asset.symbol);
   if (cached && cached.expiresAt > now) return cached.data;
-  try {
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
-      asset.newsQuery
-    )}&hl=id&gl=ID&ceid=ID:id`;
-    const rssRes = await fetchWithTimeout(rssUrl, {}, 5000);
-    if (!rssRes.ok) return cached?.data ?? [];
-    const xml = await rssRes.text();
-    const items = parseRssItems(xml, 8).map((item) => ({
-      ...item,
-      id: `${asset.id}-${item.id}`,
-      assetTags: [asset.shortName.toUpperCase()],
-    }));
-    newsCache.set(asset.symbol, { data: items, expiresAt: now + NEWS_CACHE_MS });
-    return items;
-  } catch (err) {
-    console.warn(`[Berita] Gagal memuat RSS untuk ${asset.symbol}:`, err);
-    return cached?.data ?? [];
-  }
+
+  const lists = await Promise.all(NEWS_EDITIONS.map((e) => fetchNewsEdition(asset, e)));
+  const seen = new Set<string>();
+  const items = lists
+    .flat()
+    .filter((item) => {
+      const key = item.link || item.title;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (b.publishedAtMs ?? 0) - (a.publishedAtMs ?? 0))
+    .slice(0, NEWS_PER_ASSET);
+
+  if (items.length === 0) return cached?.data ?? [];
+  newsCache.set(asset.symbol, { data: items, expiresAt: now + NEWS_CACHE_MS });
+  return items;
 }
 
-// Pemetaan timeframe aplikasi -> parameter Yahoo Finance & Indodax (rangeSec ≈ range Yahoo)
+// App timeframe -> Yahoo Finance & Indodax parameters (rangeSec ≈ the Yahoo range)
 const DAY_SEC = 86_400;
 const HISTORY_INTERVALS: Record<
   string,
@@ -111,25 +149,25 @@ async function fetchYahooChartRaw(yahooSymbol: string, yahooInterval: string, ra
     yahooSymbol
   )}?interval=${yahooInterval}&range=${range}`;
   const res = await fetchWithTimeout(url, {}, 8000);
-  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} untuk ${yahooSymbol}`);
+  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} for ${yahooSymbol}`);
   const json = await res.json();
   const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`Data Yahoo Finance kosong untuk ${yahooSymbol}`);
+  if (!result) throw new Error(`Empty Yahoo Finance data for ${yahooSymbol}`);
   return result;
 }
 
-/** Candle OHLC dari Indodax (crypto Rupiah; Yahoo tidak punya pasangan BTC-IDR dkk.). */
+/** OHLC candles from Indodax (Rupiah crypto; Yahoo has no BTC-IDR etc. pairs). */
 async function fetchIndodaxCandles(indodaxPair: string, interval: string): Promise<OhlcCandle[]> {
   const cfg = HISTORY_INTERVALS[interval];
-  if (!cfg) throw new Error(`Interval tidak dikenal: ${interval}`);
+  if (!cfg) throw new Error(`Unknown interval: ${interval}`);
   const nowSec = Math.floor(Date.now() / 1000);
   const url = `https://indodax.com/tradingview/history_v2?symbol=${encodeURIComponent(
     indodaxPair.toUpperCase()
   )}&tf=${cfg.indodaxTf}&from=${nowSec - cfg.rangeSec}&to=${nowSec}`;
   const res = await fetchWithTimeout(url, {}, 8000);
-  if (!res.ok) throw new Error(`Indodax HTTP ${res.status} untuk ${indodaxPair}`);
+  if (!res.ok) throw new Error(`Indodax HTTP ${res.status} for ${indodaxPair}`);
   const rows = await res.json();
-  if (!Array.isArray(rows)) throw new Error(`Data candle Indodax kosong untuk ${indodaxPair}`);
+  if (!Array.isArray(rows)) throw new Error(`Empty Indodax candle data for ${indodaxPair}`);
   const candles: OhlcCandle[] = [];
   let lastT = 0;
   for (const row of rows) {
@@ -146,13 +184,13 @@ async function fetchIndodaxCandles(indodaxPair: string, interval: string): Promi
   return candles;
 }
 
-/** Candle OHLC untuk grafik alternatif: crypto dari Indodax, aset lain dari Yahoo Finance. */
+/** OHLC candles for the alternative chart: crypto from Indodax, other assets from Yahoo Finance. */
 async function getHistoryCandles(
   asset: (typeof ASSETS)[number],
   interval: string
 ): Promise<OhlcCandle[]> {
   const cfg = HISTORY_INTERVALS[interval];
-  if (!cfg) throw new Error(`Interval tidak dikenal: ${interval}`);
+  if (!cfg) throw new Error(`Unknown interval: ${interval}`);
   const key = `${asset.symbol}|${interval}`;
   const now = Date.now();
   const cached = historyCache.get(key);
@@ -165,7 +203,7 @@ async function getHistoryCandles(
   }
 
   const yahooSymbol = asset.yahooSymbol;
-  if (!yahooSymbol) throw new Error(`Tidak ada sumber grafik untuk ${asset.symbol}`);
+  if (!yahooSymbol) throw new Error(`No chart source for ${asset.symbol}`);
   const result = await fetchYahooChartRaw(yahooSymbol, cfg.yahooInterval, cfg.range);
   const ts: number[] = result.timestamp || [];
   const q = result.indicators?.quote?.[0] || {};
@@ -200,8 +238,8 @@ const CORRELATION_SYMBOLS: Array<{ yahoo: string; label: string }> = [
   { yahoo: 'BTC-USD', label: 'BTC' },
   { yahoo: 'ETH-USD', label: 'ETH' },
   { yahoo: 'SOL-USD', label: 'SOL' },
-  { yahoo: '^JKSE', label: 'IHSG' },
-  { yahoo: 'GC=F', label: 'EMAS' },
+  { yahoo: '^JKSE', label: 'JCI' },
+  { yahoo: 'GC=F', label: 'GOLD' },
   { yahoo: 'IDR=X', label: 'USD/IDR' },
 ];
 const CORRELATION_WINDOW = 30;
@@ -227,7 +265,7 @@ async function getCorrelationMatrix(): Promise<CorrelationMatrix> {
         }
         return series;
       } catch (err) {
-        console.warn(`[Korelasi] Gagal memuat ${yahoo}:`, err);
+        console.warn(`[Correlation] Failed to load ${yahoo}:`, err);
         return [] as DatedClose[];
       }
     })
@@ -317,7 +355,7 @@ async function fetchIndodaxSparkline(pairSymbol: string): Promise<SparklinePoint
       }
     }
     const result = points.slice(-48);
-    // Cache sparkline selama 5 menit (300_000 ms) per pair
+    // Cache the sparkline for 5 minutes (300_000 ms) per pair
     indodaxSparklineCache.set(key, {
       data: result,
       expiresAt: now + 300_000,
@@ -390,7 +428,7 @@ async function getIndodaxPrices(): Promise<Record<string, PriceTick>> {
 async function getYahooQuote(
   yahooSymbol: string,
   appSymbol: string,
-  group: 'saham' | 'kurs' | 'emas',
+  group: 'stock' | 'forex' | 'gold',
   currency: 'PTS' | 'IDR' | 'USD',
   cacheMs: number = 60_000
 ): Promise<PriceTick> {
@@ -408,13 +446,13 @@ async function getYahooQuote(
   )}?interval=15m&range=2d`;
   const res = await fetchWithTimeout(url, {}, 8000);
   if (!res.ok) {
-    throw new Error(`Yahoo Finance HTTP ${res.status} untuk ${yahooSymbol}`);
+    throw new Error(`Yahoo Finance HTTP ${res.status} for ${yahooSymbol}`);
   }
 
   const json = await res.json();
   const chartResult = json?.chart?.result?.[0];
   if (!chartResult || !chartResult.meta) {
-    throw new Error(`Data Yahoo Finance kosong untuk ${yahooSymbol}`);
+    throw new Error(`Empty Yahoo Finance data for ${yahooSymbol}`);
   }
 
   const meta = chartResult.meta;
@@ -466,7 +504,7 @@ async function getYahooQuote(
     currency,
     source: 'Yahoo Finance',
     updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
-    status: appSymbol === '^JKSE' ? 'tertunda' : 'live',
+    status: appSymbol === '^JKSE' ? 'delayed' : 'live',
   };
 
   yahooCache.set(appSymbol, {
@@ -493,7 +531,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
   // Get 24h chart & fallback stats from Yahoo Finance GC=F / XAU
   let yahooGold: PriceTick | null = null;
   try {
-    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'emas', 'USD', 300_000);
+    yahooGold = await getYahooQuote('GC=F', 'XAU/USD', 'gold', 'USD', 300_000);
   } catch {
     yahooGold = null;
   }
@@ -552,7 +590,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
   }
 
   if (!spotPriceUsd || spotPriceUsd <= 0) {
-    throw new Error('Harga spot emas XAU/USD tidak tersedia saat ini');
+    throw new Error('Spot gold XAU/USD price is currently unavailable');
   }
 
   const priceIdrPerGram =
@@ -560,7 +598,7 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
 
   const goldTick: PriceTick = {
     symbol: 'XAU/USD',
-    group: 'emas',
+    group: 'gold',
     price: spotPriceUsd,
     priceIdrPerGram,
     changePct24h: yahooGold?.changePct24h,
@@ -594,7 +632,7 @@ async function getAssetIntelligence(
 
   const asset = getAssetBySymbol(symbol) ?? ASSETS[0];
 
-  // Berita nyata dari Google News Indonesia (cache 10 menit)
+  // Real news from Google News (10-minute cache)
   const newsItems: MarketNewsItem[] = (await fetchNewsForAsset(asset)).slice(0, 6);
 
   const baseSentiment = computeMarketSentiment({
@@ -641,16 +679,16 @@ async function getAssetIntelligence(
         const headlinesList =
           newsItems.length > 0
             ? newsItems.map((n, i) => `${i + 1}. ${n.title} (${n.source})`).join('\n')
-            : 'Tidak ada berita spesifik hari ini.';
+            : 'No specific news today.';
 
-        const prompt = `Analisis sentimen pasar saat ini dalam Bahasa Indonesia untuk aset ${asset.name} (${asset.symbol}).
-Data harga saat ini: ${tick?.price ?? 'N/A'} (${asset.currency}), perubahan 24 jam: ${
+        const prompt = `Analyze the current market sentiment, in English, for the asset ${asset.name} (${asset.symbol}).
+Current price: ${tick?.price ?? 'N/A'} (${asset.currency}), 24-hour change: ${
           tick?.changePct24h !== undefined ? tick.changePct24h.toFixed(2) + '%' : 'N/A'
         }.
-Berita terbaru:
+Latest news:
 ${headlinesList}
 
-Berikan skor sentimen (0-100), label ("Bullish", "Netral", atau "Bearish"), ringkasan 2 kalimat yang objektif dan edukatif (bukan saran jual/beli), serta 3 faktor penggerak utama.`;
+Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), an objective and educational 2-sentence summary (not buy/sell advice), and the 3 main market drivers.`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3.8-flash',
@@ -685,7 +723,7 @@ Berikan skor sentimen (0-100), label ("Bullish", "Netral", atau "Bearish"), ring
                 : initialIntelligence.sentimentScore,
             sentimentLabel:
               parsed.sentimentLabel === 'Bullish' ||
-              parsed.sentimentLabel === 'Netral' ||
+              parsed.sentimentLabel === 'Neutral' ||
               parsed.sentimentLabel === 'Bearish'
                 ? (parsed.sentimentLabel as SentimentLabel)
                 : initialIntelligence.sentimentLabel,
@@ -706,7 +744,7 @@ Berikan skor sentimen (0-100), label ("Bullish", "Netral", atau "Bearish"), ring
           return enriched;
         }
       } catch (err) {
-        console.warn(`[Gemini Sentiment Error untuk ${asset.symbol}]:`, err);
+        console.warn(`[Gemini sentiment error for ${asset.symbol}]:`, err);
       }
       return null;
     })();
@@ -728,15 +766,15 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // 1. All market snapshot endpoint (Indodax + Yahoo IHSG & USD/IDR + Gold XAU/USD)
+  // 1. All market snapshot endpoint (Indodax + Yahoo JCI & USD/IDR + Gold XAU/USD)
   app.get('/api/market/snapshot', async (_req, res) => {
     const ticks: Record<string, PriceTick> = {};
     const now = Date.now();
 
     const [indodaxResult, ihsgResult, usdIdrResult] = await Promise.allSettled([
       getIndodaxPrices(),
-      getYahooQuote('^JKSE', '^JKSE', 'saham', 'PTS', 60_000),
-      getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000),
+      getYahooQuote('^JKSE', '^JKSE', 'stock', 'PTS', 60_000),
+      getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000),
     ]);
 
     if (indodaxResult.status === 'fulfilled') {
@@ -751,7 +789,7 @@ async function startServer() {
           source: 'Indodax',
           updatedAt: now,
           status: 'error',
-          errorMessage: 'Data Indodax tidak tersedia',
+          errorMessage: 'Indodax data unavailable',
         };
       }
     }
@@ -761,13 +799,13 @@ async function startServer() {
     } else {
       ticks['^JKSE'] = {
         symbol: '^JKSE',
-        group: 'saham',
+        group: 'stock',
         price: NaN,
         currency: 'PTS',
         source: 'Yahoo Finance',
         updatedAt: now,
         status: 'error',
-        errorMessage: 'Data IHSG tidak tersedia',
+        errorMessage: 'JCI data unavailable',
       };
     }
 
@@ -778,13 +816,13 @@ async function startServer() {
     } else {
       ticks['USD/IDR'] = {
         symbol: 'USD/IDR',
-        group: 'kurs',
+        group: 'forex',
         price: NaN,
         currency: 'IDR',
         source: 'Yahoo Finance',
         updatedAt: now,
         status: 'error',
-        errorMessage: 'Data kurs USD/IDR tidak tersedia',
+        errorMessage: 'USD/IDR rate data unavailable',
       };
     }
 
@@ -794,13 +832,13 @@ async function startServer() {
     } catch {
       ticks['XAU/USD'] = {
         symbol: 'XAU/USD',
-        group: 'emas',
+        group: 'gold',
         price: NaN,
         currency: 'USD',
         source: 'Spot XAU',
         updatedAt: now,
         status: 'error',
-        errorMessage: 'Data emas tidak tersedia',
+        errorMessage: 'Gold data unavailable',
       };
     }
 
@@ -818,17 +856,17 @@ async function startServer() {
       res.json({ ticks, serverTime: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Gagal mengambil data Indodax',
+        error: err instanceof Error ? err.message : 'Failed to fetch Indodax data',
       });
     }
   });
 
-  // 3. Yahoo Finance endpoint (for 60s IHSG & USD/IDR polling)
+  // 3. Yahoo Finance endpoint (for 60s JCI & USD/IDR polling)
   app.get('/api/market/yahoo', async (_req, res) => {
     const now = Date.now();
     const [ihsgResult, usdIdrResult] = await Promise.allSettled([
-      getYahooQuote('^JKSE', '^JKSE', 'saham', 'PTS', 60_000),
-      getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000),
+      getYahooQuote('^JKSE', '^JKSE', 'stock', 'PTS', 60_000),
+      getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000),
     ]);
 
     const ticks: Record<string, PriceTick> = {};
@@ -847,7 +885,7 @@ async function startServer() {
       let usdIdrRate = yahooCache.get('USD/IDR')?.data?.price ?? 0;
       if (!usdIdrRate) {
         try {
-          const usdTick = await getYahooQuote('IDR=X', 'USD/IDR', 'kurs', 'IDR', 60_000);
+          const usdTick = await getYahooQuote('IDR=X', 'USD/IDR', 'forex', 'IDR', 60_000);
           usdIdrRate = usdTick.price;
         } catch {
           usdIdrRate = 0;
@@ -857,7 +895,7 @@ async function startServer() {
       res.json({ tick, serverTime: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Gagal mengambil harga emas',
+        error: err instanceof Error ? err.message : 'Failed to fetch the gold price',
       });
     }
   });
@@ -880,22 +918,22 @@ async function startServer() {
       res.json(intelligence);
     } catch (err) {
       res.status(500).json({
-        error: err instanceof Error ? err.message : 'Gagal memuat analisis sentimen dan berita',
+        error: err instanceof Error ? err.message : 'Failed to load sentiment analysis and news',
       });
     }
   });
 
-  // 6. Candle OHLC untuk grafik alternatif (Yahoo Finance)
+  // 6. OHLC candles for the alternative chart (Indodax / Yahoo Finance)
   app.get('/api/market/history', async (req, res) => {
     const symbol = String(req.query.symbol || '');
     const interval = String(req.query.interval || '15');
     const asset = getAssetBySymbol(symbol);
     if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {
-      res.status(400).json({ error: 'Simbol tidak didukung' });
+      res.status(400).json({ error: 'Unsupported symbol' });
       return;
     }
     if (!HISTORY_INTERVALS[interval]) {
-      res.status(400).json({ error: 'Interval tidak didukung' });
+      res.status(400).json({ error: 'Unsupported interval' });
       return;
     }
     try {
@@ -908,29 +946,29 @@ async function startServer() {
       });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Gagal memuat data grafik',
+        error: err instanceof Error ? err.message : 'Failed to load chart data',
       });
     }
   });
 
-  // 7. Matriks korelasi 30 hari (cache 6 jam)
+  // 7. 30-day correlation matrix (6-hour cache)
   app.get('/api/market/correlation', async (_req, res) => {
     try {
       res.json(await getCorrelationMatrix());
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Gagal menghitung korelasi',
+        error: err instanceof Error ? err.message : 'Failed to compute correlation',
       });
     }
   });
 
-  // 8. Umpan berita gabungan semua aset (cache 10 menit)
+  // 8. Combined news feed for all assets (10-minute cache)
   app.get('/api/market/news-feed', async (_req, res) => {
     try {
       res.json({ items: await getNewsFeed(), updatedAt: Date.now() });
     } catch (err) {
       res.status(502).json({
-        error: err instanceof Error ? err.message : 'Gagal memuat umpan berita',
+        error: err instanceof Error ? err.message : 'Failed to load the news feed',
       });
     }
   });
