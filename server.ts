@@ -62,6 +62,22 @@ import {
   type AnnualFigures,
 } from './src/ai/fundamentals.ts';
 import { analyzeNewsDrivers } from './src/ai/newsDrivers.ts';
+import {
+  addDerivedLines,
+  buildSemesters,
+  buildStatementRows,
+  fillMissingPeriods,
+  fillQuartersFromAnnual,
+  fiscalYearEndMonth,
+  fiscalYears,
+  mergePeriods,
+  parseSecFacts,
+  parseYahooStatements,
+  yahooStatementTypeList,
+  type PeriodValues,
+  type StatementPeriod,
+} from './src/utils/statements.ts';
+import { secCikFor } from './src/config/secCik.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
   mergeSeries,
@@ -1404,6 +1420,114 @@ async function fundamentalsFor(asset: Asset): Promise<{ years: AnnualFigures[]; 
   return data;
 }
 
+// ---- Financial statements (Yahoo fundamentals-timeseries + SEC EDGAR company facts) ----------
+
+const SEC_USER_AGENT = 'AssetRadar personal research app (non-commercial)';
+
+interface RawStatements {
+  annual: PeriodValues[];
+  quarterly: PeriodValues[];
+  currency: string;
+  sources: Array<{ id: 'yahoo' | 'sec'; label: string; url: string }>;
+}
+
+const statementsCache = new Map<string, CacheEntry<RawStatements | null>>();
+const statementsPending = new Map<string, Promise<RawStatements | null>>();
+
+async function loadStatements(asset: Asset): Promise<RawStatements | null> {
+  const sym = encodeURIComponent(asset.yahooSymbol as string);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const yahooUrl = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${sym}?symbol=${sym}&type=${yahooStatementTypeList()}&period1=${nowSec - 7 * 365 * DAY_SEC}&period2=${nowSec}`;
+  const cik = asset.group === 'usStock' ? secCikFor(asset.code) : null;
+  const [yahoo, sec] = await Promise.all([
+    fetchWithTimeout(yahooUrl, {}, 12_000)
+      .then(async (r) => (r.ok ? parseYahooStatements(await r.json()) : null))
+      .catch((err) => {
+        console.warn(`[Statements] Yahoo ${asset.code} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      }),
+    cik
+      ? fetchWithTimeout(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, { headers: { 'User-Agent': SEC_USER_AGENT } }, 20_000)
+          .then(async (r) => (r.ok ? parseSecFacts(await r.json()) : null))
+          .catch((err) => {
+            console.warn(`[Statements] SEC ${asset.code} failed:`, err instanceof Error ? err.message : err);
+            return null;
+          })
+      : Promise.resolve(null),
+  ]);
+  if (!yahoo && !sec) return null;
+  const sources: RawStatements['sources'] = [];
+  // SEC filings are the primary source for US companies; Yahoo fills the gaps
+  let annual = addDerivedLines(yahoo?.annual ?? [], false);
+  let quarterly = addDerivedLines(yahoo?.quarterly ?? [], false);
+  if (sec && (sec.annual.length || sec.quarterly.length)) {
+    annual = addDerivedLines(mergePeriods(addDerivedLines(sec.annual, true), annual), false);
+    quarterly = addDerivedLines(mergePeriods(addDerivedLines(sec.quarterly, true), quarterly), false);
+    sources.push({ id: 'sec', label: 'SEC EDGAR (10-K / 10-Q filings)', url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=10-&dateb=&owner=include&count=40` });
+  }
+  if (yahoo && (yahoo.annual.length || yahoo.quarterly.length)) {
+    sources.push({ id: 'yahoo', label: 'Yahoo Finance (fundamentals)', url: `https://finance.yahoo.com/quote/${sym}/financials` });
+  }
+  if (!annual.length && !quarterly.length) return null;
+  return { annual, quarterly, currency: yahoo?.currency || (sec ? 'USD' : ''), sources };
+}
+
+async function rawStatementsFor(asset: Asset): Promise<RawStatements | null> {
+  const cached = statementsCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  let pending = statementsPending.get(asset.symbol);
+  if (!pending) {
+    pending = loadStatements(asset)
+      .then((data) => {
+        statementsCache.set(asset.symbol, { data, expiresAt: Date.now() + (data ? FUNDAMENTALS_TTL_MS : 30 * 60_000) });
+        return data;
+      })
+      .finally(() => statementsPending.delete(asset.symbol));
+    statementsPending.set(asset.symbol, pending);
+  }
+  return pending;
+}
+
+const STATEMENT_LIMITS: Record<StatementPeriod, number> = { annual: 5, semester: 10, quarterly: 20 };
+
+async function getStatements(asset: Asset, period: StatementPeriod) {
+  const raw = await rawStatementsFor(asset);
+  if (!raw) return null;
+  const fyEnd = fiscalYearEndMonth(raw.annual);
+  const quarters = fillQuartersFromAnnual(raw.quarterly, raw.annual, fyEnd);
+  const base = period === 'annual' ? fiscalYears(raw.annual, fyEnd) : period === 'semester' ? buildSemesters(quarters, fyEnd) : quarters;
+  // All periods go into the ratio math (YoY / TTM need earlier ones); only the last five years are returned
+  const periods = fillMissingPeriods(base);
+  const [monthly, quotes, fund] = await Promise.all([
+    fetchYahooMonthly(asset.yahooSymbol as string).catch(() => new Map<string, number>()),
+    getQuotesFor([asset]).catch(() => ({}) as Record<string, PriceTick>),
+    fundamentalsFor(asset).catch(() => null),
+  ]);
+  const live = quotes[asset.symbol]?.price;
+  const sameCurrency = !raw.currency || raw.currency === asset.currency;
+  const all = buildStatementRows(periods, fyEnd, {
+    sameCurrency,
+    livePrice: typeof live === 'number' && live > 0 ? live : undefined,
+    priceAt: (end) => monthly.get(monthKey(Date.parse(end) - 15 * 86_400_000)),
+  });
+  const f = fund ? piotroski([...fund.years].sort((a, b) => a.fiscalYearEnd.localeCompare(b.fiscalYearEnd))) : null;
+  return {
+    symbol: asset.symbol,
+    code: asset.code,
+    period,
+    currency: raw.currency || asset.currency,
+    quoteCurrency: asset.currency,
+    valuationNote: sameCurrency
+      ? null
+      : `Reported in ${raw.currency} while the share trades in ${asset.currency}: P/E, P/B and dividend yield are not shown.`,
+    fiscalYearEndMonth: fyEnd,
+    rows: all.slice(-STATEMENT_LIMITS[period]),
+    fScore: f && f.max >= 5 ? { score: f.score, max: f.max, fiscalYearEnd: fund?.years.at(-1)?.fiscalYearEnd ?? '' } : null,
+    sources: raw.sources,
+    generatedAt: Date.now(),
+  };
+}
+
 /** Google News searches for assets that the hub does not poll on its own. */
 function onDemandQueries(asset: Asset): Array<{ q: string; lang: 'en' | 'id' }> {
   const name = asset.name.replace(/\s*\(.*\)\s*/g, ' ').trim();
@@ -2353,6 +2477,31 @@ async function startServer() {
     } catch (err) {
       console.warn(`[Analysis] ${asset.code} failed:`, err instanceof Error ? err.message : err);
       res.status(502).json({ error: err instanceof Error ? err.message : 'Analysis unavailable' });
+    }
+  });
+
+  // 5b2. Financial statements + ratios (stocks)
+  app.get('/api/fundamentals/statements', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    const period = String(req.query.period || 'annual') as StatementPeriod;
+    if (!asset || !STOCK_GROUPS.includes(asset.group) || !asset.yahooSymbol) {
+      res.status(404).json({ error: 'Statements are available for stocks only' });
+      return;
+    }
+    if (!['annual', 'semester', 'quarterly'].includes(period)) {
+      res.status(400).json({ error: 'Unknown period' });
+      return;
+    }
+    try {
+      const data = await getStatements(asset, period);
+      if (!data) {
+        res.status(502).json({ error: 'Statements unavailable' });
+        return;
+      }
+      res.json(data);
+    } catch (err) {
+      console.warn(`[Statements] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Statements unavailable' });
     }
   });
 

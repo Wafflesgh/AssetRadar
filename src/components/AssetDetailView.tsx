@@ -3,7 +3,7 @@
  * range (gold also in Rupiah/gram), watchlist toggle, timeframe buttons, the price chart
  * (TradingView or alternative) and the sentiment + news panel.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ArrowLeft, Star, Info, RefreshCw } from 'lucide-react';
 import {
   ASSETS,
@@ -23,6 +23,8 @@ import { PriceChart } from './PriceChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { CorporateCalendarPanel } from './CorporateCalendarPanel.tsx';
+
+const FinancialStatementsPanel = lazy(() => import('./FinancialStatementsPanel.tsx').then((m) => ({ default: m.FinancialStatementsPanel })));
 
 interface AssetDetailViewProps {
   asset: AssetConfig;
@@ -449,6 +451,12 @@ export function AssetDetailView({
           theme={effectiveTheme}
         />
       </section>
+
+      {isStock && (
+        <Suspense fallback={null}>
+          <FinancialStatementsPanel asset={asset} />
+        </Suspense>
+      )}
 
       {isStock && <CorporateCalendarPanel asset={asset} />}
 

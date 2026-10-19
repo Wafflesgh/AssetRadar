@@ -7,6 +7,7 @@
  * Views register extra symbols (IDX universe stocks on screen, in the watchlist or portfolio)
  * with trackSymbols(); those are priced on demand every 10 s.
  */
+import type { StatementPeriod, StatementRow } from '../utils/statements.ts';
 import {
   PriceTick,
   AssetIntelligence,
@@ -508,6 +509,27 @@ export async function fetchAssetIntelligence(symbol: string): Promise<AssetIntel
 /** Evidence-weighted analysis: technical scorecard, chart patterns, fundamentals and news drivers. */
 export async function fetchAssetAnalysis(symbol: string): Promise<AssetAnalysis> {
   const res = await fetch(`/api/market/analysis?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export interface FinancialStatements {
+  symbol: string;
+  code: string;
+  period: StatementPeriod;
+  /** Reporting currency of the figures, and the currency the share trades in. */
+  currency: string;
+  quoteCurrency: string;
+  valuationNote: string | null;
+  fiscalYearEndMonth: number;
+  rows: StatementRow[];
+  fScore: { score: number; max: number; fiscalYearEnd: string } | null;
+  sources: Array<{ id: 'yahoo' | 'sec'; label: string; url: string }>;
+  generatedAt: number;
+}
+
+export async function fetchFinancialStatements(symbol: string, period: StatementPeriod): Promise<FinancialStatements> {
+  const res = await fetch(`/api/fundamentals/statements?symbol=${encodeURIComponent(symbol)}&period=${period}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
