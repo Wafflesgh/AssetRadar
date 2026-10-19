@@ -40,3 +40,12 @@ test('quant simulator route', () => {
   assert.deepEqual(parseHashRoute('#/lab'), { tab: 'quant' });
   assert.equal(buildHashRoute('quant'), '#/quant');
 });
+
+test('IDX page and universe stock detail routes', () => {
+  assert.deepEqual(parseHashRoute('#/idx'), { tab: 'idx' });
+  assert.equal(buildHashRoute('idx'), '#/idx');
+  assert.equal(buildHashRoute('detail', 'BUMI.JK'), '#/asset/idx-bumi');
+  assert.deepEqual(parseHashRoute('#/asset/idx-bumi'), { tab: 'detail', assetSymbol: 'BUMI.JK' });
+  // A plain IDX code also works
+  assert.deepEqual(parseHashRoute('#/asset/bumi'), { tab: 'detail', assetSymbol: 'BUMI.JK' });
+});

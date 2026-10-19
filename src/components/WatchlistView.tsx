@@ -3,7 +3,7 @@
  * latest price and 24h change, a remove button, and an empty state pointing to the Radar.
  */
 import { Star, Trash2, ArrowUpRight, Radar } from 'lucide-react';
-import { ASSETS, PriceTick } from '../config/assets.ts';
+import { PriceTick, getAssetBySymbol } from '../config/assets.ts';
 import {
   formatAssetPrice,
   formatPercent,
@@ -25,7 +25,7 @@ export function WatchlistView({
   onGoToRadar,
 }: WatchlistViewProps) {
   const watchlistedAssets = watchlist
-    .map((sym) => ASSETS.find((a) => a.symbol === sym))
+    .map((sym) => getAssetBySymbol(sym))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
   return (

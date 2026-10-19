@@ -1,7 +1,7 @@
 /**
  * Navigation.tsx — App navigation: the fixed desktop sidebar (brand, menu, theme toggle),
  * which can collapse to a narrow icon rail for a wider view (e.g. in the Terminal), and the
- * mobile bottom navigation bar. Also defines the NavTab type.
+ * mobile bottom navigation bar (main pages plus a "More" sheet). Also defines the NavTab type.
  */
 import {
   Radar,
@@ -16,11 +16,15 @@ import {
   FlaskConical,
   PanelLeftClose,
   PanelLeftOpen,
+  Landmark,
+  MoreHorizontal,
+  X,
 } from 'lucide-react';
+import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -40,12 +44,15 @@ interface NavItem {
   icon: typeof Radar;
   /** Shorter label for the mobile bottom bar. */
   shortLabel?: string;
+  /** Shown directly in the mobile bottom bar (the others are in "More"). */
+  mobile?: boolean;
 }
 
 const MAIN_NAV_ITEMS: NavItem[] = [
-  { id: 'radar', label: 'Radar', icon: Radar },
-  { id: 'terminal', label: 'Terminal', icon: SquareTerminal },
-  { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit },
+  { id: 'radar', label: 'Radar', icon: Radar, mobile: true },
+  { id: 'idx', label: 'IDX Stocks', shortLabel: 'IDX', icon: Landmark, mobile: true },
+  { id: 'terminal', label: 'Terminal', icon: SquareTerminal, mobile: true },
+  { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit, mobile: true },
   { id: 'quant', label: 'Quant Lab', shortLabel: 'Quant', icon: FlaskConical },
   { id: 'watchlist', label: 'Watchlist', shortLabel: 'Watch', icon: Star },
   { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },
@@ -207,45 +214,95 @@ export function BottomNav({
   onSelectTab,
   watchlistCount,
 }: Pick<NavigationProps, 'activeTab' | 'onSelectTab' | 'watchlistCount'>) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const isActive = (id: NavTab) => activeTab === id || (id === 'radar' && activeTab === 'detail');
+  const extra = MAIN_NAV_ITEMS.filter((i) => !i.mobile);
+  const extraActive = extra.some((i) => isActive(i.id));
+  const select = (id: NavTab) => {
+    setMoreOpen(false);
+    onSelectTab(id);
+  };
+  const tabButton = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = isActive(item.id);
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => select(item.id)}
+        aria-current={active ? 'page' : undefined}
+        className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 text-[10px] font-medium transition-colors whitespace-nowrap"
+        style={{ color: active ? 'var(--accent-radar)' : 'var(--text-secondary)' }}
+      >
+        <div className="relative">
+          <Icon className="w-4 h-4 mb-0.5" />
+          {item.id === 'watchlist' && watchlistCount > 0 && (
+            <span className="absolute -top-1.5 -right-3 text-[10px] font-mono-num font-bold" style={{ color: 'var(--accent-radar)' }}>
+              {watchlistCount}
+            </span>
+          )}
+        </div>
+        <span>{item.shortLabel ?? item.label}</span>
+      </button>
+    );
+  };
+
   return (
-    <nav
-      aria-label="Mobile bottom navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex items-center justify-around px-1"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-subtle)',
-      }}
-    >
-      {MAIN_NAV_ITEMS.map((item) => {
-        const Icon = item.icon;
-        const isActive =
-          activeTab === item.id || (item.id === 'radar' && activeTab === 'detail');
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onSelectTab(item.id)}
-            aria-current={isActive ? 'page' : undefined}
-            className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 text-[10px] font-medium transition-colors whitespace-nowrap"
-            style={{
-              color: isActive ? 'var(--accent-radar)' : 'var(--text-secondary)',
-            }}
+    <>
+      {moreOpen && (
+        <div className="md:hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="More pages">
+          <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setMoreOpen(false)} />
+          <div
+            className="absolute bottom-14 inset-x-0 border-t rounded-t-2xl p-3 grid grid-cols-3 gap-2"
+            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
           >
-            <div className="relative">
-              <Icon className="w-4 h-4 mb-0.5" />
-              {item.id === 'watchlist' && watchlistCount > 0 && (
-                <span
-                  className="absolute -top-1.5 -right-3 text-[10px] font-mono-num font-bold"
-                  style={{ color: 'var(--accent-radar)' }}
+            {extra.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => select(item.id)}
+                  aria-current={active ? 'page' : undefined}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl border text-xs font-medium"
+                  style={{
+                    borderColor: active ? 'var(--accent-radar)' : 'var(--border-subtle)',
+                    color: active ? 'var(--accent-radar)' : 'var(--text-primary)',
+                    backgroundColor: active ? 'var(--accent-radar-soft)' : 'var(--bg-surface-subtle)',
+                  }}
                 >
-                  {watchlistCount}
-                </span>
-              )}
-            </div>
-            <span>{item.shortLabel ?? item.label}</span>
-          </button>
-        );
-      })}
-    </nav>
+                  <Icon className="w-5 h-5" />
+                  <span>{item.label}</span>
+                  {item.id === 'watchlist' && watchlistCount > 0 && (
+                    <span className="text-[10px] font-mono-num" style={{ color: 'var(--accent-radar)' }}>
+                      {watchlistCount} saved
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <nav
+        aria-label="Mobile bottom navigation"
+        className="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-50 flex items-center justify-around px-1"
+        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+      >
+        {MAIN_NAV_ITEMS.filter((i) => i.mobile).map(tabButton)}
+        <button
+          type="button"
+          onClick={() => setMoreOpen((o) => !o)}
+          aria-expanded={moreOpen}
+          aria-haspopup="dialog"
+          className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 text-[10px] font-medium whitespace-nowrap"
+          style={{ color: moreOpen || extraActive ? 'var(--accent-radar)' : 'var(--text-secondary)' }}
+        >
+          {moreOpen ? <X className="w-4 h-4 mb-0.5" /> : <MoreHorizontal className="w-4 h-4 mb-0.5" />}
+          <span>More</span>
+        </button>
+      </nav>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import {
   formatPrice,
   formatUsdCompact,
   convertXauUsdToIdrPerGram,
+  formatIdrCompact,
 } from './format.ts';
 
 test('formatRupiah formats numbers with English separators and no space', () => {
@@ -55,4 +56,11 @@ test('formatPrice handles every quote currency and unit', () => {
   assert.equal(formatPrice(27.4, 'SAR'), 'SAR 27.40');
   assert.equal(formatUsdCompact(29.24e12), '$29.24T');
   assert.equal(formatUsdCompact(845.3e9), '$845.3B');
+});
+
+test('formatIdrCompact uses T/B/M', () => {
+  assert.equal(formatIdrCompact(588.2e12), 'Rp588.2T');
+  assert.equal(formatIdrCompact(3.454e12), 'Rp3.45T');
+  assert.equal(formatIdrCompact(845.3e9), 'Rp845.3B');
+  assert.equal(formatIdrCompact(null), '—');
 });

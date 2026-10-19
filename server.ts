@@ -13,6 +13,8 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import {
   ASSETS,
+  ALL_ASSETS,
+  IDX_LIST_UPDATED,
   getAssetBySymbol,
   type PriceTick,
   type AssetGroup,
@@ -631,6 +633,12 @@ async function fetchYahooSpark(symbols: string[], range: string, interval: strin
   return out;
 }
 
+/** Today's volume and the approximate value traded (price × volume) from Yahoo metadata. */
+function volumeFields(meta: Record<string, number | undefined>, price: number): Pick<PriceTick, 'volume' | 'valueTraded'> {
+  const volume = Number(meta.regularMarketVolume);
+  return Number.isFinite(volume) && volume > 0 ? { volume, valueTraded: volume * price } : {};
+}
+
 /** Builds a price tick from a Yahoo chart/spark response. */
 function tickFromYahoo(asset: Asset, s: SparkSeries, now: number): PriceTick | null {
   const meta = s.meta as Record<string, number | undefined>;
@@ -667,6 +675,7 @@ function tickFromYahoo(asset: Asset, s: SparkSeries, now: number): PriceTick | n
     source: 'Yahoo Finance',
     updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
     status: isDelayedFeed(asset.symbol) ? 'delayed' : 'live',
+    ...volumeFields(meta, price),
   };
 }
 
@@ -846,9 +855,9 @@ async function addMarketCaps(ticks: Record<string, PriceTick>): Promise<void> {
     gold.changePct30d = gold.changePct30d ?? w?.d30;
     gold.changePct1h = gold.changePct1h ?? hourChange(gold.sparkline, gold.price);
   }
-  for (const a of ASSETS) {
-    const t = ticks[a.symbol];
-    if (!t || !Number.isFinite(t.price)) continue;
+  for (const [symbol, t] of Object.entries(ticks)) {
+    const a = getAssetBySymbol(symbol);
+    if (!a || !t || !Number.isFinite(t.price)) continue;
     if (a.coingeckoId) {
       const c = coins.get(a.coingeckoId);
       if (c) {
@@ -1637,6 +1646,111 @@ async function getYieldCurve(): Promise<YieldCurvePayload> {
   return data;
 }
 
+// ---- On-demand quotes and the full IDX sweep --------------------------------------------
+
+const QUOTES_MAX = 60;
+
+/**
+ * Quotes for specific symbols (what a viewer has on screen, in the watchlist or portfolio):
+ * same 15 s / 5 min cache as the core Yahoo loop. Missing quotes come back as status "error"
+ * so the UI can say "Data unavailable" instead of hiding the row.
+ */
+async function getQuotesFor(assets: Asset[]): Promise<Record<string, PriceTick>> {
+  const now = Date.now();
+  const yahoo = assets.filter((a) => a.yahooSymbol && !a.indodaxPair);
+  const stale = yahoo.filter((a) => {
+    const c = yahooCache.get(a.symbol);
+    return !c || c.expiresAt <= now;
+  });
+  if (stale.length) {
+    const series = await fetchYahooSpark(stale.map((a) => a.yahooSymbol as string), '2d', '15m');
+    for (const a of stale) {
+      const sp = series.get(a.yahooSymbol as string);
+      const tick = sp ? tickFromYahoo(a, sp, now) : null;
+      if (tick) yahooCache.set(a.symbol, { data: tick, expiresAt: now + yahooCacheMs(a, now) });
+    }
+  }
+  const out: Record<string, PriceTick> = {};
+  for (const a of yahoo) {
+    const cached = yahooCache.get(a.symbol)?.data;
+    const swept = idxSweep.ticks.get(a.symbol);
+    out[a.symbol] = cached
+      ? { ...cached, isMarketOpen: marketOpenFor(a.symbol, now), changePct7d: cached.changePct7d ?? swept?.changePct7d }
+      : {
+          symbol: a.symbol,
+          group: a.group,
+          price: NaN,
+          currency: a.currency,
+          source: 'Yahoo Finance',
+          updatedAt: now,
+          status: 'error',
+          errorMessage: `${a.name} data unavailable`,
+        };
+  }
+  await addMarketCaps(out);
+  return out;
+}
+
+const IDX_ALL = ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol);
+const IDX_SWEEP_OPEN_MS = 5 * 60_000;
+const IDX_SWEEP_CLOSED_MS = 30 * 60_000;
+const idxSweep = {
+  ticks: new Map<string, PriceTick>(),
+  lastRunAt: 0,
+  lastDemandAt: 0,
+  running: null as Promise<void> | null,
+};
+
+/** One pass over every listed stock: 60 symbols per step, two steps in flight (≈16 requests). */
+async function runIdxSweep(): Promise<void> {
+  if (idxSweep.running) return idxSweep.running;
+  idxSweep.running = (async () => {
+    const now = Date.now();
+    const chunks: Asset[][] = [];
+    for (let i = 0; i < IDX_ALL.length; i += 60) chunks.push(IDX_ALL.slice(i, i + 60));
+    await mapLimit(chunks, 2, async (chunk) => {
+      const series = await fetchYahooSpark(chunk.map((a) => a.yahooSymbol as string), '1mo', '1d');
+      for (const a of chunk) {
+        const sp = series.get(a.yahooSymbol as string);
+        const meta = (sp?.meta ?? {}) as Record<string, number | undefined>;
+        const price = Number(meta.regularMarketPrice);
+        if (!sp || !Number.isFinite(price) || price <= 0) continue; // keep the previous sweep's value
+        const closes = sp.closes.filter((c): c is number => c !== null && Number.isFinite(c) && c > 0);
+        const weekAgo = closes.length > 5 ? closes[closes.length - 6] : undefined;
+        const change = Number(meta.regularMarketChangePercent);
+        idxSweep.ticks.set(a.symbol, {
+          symbol: a.symbol,
+          group: a.group,
+          price,
+          changePct24h: Number.isFinite(change) ? change : undefined,
+          changePct7d: weekAgo ? (price / weekAgo - 1) * 100 : undefined,
+          changePct30d: closes.length > 1 ? (price / closes[0] - 1) * 100 : undefined,
+          high24h: Number.isFinite(Number(meta.regularMarketDayHigh)) ? Number(meta.regularMarketDayHigh) : undefined,
+          low24h: Number.isFinite(Number(meta.regularMarketDayLow)) ? Number(meta.regularMarketDayLow) : undefined,
+          currency: a.currency,
+          source: 'Yahoo Finance',
+          updatedAt: meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : now,
+          status: 'delayed',
+          isMarketOpen: marketOpenFor(a.symbol, now),
+          ...volumeFields(meta, price),
+        });
+      }
+    });
+    idxSweep.lastRunAt = Date.now();
+  })().finally(() => {
+    idxSweep.running = null;
+  });
+  return idxSweep.running;
+}
+
+// Sweep in the background while someone looked at IDX data in the last 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  if (now - idxSweep.lastDemandAt > 10 * 60_000) return;
+  const every = isExchangeOpen('IDX', now) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS;
+  if (now - idxSweep.lastRunAt >= every) runIdxSweep().catch(() => {});
+}, 30_000);
+
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -2001,6 +2115,62 @@ async function startServer() {
       res.json(await getYieldCurve());
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Yield data unavailable' });
+    }
+  });
+
+  // 5e. On-demand quotes for assets outside the core loop (IDX universe), max 60 per call
+  app.get('/api/market/quotes', async (req, res) => {
+    const symbols = String(req.query.symbols || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, QUOTES_MAX);
+    const assets = symbols.map((x) => getAssetBySymbol(x)).filter((a): a is Asset => Boolean(a));
+    if (assets.length === 0) {
+      res.json({ ticks: {}, serverTime: Date.now() });
+      return;
+    }
+    try {
+      res.json({ ticks: await getQuotesFor(assets), serverTime: Date.now() });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Quotes unavailable' });
+    }
+  });
+
+  // 5f. Every listed Indonesian stock (background sweep: 5 min while IDX is open, 30 min closed)
+  app.get('/api/market/idx', async (_req, res) => {
+    idxSweep.lastDemandAt = Date.now();
+    try {
+      if (idxSweep.ticks.size === 0) await runIdxSweep();
+      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) {
+        runIdxSweep().catch(() => {});
+      }
+      const usdIdr = yahooCache.get('USD/IDR')?.data.price ?? 0;
+      const rows = IDX_ALL.map((a) => {
+        const t = idxSweep.ticks.get(a.symbol);
+        const cap = t && a.supply ? t.price * a.supply : undefined;
+        return {
+          symbol: a.symbol,
+          price: t?.price ?? null,
+          changePct24h: t?.changePct24h ?? null,
+          changePct7d: t?.changePct7d ?? null,
+          changePct30d: t?.changePct30d ?? null,
+          volume: t?.volume ?? null,
+          valueTraded: t?.valueTraded ?? null,
+          marketCapIdr: cap ?? null,
+          marketCapUsd: cap && usdIdr > 0 ? cap / usdIdr : null,
+          updatedAt: t?.updatedAt ?? null,
+        };
+      });
+      res.json({
+        rows,
+        sweptAt: idxSweep.lastRunAt || null,
+        refreshMs: isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS,
+        listUpdated: IDX_LIST_UPDATED,
+        marketOpen: isExchangeOpen('IDX', Date.now()),
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'IDX data unavailable' });
     }
   });
 

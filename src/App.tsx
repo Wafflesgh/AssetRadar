@@ -41,6 +41,8 @@ import { TerminalView } from './components/terminal/TerminalView.tsx';
 import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
 import { AdvisorView } from './components/AdvisorView.tsx';
 import { QuantSimView } from './components/QuantSimView.tsx';
+import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
+import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -223,6 +225,8 @@ export default function App() {
   }, []);
 
   const currentAsset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
+  // Watchlist stocks and the asset on the detail page get priced even outside the core loop
+  useTrackedSymbols([...watchlist, ...(activeTab === 'detail' ? [currentAsset.symbol] : [])]);
   const isTerminal = activeTab === 'terminal';
 
   // Connection status indicator color & label (green = live, yellow = reconnecting, grey = delayed/offline)
@@ -299,6 +303,7 @@ export default function App() {
               {activeTab === 'settings' && 'Settings & About'}
               {activeTab === 'advisor' && 'AI Advisor'}
               {activeTab === 'quant' && 'Quant Lab · Portfolio Simulator'}
+              {activeTab === 'idx' && 'Indonesian Stocks'}
             </span>
           </div>
         </div>
@@ -411,6 +416,14 @@ export default function App() {
         )}
 
         {activeTab === 'quant' && <QuantSimView />}
+        {activeTab === 'idx' && (
+          <IndonesianStocksView
+            ticks={ticks}
+            onSelectAsset={handleSelectAsset}
+            watchlist={watchlist}
+            onToggleWatchlist={handleToggleWatchlist}
+          />
+        )}
         {activeTab === 'advisor' && (
           <AdvisorView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}

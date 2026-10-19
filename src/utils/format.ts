@@ -70,6 +70,16 @@ export function formatAssetPrice(value: number | undefined, asset: { currency: s
   return formatPrice(value, asset.currency, asset.unit ?? '');
 }
 
+/** Compact Rupiah amount: "Rp588.2T", "Rp3.45T", "Rp845.3B", "Rp12.1M". */
+export function formatIdrCompact(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs >= 1e12) return `Rp${(value / 1e12).toFixed(abs >= 1e14 ? 1 : 2)}T`;
+  if (abs >= 1e9) return `Rp${(value / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `Rp${(value / 1e6).toFixed(1)}M`;
+  return formatRupiah(value, 0);
+}
+
 /** Compact USD amount for market caps: "$29.24T", "$845.3B", "$12.1M". */
 export function formatUsdCompact(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—';

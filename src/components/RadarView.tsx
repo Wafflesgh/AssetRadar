@@ -15,6 +15,7 @@ import { MarketTable } from './MarketTable.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
 import { NewsTape } from './NewsTape.tsx';
 import { InstallAppBanner } from './InstallApp.tsx';
+import { KeyIndicesStrip } from './KeyIndicesStrip.tsx';
 
 interface RadarViewProps {
   ticks: Record<string, PriceTick>;
@@ -61,7 +62,8 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
     [ticks]
   );
 
-  const quickAssets = ASSETS.filter((a) => a.quick);
+  // IHSG first, then the other quick-chart assets in config order
+  const quickAssets = ASSETS.filter((a) => a.quick).sort((a, b) => Number(b.code === 'JCI') - Number(a.code === 'JCI'));
   const selectedIntelAsset = getAssetBySymbol(selectedIntelSymbol) ?? ASSETS[0];
   const pickIntel = (asset: AssetConfig) => setSelectedIntelSymbol(asset.symbol);
 
@@ -137,6 +139,8 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
           </div>
         </div>
       </section>
+
+      <KeyIndicesStrip ticks={ticks} onSelect={onSelectAsset} />
 
       <MoversPanel ticks={ticks} onSelect={onSelectAsset} />
 

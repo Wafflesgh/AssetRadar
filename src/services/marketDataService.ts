@@ -4,6 +4,8 @@
  * while the socket is down), polls Yahoo (JCI, global indices, currencies) every 30 s and gold
  * every 5 min, reports the connection state and keeps an offline price snapshot. Also
  * exports fetch helpers for sentiment, chart history, correlation and the news feed.
+ * Views register extra symbols (IDX universe stocks on screen, in the watchlist or portfolio)
+ * with trackSymbols(); those are priced on demand every 10 s.
  */
 import {
   PriceTick,
@@ -47,6 +49,28 @@ export interface MarketStreamCallbacks {
   onConnectionStateChange: (state: ConnectionState) => void;
 }
 
+/** Owner → symbols outside the core loop that are on screen (IDX universe stocks). */
+const trackedByOwner = new Map<string, string[]>();
+let activeManager: MarketDataManager | null = null;
+
+/**
+ * Registers the extra symbols a view needs priced (e.g. visible IDX rows, watchlist or
+ * portfolio stocks). Only assets outside the core price loop are fetched, on demand.
+ */
+export function trackSymbols(owner: string, symbols: string[]): void {
+  if (symbols.length === 0) trackedByOwner.delete(owner);
+  else trackedByOwner.set(owner, symbols);
+  activeManager?.refreshTracked();
+}
+
+function trackedUniverseSymbols(): string[] {
+  const all = new Set<string>();
+  for (const list of trackedByOwner.values()) {
+    for (const sym of list) if (getAssetBySymbol(sym)?.universe) all.add(sym);
+  }
+  return [...all];
+}
+
 export class MarketDataManager {
   private callbacks: MarketStreamCallbacks;
   private ticks: Record<string, PriceTick> = {};
@@ -56,6 +80,8 @@ export class MarketDataManager {
   private indodaxPollTimer: ReturnType<typeof setInterval> | null = null;
   private yahooPollTimer: ReturnType<typeof setInterval> | null = null;
   private goldPollTimer: ReturnType<typeof setInterval> | null = null;
+  private quotesPollTimer: ReturnType<typeof setInterval> | null = null;
+  private lastTrackedKey = '';
   private isDestroyed = false;
   private wsConnected = false;
   private lastSnapshotSave = 0;
@@ -69,6 +95,7 @@ export class MarketDataManager {
 
   public start(): void {
     this.isDestroyed = false;
+    activeManager = this;
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
@@ -93,6 +120,7 @@ export class MarketDataManager {
 
   public stop(): void {
     this.isDestroyed = true;
+    if (activeManager === this) activeManager = null;
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
@@ -367,13 +395,45 @@ export class MarketDataManager {
       this.pollYahoo();
     }, 10_000);
 
-    // 3. Spot gold polling every 30 seconds (server caches gold-api.com for 30 s)
+    // 3. On-demand quotes for tracked IDX universe stocks every 10 seconds
+    this.quotesPollTimer = setInterval(() => {
+      if (trackedUniverseSymbols().length > 0) this.pollTrackedQuotes();
+    }, 10_000);
+
+    // 4. Spot gold polling every 30 seconds (server caches gold-api.com for 30 s)
     this.goldPollTimer = setInterval(() => {
       this.pollGold();
     }, 30_000);
   }
 
+  /** Called when the tracked symbol set changes: fetch new symbols right away. */
+  public refreshTracked(): void {
+    const key = trackedUniverseSymbols().sort().join(',');
+    if (key === this.lastTrackedKey) return;
+    this.lastTrackedKey = key;
+    if (key) this.pollTrackedQuotes();
+  }
+
+  /** On-demand quotes for tracked universe stocks (60 symbols per request). */
+  private async pollTrackedQuotes(): Promise<void> {
+    const symbols = trackedUniverseSymbols();
+    for (let i = 0; i < symbols.length; i += 60) {
+      try {
+        const res = await fetchLivePrices(`/api/market/quotes?symbols=${symbols.slice(i, i + 60).map(encodeURIComponent).join(',')}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data?.ticks) this.mergeTicks(data.ticks as Record<string, PriceTick>);
+      } catch {
+        // Keep the last known quotes
+      }
+    }
+  }
+
   private clearPollingTimers(): void {
+    if (this.quotesPollTimer) {
+      clearInterval(this.quotesPollTimer);
+      this.quotesPollTimer = null;
+    }
     if (this.indodaxPollTimer) {
       clearInterval(this.indodaxPollTimer);
       this.indodaxPollTimer = null;
@@ -508,6 +568,34 @@ export interface YieldCurve {
 /** US Treasury yields (3M, 5Y, 10Y, 30Y) for the Terminal CURV panel. */
 export async function fetchYieldCurve(): Promise<YieldCurve> {
   const res = await fetch('/api/market/yields');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export interface IdxRow {
+  symbol: string;
+  price: number | null;
+  changePct24h: number | null;
+  changePct7d: number | null;
+  changePct30d: number | null;
+  volume: number | null;
+  valueTraded: number | null;
+  marketCapIdr: number | null;
+  marketCapUsd: number | null;
+  updatedAt: number | null;
+}
+
+export interface IdxSnapshot {
+  rows: IdxRow[];
+  sweptAt: number | null;
+  refreshMs: number;
+  listUpdated: string;
+  marketOpen: boolean;
+}
+
+/** Every listed Indonesian stock from the server's background sweep. */
+export async function fetchIdxSnapshot(): Promise<IdxSnapshot> {
+  const res = await fetch('/api/market/idx');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

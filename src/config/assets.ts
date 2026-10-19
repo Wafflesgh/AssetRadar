@@ -5,6 +5,7 @@
  * their data sources (Yahoo/Indodax), TradingView symbols, exchange, Terminal code, news
  * keywords and supply (for live market cap), the Radar groups and the chart timeframes.
  */
+import idxStocks from './idxStocks.json' with { type: 'json' };
 
 export type AssetGroup = 'commodity' | 'crypto' | 'idStock' | 'usStock' | 'globalStock' | 'index' | 'forex';
 
@@ -36,6 +37,9 @@ export type PriceTick = {
   fromSnapshot?: boolean; // true when the tick comes from saved data (offline)
   /** Live market capitalization in USD (price × supply, or CoinGecko for crypto). */
   marketCapUsd?: number;
+  /** Shares traded today, and the approximate value traded (price × volume, quote currency). */
+  volume?: number;
+  valueTraded?: number;
   /** % change over the last hour / 7 days / 30 days (for the movers tables). */
   changePct1h?: number;
   changePct7d?: number;
@@ -169,6 +173,16 @@ export interface AssetConfig {
   quick?: boolean;
   /** Included in the AI Advisor (5-year backtest). */
   ai?: boolean;
+  /** IDX-IC sector / industry (Indonesian stocks), e.g. "Financials" / "Banks". */
+  sector?: string;
+  industry?: string;
+  /** IDX listing board: Main, Development, Acceleration, New Economy, Watchlist. */
+  board?: string;
+  /**
+   * Part of the full IDX universe only: not in the core price loop, Terminal or AI Advisor;
+   * priced on demand when on screen, in the watchlist or in the portfolio.
+   */
+  universe?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -556,8 +570,8 @@ export const ASSETS: AssetConfig[] = [
     exchange: 'IDX',
     symbol: '^JKSE',
     yahooSymbol: '^JKSE',
-    shortName: 'JCI',
-    name: 'Jakarta Composite Index',
+    shortName: 'IHSG',
+    name: 'IHSG (JCI) — Jakarta Composite Index',
     group: 'index',
     currency: 'PTS',
     tvSymbol: 'IDX:COMPOSITE',
@@ -673,14 +687,77 @@ export const ASSET_GROUPS: AssetGroupMeta[] = [
   { key: 'forex', title: 'Forex', subtitle: 'Major currencies against the Rupiah, plus the US Dollar Index' },
 ];
 
-export function getAssetBySymbol(symbol: string): AssetConfig | undefined {
-  return ASSETS.find((item) => item.symbol === symbol || item.id === symbol);
+// ---------------------------------------------------------------------------------------
+// Full Indonesia Stock Exchange universe (src/config/idxStocks.json, from idx.co.id)
+// ---------------------------------------------------------------------------------------
+
+type IdxRow = [code: string, name: string, shares: number, board: string, sector: string, industry: string, industryId: string];
+const IDX_ROWS = (idxStocks as unknown as { stocks: IdxRow[] }).stocks;
+
+/** When the IDX list was exported (shown in the UI next to the data). */
+export const IDX_LIST_UPDATED: string = (idxStocks as { updated: string }).updated;
+
+const IDX_BY_CODE = new Map(IDX_ROWS.map((r) => [r[0], r]));
+const CORE_CODES = new Set(ASSETS.map((a) => a.code));
+
+// Core Indonesian stocks get their sector, board and the official share count from the list
+for (const a of ASSETS) {
+  const row = a.group === 'idStock' ? IDX_BY_CODE.get(a.code) : undefined;
+  if (!row) continue;
+  a.sector = row[4];
+  a.industry = row[5];
+  a.board = row[3];
+  if (row[2] > 0) a.supply = row[2];
+  a.keywords = [...new Set([...(a.keywords ?? []), row[5].toLowerCase(), row[6].toLowerCase()])];
 }
 
-/** Finds an asset by its code or an alias (case-insensitive), e.g. "spx", "IHSG", "EUR". */
+/**
+ * Every other listed stock. A code that already belongs to a core asset (e.g. GOLD, LINK, META)
+ * gets the code "<CODE>.JK" so Terminal commands and news tags keep pointing at the core asset.
+ */
+export const IDX_UNIVERSE: AssetConfig[] = IDX_ROWS.filter(
+  (r) => !ASSETS.some((a) => a.symbol === `${r[0]}.JK`)
+).map(([code, name, shares, board, sector, industry, industryId]) =>
+  idStock(code, name, shares > 0 ? shares : undefined, [name.toLowerCase(), industry.toLowerCase(), industryId.toLowerCase()], {
+    id: `idx-${code.toLowerCase()}`,
+    code: CORE_CODES.has(code) ? `${code}.JK` : code,
+    sector,
+    industry,
+    board,
+    universe: true,
+    description: `${name} (${code}), listed on the Indonesia Stock Exchange (${board} board; ${sector} — ${industry}). Hours: Mon–Fri 09:00–16:00 WIB.`,
+  })
+);
+
+/** Commodity themes missing from the IDX-IC industry names (also tag nickel headlines). */
+const THEME_KEYWORDS: Record<string, string[]> = {
+  INCO: ['nickel', 'nikel'],
+  NCKL: ['nickel', 'nikel', 'harita'],
+  MBMA: ['nickel', 'nikel', 'battery'],
+  ANTM: ['nickel', 'nikel'],
+};
+for (const a of [...ASSETS, ...IDX_UNIVERSE]) {
+  const extra = a.group === 'idStock' ? THEME_KEYWORDS[a.shortName] : undefined;
+  if (extra) a.keywords = [...new Set([...(a.keywords ?? []), ...extra])];
+}
+
+/** Core assets first, then the rest of the IDX universe. */
+export const ALL_ASSETS: AssetConfig[] = [...ASSETS, ...IDX_UNIVERSE];
+
+const BY_SYMBOL = new Map<string, AssetConfig>();
+for (const a of ALL_ASSETS) {
+  BY_SYMBOL.set(a.symbol, a);
+  if (!BY_SYMBOL.has(a.id)) BY_SYMBOL.set(a.id, a);
+}
+
+export function getAssetBySymbol(symbol: string): AssetConfig | undefined {
+  return BY_SYMBOL.get(symbol);
+}
+
+/** Finds an asset by its code or an alias (case-insensitive), e.g. "spx", "IHSG", "EUR", "BUMI". */
 export function getAssetByCode(code: string): AssetConfig | undefined {
   const c = code.trim().toUpperCase();
-  return ASSETS.find((a) => a.code === c || a.aliases?.includes(c));
+  return ASSETS.find((a) => a.code === c || a.aliases?.includes(c)) ?? IDX_UNIVERSE.find((a) => a.code === c || a.shortName === c);
 }
 
 /** Free-text search over code, aliases, name and symbol (for the search boxes). */
@@ -688,17 +765,19 @@ export function searchAssets(query: string, limit = 50): AssetConfig[] {
   const q = query.trim().toLowerCase();
   if (!q) return ASSETS.slice(0, limit);
   const score = (a: AssetConfig) => {
-    const code = a.code.toLowerCase();
-    if (code === q || a.aliases?.some((x) => x.toLowerCase() === q)) return 0;
+    const code = a.shortName.toLowerCase();
+    if (a.code.toLowerCase() === q || code === q || a.aliases?.some((x) => x.toLowerCase() === q)) return 0;
     if (code.startsWith(q)) return 1;
     if (a.name.toLowerCase().startsWith(q)) return 2;
     if (a.name.toLowerCase().includes(q) || a.symbol.toLowerCase().includes(q)) return 3;
     if (a.keywords?.some((k) => k.includes(q))) return 4;
+    if (a.sector?.toLowerCase().includes(q) || a.industry?.toLowerCase().includes(q)) return 5;
     return 9;
   };
-  return ASSETS.map((a) => ({ a, s: score(a) }))
+  // Core assets win ties (index order), so "BBCA" or "gold" shows the main asset first
+  return ALL_ASSETS.map((a, i) => ({ a, s: score(a), i }))
     .filter((x) => x.s < 9)
-    .sort((x, y) => x.s - y.s)
+    .sort((x, y) => x.s - y.s || x.i - y.i)
     .slice(0, limit)
     .map((x) => x.a);
 }
