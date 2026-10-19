@@ -34,3 +34,9 @@ test('buildHashRoute builds canonical hash strings', () => {
   assert.equal(buildHashRoute('detail', 'BTC/IDR'), '#/asset/btc');
   assert.equal(buildHashRoute('detail', '^JKSE'), '#/asset/jci');
 });
+
+test('quant simulator route', () => {
+  assert.deepEqual(parseHashRoute('#/quant'), { tab: 'quant' });
+  assert.deepEqual(parseHashRoute('#/lab'), { tab: 'quant' });
+  assert.equal(buildHashRoute('quant'), '#/quant');
+});

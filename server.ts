@@ -54,11 +54,22 @@ import { analyzeTechnicals } from './src/ai/technical.ts';
 import {
   analyzeFundamentals,
   parseYahooFundamentals,
+  piotroski,
   YAHOO_FUNDAMENTAL_TYPES,
   type AnnualFigures,
 } from './src/ai/fundamentals.ts';
 import { analyzeNewsDrivers } from './src/ai/newsDrivers.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
+import {
+  addMonths,
+  buildFactorSeries,
+  despike,
+  monthKey,
+  type FScoreTimeline,
+  type MonthlySeries,
+  type QuantFactorsPayload,
+  type QuantUniverse,
+} from './src/ai/factorPortfolio.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1479,6 +1490,113 @@ async function getAssetAnalysis(asset: Asset): Promise<AssetAnalysis> {
   return job;
 }
 
+// ---- Quant simulator: value & momentum factor portfolios (monthly) ------------------------
+
+const QUANT_TTL_MS = 6 * 3600_000;
+const quantCache = new Map<string, CacheEntry<QuantFactorsPayload>>();
+const quantJobs = new Map<string, Promise<QuantFactorsPayload>>();
+const monthlyCache = new Map<string, CacheEntry<Map<string, number>>>();
+
+const QUANT_UNIVERSES: Record<QuantUniverse, { label: string; filter: (a: Asset) => boolean; stocks: boolean }> = {
+  usStock: { label: 'US stocks', filter: (a) => a.group === 'usStock' && a.code !== 'SPCX', stocks: true },
+  idStock: { label: 'Indonesian stocks', filter: (a) => a.group === 'idStock', stocks: true },
+  index: { label: 'World stock indices', filter: (a) => a.group === 'index' && a.code !== 'VIX', stocks: false },
+  forex: { label: 'Currencies vs Rupiah', filter: (a) => a.group === 'forex' && a.code !== 'DXY' && a.code !== 'SAR', stocks: false },
+  commodity: { label: 'Commodities', filter: (a) => a.group === 'commodity', stocks: false },
+  everywhere: {
+    label: 'Everywhere (indices + currencies + commodities)',
+    filter: (a) =>
+      (a.group === 'index' && a.code !== 'VIX') || (a.group === 'forex' && a.code !== 'DXY' && a.code !== 'SAR') || a.group === 'commodity',
+    stocks: false,
+  },
+};
+
+/** Month-end closes over the full available history (Yahoo monthly bars, cached 12 h). */
+async function fetchYahooMonthly(yahooSymbol: string): Promise<Map<string, number>> {
+  const cached = monthlyCache.get(yahooSymbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const result = await fetchYahooChartRaw(yahooSymbol, '1mo', 'max');
+  const ts: number[] = result.timestamp || [];
+  const closes: Array<number | null> = result.indicators?.quote?.[0]?.close || [];
+  const offsetSec = Number(result.meta?.gmtoffset) || 0;
+  const byMonth = new Map<string, number>();
+  for (let i = 0; i < ts.length; i++) {
+    const c = closes[i];
+    if (c === null || c === undefined || !Number.isFinite(c) || c <= 0) continue;
+    byMonth.set(monthKey((Number(ts[i]) + offsetSec) * 1000), Number(c));
+  }
+  const points = [...byMonth.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([key, close]) => ({ key, close }));
+  const out = new Map(despike(points).map((p) => [p.key, p.close] as [string, number]));
+  monthlyCache.set(yahooSymbol, { data: out, expiresAt: Date.now() + AI_HISTORY_TTL_MS * 2 });
+  return out;
+}
+
+/** Published F-scores per stock (fiscal year end + 4 months reporting lag), scaled to 0–9. */
+async function fscoreTimeline(assets: Asset[]): Promise<FScoreTimeline> {
+  const timeline: FScoreTimeline = new Map();
+  await mapLimit(assets, 6, async (asset) => {
+    const fund = await fundamentalsFor(asset).catch(() => null);
+    if (!fund) return;
+    const entries: Array<{ from: string; score: number }> = [];
+    for (let k = 1; k < fund.years.length; k++) {
+      const f = piotroski(fund.years.slice(0, k + 1));
+      if (!f || f.max < 5) continue;
+      const fy = fund.years[k].fiscalYearEnd;
+      entries.push({ from: addMonths(fy.slice(0, 7), 4), score: Math.round((f.score / f.max) * 9) });
+    }
+    if (entries.length) timeline.set(asset.symbol, entries);
+  });
+  return timeline;
+}
+
+async function computeQuantFactors(universe: QuantUniverse): Promise<QuantFactorsPayload> {
+  const cfg = QUANT_UNIVERSES[universe];
+  const assets = ASSETS.filter((a) => cfg.filter(a) && a.yahooSymbol);
+  const series: MonthlySeries[] = [];
+  await mapLimit(assets, 6, async (a) => {
+    try {
+      series.push({ symbol: a.code, closes: await fetchYahooMonthly(a.yahooSymbol as string) });
+    } catch (err) {
+      console.warn(`[Quant] ${a.code} failed:`, err instanceof Error ? err.message : err);
+    }
+  });
+  const fscores = cfg.stocks ? await fscoreTimeline(assets) : undefined;
+  // F-score timeline is keyed by app symbol; the series by code
+  const byCode: FScoreTimeline | undefined = fscores
+    ? new Map([...fscores.entries()].map(([sym, v]) => [getAssetBySymbol(sym)?.code ?? sym, v]))
+    : undefined;
+  const factors = buildFactorSeries(series, byCode);
+  const irx = await fetchYahooMonthly('^IRX').catch(() => new Map<string, number>());
+  return {
+    ...factors,
+    universe,
+    label: cfg.label,
+    members: series.map((s) => s.symbol).sort(),
+    rf: factors.months.map((m) => {
+      const y = irx.get(m);
+      return y === undefined ? null : y / 100 / 12;
+    }),
+    hasQuality: Boolean(byCode && byCode.size > 0),
+    generatedAt: Date.now(),
+  };
+}
+
+async function getQuantFactors(universe: QuantUniverse): Promise<QuantFactorsPayload> {
+  const cached = quantCache.get(universe);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  let job = quantJobs.get(universe);
+  if (!job) {
+    job = computeQuantFactors(universe)
+      .then((data) => {
+        quantCache.set(universe, { data, expiresAt: Date.now() + QUANT_TTL_MS });
+        return data;
+      })
+      .finally(() => quantJobs.delete(universe));
+    quantJobs.set(universe, job);
+  }
+  return job;
+}
+
 /** Runs fn over items with at most `limit` calls in flight (keeps Yahoo from rate-limiting us). */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -1819,6 +1937,21 @@ async function startServer() {
     } catch (err) {
       console.warn(`[Analysis] ${asset.code} failed:`, err instanceof Error ? err.message : err);
       res.status(502).json({ error: err instanceof Error ? err.message : 'Analysis unavailable' });
+    }
+  });
+
+  // 5c. Value & momentum factor portfolios for the quant simulator
+  app.get('/api/quant/factors', async (req, res) => {
+    const universe = String(req.query.universe || 'usStock') as QuantUniverse;
+    if (!Object.prototype.hasOwnProperty.call(QUANT_UNIVERSES, universe)) {
+      res.status(400).json({ error: 'Unknown universe' });
+      return;
+    }
+    try {
+      res.json(await getQuantFactors(universe));
+    } catch (err) {
+      console.warn('[Quant] failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Factor data unavailable' });
     }
   });
 

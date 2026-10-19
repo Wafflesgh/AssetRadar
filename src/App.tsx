@@ -22,6 +22,8 @@ import {
   saveWatchlist,
   getStartInTerminal,
   saveStartInTerminal,
+  getSidebarCollapsed,
+  saveSidebarCollapsed,
 } from './utils/storage.ts';
 import {
   MarketDataManager,
@@ -38,6 +40,7 @@ import { SettingsView } from './components/SettingsView.tsx';
 import { TerminalView } from './components/terminal/TerminalView.tsx';
 import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
 import { AdvisorView } from './components/AdvisorView.tsx';
+import { QuantSimView } from './components/QuantSimView.tsx';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -156,6 +159,15 @@ export default function App() {
     handleChangeThemePreference(next);
   }, [effectiveTheme, handleChangeThemePreference]);
 
+  // Desktop sidebar can shrink to an icon rail for a wider view (remembered per browser)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getSidebarCollapsed());
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      saveSidebarCollapsed(!prev);
+      return !prev;
+    });
+  }, []);
+
   const handleChangeTimeframe = useCallback((nextInterval: TimeframeInterval) => {
     setTimeframe(nextInterval);
     saveTimeframe(nextInterval);
@@ -232,7 +244,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen flex flex-col md:pl-64 ${isTerminal ? 'terminal-root' : ''}`}
+      className={`min-h-screen flex flex-col ${sidebarCollapsed ? 'md:pl-16' : 'md:pl-64'} transition-[padding] duration-200 ${isTerminal ? 'terminal-root' : ''}`}
       style={{
         backgroundColor: 'var(--bg-canvas)',
         color: 'var(--text-primary)',
@@ -246,6 +258,8 @@ export default function App() {
         effectiveTheme={effectiveTheme}
         themePreference={themePreference}
         onToggleThemeQuick={handleToggleThemeQuick}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={handleToggleSidebar}
       />
 
       {/* Sudden war / attack alert (every page, including Terminal) */}
@@ -284,6 +298,7 @@ export default function App() {
               {activeTab === 'risk' && 'Risk Profile Education'}
               {activeTab === 'settings' && 'Settings & About'}
               {activeTab === 'advisor' && 'AI Advisor'}
+              {activeTab === 'quant' && 'Quant Lab · Portfolio Simulator'}
             </span>
           </div>
         </div>
@@ -394,6 +409,7 @@ export default function App() {
           </Suspense>
         )}
 
+        {activeTab === 'quant' && <QuantSimView />}
         {activeTab === 'advisor' && (
           <AdvisorView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}

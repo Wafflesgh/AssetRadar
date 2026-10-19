@@ -12,12 +12,13 @@ const STORAGE_KEYS = {
   TIMEFRAME: 'assetradar_timeframe',
   THEME: 'assetradar_theme',
   WATCHLIST: 'assetradar_watchlist',
-  // v2: group/status values were renamed to English
-  TICK_SNAPSHOT: 'assetradar_last_ticks_v2',
+  // v3: asset groups were reorganized (commodity, idStock, usStock…)
+  TICK_SNAPSHOT: 'assetradar_last_ticks_v3',
   START_IN_TERMINAL: 'assetradar_start_terminal',
   RISK_RESULT: 'assetradar_risk_result',
   DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
   AI_PREFS: 'assetradar_ai_prefs',
+  SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -83,6 +84,16 @@ export function getStartInTerminal(): boolean {
 export function saveStartInTerminal(enabled: boolean): void {
   if (enabled) safeSet(STORAGE_KEYS.START_IN_TERMINAL, '1');
   else safeRemove(STORAGE_KEYS.START_IN_TERMINAL);
+}
+
+/** Desktop sidebar collapsed to icons (wider view, e.g. in the Terminal). */
+export function getSidebarCollapsed(): boolean {
+  return safeGet(STORAGE_KEYS.SIDEBAR_COLLAPSED) === '1';
+}
+
+export function saveSidebarCollapsed(collapsed: boolean): void {
+  if (collapsed) safeSet(STORAGE_KEYS.SIDEBAR_COLLAPSED, '1');
+  else safeRemove(STORAGE_KEYS.SIDEBAR_COLLAPSED);
 }
 
 export interface SavedRiskResult {

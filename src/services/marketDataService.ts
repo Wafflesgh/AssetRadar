@@ -16,6 +16,7 @@ import {
   ASSETS,
 } from '../config/assets.ts';
 import type { AssetAnalysis } from '../ai/analysis.ts';
+import type { QuantFactorsPayload, QuantUniverse } from '../ai/factorPortfolio.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 
@@ -478,6 +479,13 @@ export interface AiOutlookResponse {
 
 export async function fetchAiOutlook(horizon: number, profile: string): Promise<AiOutlookResponse> {
   const res = await fetch(`/api/ai/outlook?horizon=${horizon}&profile=${encodeURIComponent(profile)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+/** Monthly value & momentum factor portfolios for the quant simulator. */
+export async function fetchQuantFactors(universe: QuantUniverse): Promise<QuantFactorsPayload> {
+  const res = await fetch(`/api/quant/factors?universe=${encodeURIComponent(universe)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
