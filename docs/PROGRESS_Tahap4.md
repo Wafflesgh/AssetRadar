@@ -34,7 +34,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 ## Fase
 
 - [x] 0. Cek sumber (di atas)
-- [ ] 1. Dua bahasa (English / Bahasa Indonesia)
+- [x] 1. Dua bahasa (English / Bahasa Indonesia)
 - [ ] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
 - [ ] 3. Pilar & horizon sentimen
 - [ ] 4. Proyeksi teknikal & kalkulator posisi
@@ -42,6 +42,17 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [ ] 6. Tampilan
 - [ ] 7. Makro Indonesia diperluas
 - [ ] 8. Penutup
+
+## Fase 1 — Dua bahasa
+
+- `src/i18n/`: `en.ts` (sumber, ±1.280 kunci), `id.ts` (terjemahan, paritas dicek test), `core.ts` (`translate`, `translateOr`, `parseLang`, tanpa React — dipakai server & modul murni), `index.ts` (`t`, `tOr`, `useT`, `useLang`, `setLang`, format angka), `Rich.tsx` (`**tebal**`/`` `kode` ``), `assetNames.ts` (nama umum aset & grup, mis. Gold ↔ Emas), `textParts.ts` (kalimat dari kunci + parameter; parameter boleh menyebut kunci lain sebagai `@kunci`), `analysisText.ts` (teks analisis server → bahasa terpilih).
+- Bahasa: tersimpan (`assetradar_lang_v1`) → `navigator.language` `id…` → Indonesia, selain itu Inggris. Tombol **EN | ID** di header PC & menu More HP, plus kartu di Settings (bahasa + "Number format: follow language / always en-US", `assetradar_number_format_v1`).
+- Seluruh halaman diterjemahkan: shell, Radar, detail aset (analisis, sentimen, laporan keuangan, kalender), IDX, kalender, makro, portofolio, AI Advisor (+ rekam jejak), Quant Lab, Profil Risiko (kuesioner, profil, instrumen), Watchlist, Settings, Terminal (panel, HELP, saran, pesan galat; kode perintah tetap Inggris). `scripts/check-i18n.mjs` → **0** teks tersisa.
+- Teks dari server: alasan & cek verdict AI Advisor (`rankOutlooks(..., { lang })`), ringkasan rule-based AI Advisor (`?lang=`), bacaan scorecard teknikal, pola grafik, komponen bukti, ringkasan & faktor kunci analisis (dikirim sebagai kunci, dirender klien). Gemini (bila ada kunci) diminta menulis dalam bahasa terpilih; cache intelligence & ringkasan AI per bahasa.
+- Berita: judul tetap bahasa asli + tombol **Translate** (`/api/translate`, Gemini, cache 24 jam; tanpa kunci → Google Translate di tab baru).
+- Format angka `id-ID` (`Rp1.234.567`, `1,25%`, singkatan T / M / Jt) di `format.ts`; waktu relatif Indonesia di `marketHours.ts`.
+- Belum diterjemahkan (sengaja/sisa kecil): referensi jurnal (nama penulis), sumber data, judul berita, label 2 indikator makro "tidak tersedia" dari server (akan dirombak di Fase 7), kode perintah Terminal.
+- Test: paritas kunci, placeholder sama, tidak ada string kosong, fallback ke Inggris, format id-ID, waktu relatif Indonesia, verdict AI Advisor dalam bahasa Indonesia, teks analisis berkunci (Inggris identik dengan teks asli, Indonesia tidak jatuh ke fallback). 129 test lulus.
 
 ## Butuh keputusan pemilik
 
