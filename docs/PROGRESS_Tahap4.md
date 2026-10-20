@@ -37,7 +37,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 1. Dua bahasa (English / Bahasa Indonesia)
 - [x] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
 - [x] 3. Pilar & horizon sentimen
-- [ ] 4. Proyeksi teknikal & kalkulator posisi
+- [x] 4. Proyeksi teknikal & kalkulator posisi
 - [ ] 5. Validasi & cadence
 - [ ] 6. Tampilan
 - [ ] 7. Makro Indonesia diperluas
@@ -78,6 +78,11 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 - `macroSignal.ts`: perubahan 3 bulan BI-Rate & inflasi (data > 120 hari diabaikan); saham/IHSG: turun = mendukung; pasangan X/IDR: arah dibalik.
 - `cadence.ts`: cadence default + katalis berikutnya (laporan laba, ex-date, FOMC) + rumus cadence dari half-life IC (dipakai di Fase 5).
 - Endpoint: `GET /api/sentiment/v2?symbol=` (3 horizon, komponen, pilar & sub-faktor, model hibrida pasar, kesegaran data & progres pemindaian, disclaimer), `GET /api/sentiment/rankings?market=idx|us&horizon=` (pemimpin & terlemah dari cross-section; teknikal pendek hanya di halaman saham), skor Short/Medium/Long untuk 100 pasangan Binance di `GET /api/crypto/binance`.
+
+## Fase 4 — Proyeksi teknikal & kalkulator posisi
+
+- `src/sentiment/projections.ts` (+ test): **kisaran statistik** 68% & 90% dari kuantil empiris return h-hari aset itu sendiri (saham ≥ 2 tahun harian; crypto ≥ 1 tahun; 4 jam crypto ≥ 500 candle karena riwayat 4 jam gratis hanya beberapa bulan — ditulis), diskalakan volatilitas EWMA (λ 0,94) ÷ volatilitas historis (dibatasi 0,5–2,5×); **kalibrasi** point-in-time setiap 5 bar (tiap kisaran masa lalu hanya memakai data sebelumnya; test membuktikan crash setelah tanggal itu tidak mengubah hasil) + peringatan bila meleset > 5 poin dari 68/90. ATR(14) Wilder dan level ±1/±2/±3 ATR. **Support/resistance**: pivot swing, MA20/50/200, high/low 52 minggu, pivot klasik harian & mingguan (P, R1–R3, S1–S3), high-volume node dari profil volume; level berjarak ≤ 0,5 ATR digabung, kekuatan = jumlah sumber + sentuhan. Fibonacci hanya opsi (`?fib=1`, label "low evidence"). **Target pola** (measured move double top/bottom, H&S, segitiga/wedge/kanal) dengan hit rate historis di aset itu bila ≥ 20 kasus, selain itu "too few past cases". Upside/downside ke level terdekat + reward/risk. **Kalkulator posisi** (edukasi): volatility targeting AMP (bobot maks = target vol ÷ vol aset; default target 10%/tahun; vol 3 tahun, crypto EWMA) dan risiko per transaksi (modal × risiko% ÷ (entry − stop), dibulatkan ke lot 100 untuk BEI, tidak melebihi modal). Tidak ada angka entry yang disarankan.
+- `GET /api/projections?symbol=[&fib=1]` (cache 10 mnt): kisaran per horizon (saham 1D/1W/1M/3M; crypto 4h/1D/1W/1M), ATR, level, terdekat, pola, volatilitas & metodenya, ukuran lot, disclaimer. Candle harian terakhir yang belum selesai tidak dipakai untuk level.
 
 ## Butuh keputusan pemilik
 

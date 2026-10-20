@@ -74,6 +74,7 @@ import { newsByHorizon, HORIZONS, type Horizon } from './src/sentiment/newsHoriz
 import { derivativesScore, scoreHorizon, shortTechnical, trendScore, tsMomentumScore, type HorizonScore } from './src/sentiment/horizons.ts';
 import { nextCatalyst, type Catalyst } from './src/sentiment/cadence.ts';
 import { isMacroLinked, macroSignal } from './src/sentiment/macroSignal.ts';
+import { annualVol, atr as atrOf, likelyRange, patternTargets, supportResistance, upsideDownside, type RangeBand } from './src/sentiment/projections.ts';
 import type { StockInput } from './src/sentiment/factors.ts';
 import {
   computeMarketSentiment,
@@ -2546,6 +2547,80 @@ async function getSentimentV2(asset: Asset) {
   return data;
 }
 
+
+// ---- Technical projections: statistical ranges, levels, pattern targets (stage 4) -------------
+
+const projectionsCache = new Map<string, CacheEntry<unknown>>();
+
+/** Horizons per asset class: stocks 1D/1W/1M/3M (daily bars); crypto 4h (4-hour bars) and 1D/1W/1M. */
+const PROJECTION_HORIZONS = {
+  default: [
+    { id: '1D', bars: 1 },
+    { id: '1W', bars: 5 },
+    { id: '1M', bars: 21 },
+    { id: '3M', bars: 63 },
+  ],
+  crypto: [
+    { id: '1D', bars: 1 },
+    { id: '1W', bars: 7 },
+    { id: '1M', bars: 30 },
+  ],
+};
+
+async function computeProjections(asset: Asset, fibonacci: boolean) {
+  const crypto = asset.group === 'crypto';
+  const yearBars = crypto ? 365 : 252;
+  const [bars, candles] = await Promise.all([
+    dailyHistoryFor(asset).catch(() => [] as DailyBar[]),
+    getHistoryCandles(asset, 'D').catch(() => [] as OhlcCandle[]),
+  ]);
+  const closes = bars.map((b) => b.close);
+  // The last daily candle may still be open; ranges and levels use finished days
+  const finished = candles.length > 1 ? candles.slice(0, -1) : candles;
+  const price = livePriceFor(asset)?.price ?? closes[closes.length - 1] ?? null;
+  const ranges: Array<{ id: string; limitedHistoryBars?: number } & (RangeBand | { unavailable: string })> = [];
+  for (const h of crypto ? PROJECTION_HORIZONS.crypto : PROJECTION_HORIZONS.default) {
+    const r = likelyRange(closes, h.bars, crypto ? 365 : 504);
+    ranges.push(r ? { id: h.id, ...r } : { id: h.id, unavailable: `needs ${crypto ? 1 : 2} years of daily history` });
+  }
+  if (crypto) {
+    // 4-hour range from the 4h candles available (Binance/Indodax give a few months; stated)
+    const k4 = await getHistoryCandles(asset, '240').catch(() => [] as OhlcCandle[]);
+    const c4 = k4.slice(0, -1).map((c) => c.close);
+    const r4 = likelyRange(c4, 1, 500);
+    ranges.unshift(r4 ? { id: '4h', ...r4, limitedHistoryBars: c4.length } : { id: '4h', unavailable: 'needs at least 500 four-hour candles' });
+  }
+  const sr = supportResistance(finished, { fibonacci, yearBars });
+  const a = sr.atr ?? atrOf(finished);
+  const vol = annualVol(closes, yearBars, 3, crypto);
+  return {
+    symbol: asset.symbol,
+    currency: asset.currency,
+    price,
+    asOf: bars.length ? bars[bars.length - 1].date : null,
+    ranges,
+    atr: a,
+    atrLevels: a && price ? [1, 2, 3].map((k) => ({ k, up: price + k * a, down: price - k * a })) : [],
+    levels: sr.levels,
+    nearest: price ? upsideDownside(sr.levels, price) : null,
+    patterns: patternTargets(closes),
+    volatility: vol,
+    volatilityMethod: crypto ? 'EWMA (λ 0.94), annualized' : '3-year daily, annualized',
+    lotSize: asset.group === 'idStock' ? 100 : 1,
+    fibonacci,
+    disclaimer: SENTIMENT_DISCLAIMER,
+  };
+}
+
+async function getProjections(asset: Asset, fibonacci: boolean) {
+  const key = `${asset.symbol}|${fibonacci ? 1 : 0}`;
+  const cached = projectionsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const data = await computeProjections(asset, fibonacci);
+  projectionsCache.set(key, { data, expiresAt: Date.now() + 10 * 60_000 });
+  return data;
+}
+
 /** Ranking rows of a market for one horizon (stocks from the cross-section; crypto from Binance). */
 function rankingsFor(market: 'idx' | 'us', h: Horizon) {
   const mp = currentPillars(market);
@@ -3424,6 +3499,21 @@ async function startServer() {
       disclaimer: SENTIMENT_DISCLAIMER,
       serverTime: Date.now(),
     });
+  });
+
+
+  // Statistical ranges, ATR, support/resistance, pattern targets (education, not forecasts)
+  app.get('/api/projections', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset) {
+      res.status(400).json({ error: 'Unknown symbol' });
+      return;
+    }
+    try {
+      res.json(await getProjections(asset, req.query.fib === '1'));
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Projections unavailable' });
+    }
   });
 
   // ---- Binance (public market data only; no API key) ----------------------------------------
