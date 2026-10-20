@@ -12,11 +12,10 @@ import { AlertTriangle, ArrowLeft, Bitcoin, Search } from 'lucide-react';
 import { ASSETS, getAssetBySymbol, type OhlcCandle } from '../config/assets.ts';
 import { useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
-import { annualVol, likelyRange, supportResistance, upsideDownside } from '../sentiment/projections.ts';
+import { likelyRange, supportResistance, upsideDownside } from '../sentiment/projections.ts';
 import { fetchBinanceDerivatives, fetchBinanceKlines, fetchBinanceTable, type BinanceRow, type BinanceStatus } from '../services/sentimentService.ts';
 import { formatDecimal, formatUsdCompact } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
-import { PositionCalculator } from './sentiment/PositionCalculator.tsx';
 import { scoreColor } from './sentiment/InvestmentSentimentPanel.tsx';
 import type { Kline } from '../crypto/binance.ts';
 
@@ -368,7 +367,6 @@ function PairView({
   });
   const price = row?.price ?? closes[closes.length - 1] ?? null;
   const near = price ? upsideDownside(sr.levels, price) : null;
-  const vol = annualVol(closes, barsPerYear, 3, true);
   const card = 'p-5 rounded-xl border space-y-3';
   const cardStyle = {
     backgroundColor: 'var(--bg-surface)',
@@ -495,7 +493,6 @@ function PairView({
             />
           </p>
         )}
-        <PositionCalculator volatility={vol} volatilityMethod="EWMA (λ 0.94)" lotSize={0} formatMoney={(v) => `${usdt(v)} USDT`} />
       </section>
 
       <section className={card} style={cardStyle}>

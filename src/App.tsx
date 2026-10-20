@@ -60,6 +60,7 @@ const RiskProfileView = lazy(() =>
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
 const BacktestView = lazy(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
 const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
+const AnalystView = lazy(() => import('./components/AnalystView.tsx').then((m) => ({ default: m.AnalystView })));
 const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
 const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
@@ -339,7 +340,7 @@ export default function App() {
       />
 
       {/* Sudden war / attack alert (every page, including Terminal) */}
-      <GeoAlertBanner ticks={ticks} />
+      <GeoAlertBanner />
 
       {/* Top Header Bar (Terminal has its own status bar) */}
       {!isTerminal && (
@@ -384,6 +385,7 @@ export default function App() {
               {activeTab === 'screener' && t('header.title.screener')}
               {activeTab === 'compare' && t('header.title.compare')}
               {activeTab === 'brief' && t('header.title.brief')}
+              {activeTab === 'analyst' && t('header.title.analyst')}
               {activeTab === 'backtest' && t('header.title.backtest')}
             </span>
           </div>
@@ -554,6 +556,17 @@ export default function App() {
             }
           >
             <BacktestView ticks={ticks} />
+          </Suspense>
+        )}
+        {activeTab === 'analyst' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <AnalystView onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
         {activeTab === 'brief' && (

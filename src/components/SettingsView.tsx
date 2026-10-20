@@ -3,12 +3,11 @@
  * format, position-size target, theme choice, default chart timeframe, the "open in Terminal mode"
  * switch, data sources and the disclaimer.
  */
-import { useState } from 'react';
-import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal, Languages, Calculator } from 'lucide-react';
+import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal, Languages } from 'lucide-react';
 import { getNumberFormat, setLang, setNumberFormat, useLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
-import { ThemePreference, getVolTarget, saveVolTarget } from '../utils/storage.ts';
+import { ThemePreference } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { DiagnosticsCard } from './DiagnosticsCard.tsx';
@@ -33,7 +32,6 @@ export function SettingsView({
   const t = useT();
   const lang = useLang();
   const numberFormat = getNumberFormat();
-  const [volTarget, setVolTarget] = useState(() => getVolTarget());
   const themeOptions: { value: ThemePreference; label: TranslationKey; desc: TranslationKey; icon: typeof Sun }[] = [
     { value: 'light', label: 'settings.theme.light', desc: 'settings.theme.lightDesc', icon: Sun },
     { value: 'dark', label: 'settings.theme.dark', desc: 'settings.theme.darkDesc', icon: Moon },
@@ -109,42 +107,6 @@ export function SettingsView({
             {t('settings.numberEnUs')}
           </label>
         </fieldset>
-      </section>
-
-      {/* Position sizing: target volatility for the calculator */}
-      <section
-        aria-labelledby="settings-pos-heading"
-        className="p-5 md:p-6 rounded-xl border space-y-3"
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
-      >
-        <div className="flex items-start gap-2.5">
-          <Calculator className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--accent-radar)' }} />
-          <div>
-            <h2 id="settings-pos-heading" className="text-base font-bold">
-              {t('settings.posTitle')}
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              {t('settings.posNote')}
-            </p>
-          </div>
-        </div>
-        <label className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="font-semibold">{t('settings.volTarget')}</span>
-          <input
-            type="number"
-            min={2}
-            max={50}
-            step={1}
-            value={volTarget}
-            onChange={(e) => {
-              const v = Math.max(2, Math.min(50, Number(e.target.value) || 10));
-              setVolTarget(v);
-              saveVolTarget(v);
-            }}
-            className="w-20 rounded-lg border px-2 py-1.5 font-mono-num bg-transparent"
-            style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-          />
-        </label>
       </section>
 
       {/* Theme Selection */}

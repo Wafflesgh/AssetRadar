@@ -1,4 +1,4 @@
-/** projections.test.ts — Tests for ranges and their calibration, ATR, levels, pattern targets and the position calculator (synthetic data). */
+/** projections.test.ts — Tests for ranges and their calibration, ATR, levels, pattern targets and annual volatility (synthetic data). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { OhlcCandle } from '../config/assets.ts';
@@ -10,10 +10,8 @@ import {
   likelyRange,
   measuredMove,
   patternTargets,
-  riskPositionSize,
   supportResistance,
   upsideDownside,
-  volTargetWeight,
   volumeNodes,
 } from './projections.ts';
 
@@ -96,19 +94,6 @@ test('measured moves and pattern hit rates need enough past cases', () => {
   }
 });
 
-test('position calculator: volatility target and risk per trade with IDX lots', () => {
-  assert.equal(volTargetWeight(10, 0.4), 0.25);
-  assert.equal(volTargetWeight(10, 0.05), 1);
-  assert.equal(volTargetWeight(10, null), null);
-  const s = riskPositionSize(100_000_000, 1, 9_000, 8_500, 100);
-  // 1,000,000 risk ÷ 500 per share = 2,000 shares = 20 lots
-  assert.equal(s.units, 2000);
-  assert.equal(s.lots, 20);
-  assert.equal(s.riskAmount, 1_000_000);
-  assert.equal(riskPositionSize(1_000, 1, 10, 11).error, 'stop-above-entry');
-  assert.equal(riskPositionSize(0, 1, 10, 9).error, 'invalid-input');
-  // Never more than the capital can buy
-  const capped = riskPositionSize(1_000_000, 50, 1000, 999, 1);
-  assert.ok(capped.positionValue <= 1_000_000);
+test('annual volatility of a random walk', () => {
   assert.ok((annualVol(walk(800)) ?? 0) > 0.1);
 });

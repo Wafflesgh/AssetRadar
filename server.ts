@@ -14,7 +14,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
+import { Type, ThinkingLevel } from '@google/genai';
+import { geminiGenerate, geminiStatus } from './server/gemini.ts';
 import {
   ASSETS,
   ALL_ASSETS,
@@ -171,7 +172,37 @@ import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore } from './server/store.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
-import { registerDiagnosticsRoute } from './server/diagnostics.ts';
+import { diagnosticsProbes, registerDiagnosticsRoute } from './server/diagnostics.ts';
+import { getSbnRetail } from './server/sbn.ts';
+import { sbnStatus } from './src/utils/sbnRetail.ts';
+import {
+  analystPrompt,
+  cleanNote,
+  datesFromKeys,
+  extremes,
+  parseReport,
+  parseSnapshot,
+  qualityChecks,
+  sentimentChanges,
+  topMovers,
+  type AnalystFacts,
+  type AnalystReport,
+  type DailySnapshot,
+  type SnapAsset,
+} from './src/ai/dailyAnalyst.ts';
+import {
+  assetTrace,
+  emptySentimentLog,
+  evaluateSentimentCalls,
+  methodSummaries,
+  parseSentimentLog,
+  pendingCallSymbols,
+  recordSentimentCalls,
+  type SentimentLog,
+  type TraceHorizon,
+  type TraceLabel,
+} from './src/ai/recommendationTrace.ts';
+import { registerSbnRoute } from './server/sbn.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
 import { findPinkSheetLink, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
@@ -191,6 +222,7 @@ import {
 import { formatAssetPrice, getNumberLocale, setNumberLocale, type NumberLocale } from './src/utils/format.ts';
 import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefInput, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
 import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
+import { reactionInterval, reactionSince } from './src/utils/geoReaction.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -429,16 +461,43 @@ const HISTORY_INTERVALS: Record<
   W: { yahooInterval: '1wk', range: '5y', indodaxTf: '1W', rangeSec: 5 * 365 * DAY_SEC, cacheMs: 60 * 60_000 },
 };
 
+/**
+ * Yahoo chart data. `range: 'full'` asks for everything since the first trade with explicit
+ * period1/period2 — `range=max` would silently thin daily bars out to monthly or quarterly.
+ */
 async function fetchYahooChartRaw(yahooSymbol: string, yahooInterval: string, range: string) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    yahooSymbol
-  )}?interval=${yahooInterval}&range=${range}`;
-  const res = await fetchWithTimeout(url, {}, 8000);
+  const span = range === 'full' ? `period1=-2208988800&period2=${Math.floor(Date.now() / 1000)}` : `range=${range}`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yahooInterval}&${span}`;
+  const res = await fetchWithTimeout(url, {}, range === 'full' ? 25_000 : 8000);
   if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} for ${yahooSymbol}`);
   const json = await res.json();
   const result = json?.chart?.result?.[0];
   if (!result) throw new Error(`Empty Yahoo Finance data for ${yahooSymbol}`);
   return result;
+}
+
+/**
+ * All daily rows from Indodax since the pair was listed: the API returns at most ~3,650 days per
+ * call, so older windows are fetched until one comes back empty (Indodax started in 2014).
+ */
+async function fetchIndodaxDailyRows(pair: string, maxWindows = 4): Promise<Array<Record<string, unknown>>> {
+  const WINDOW = 3600 * DAY_SEC;
+  const STOP = Date.UTC(2013, 0, 1) / 1000;
+  let to = Math.floor(Date.now() / 1000);
+  const all: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < maxWindows && to > STOP; i++) {
+    const from = Math.max(STOP, to - WINDOW);
+    const res = await fetchWithTimeout(`https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${from}&to=${to}`, {}, 15_000);
+    if (!res.ok) {
+      if (all.length) break;
+      throw new Error(`Indodax HTTP ${res.status}`);
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    all.unshift(...rows);
+    to = from - 1;
+  }
+  return all.sort((a, b) => Number(a.Time) - Number(b.Time));
 }
 
 /** OHLC candles from Indodax (Rupiah crypto; Yahoo has no BTC-IDR etc. pairs). */
@@ -1593,15 +1652,6 @@ async function getAssetIntelligence(
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
     const enrichPromise = (async (): Promise<AssetIntelligence | null> => {
       try {
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            },
-          },
-        });
-
         const headlinesList =
           newsItems.length > 0
             ? newsItems.map((n, i) => `${i + 1}. ${n.title} (${n.source})`).join('\n')
@@ -1624,8 +1674,9 @@ Use this evidence as given; do not invent other numbers.`
 
 Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), an objective and educational 2-sentence summary that explains WHY using the evidence (not buy/sell advice), and the 3 main market drivers.`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+        const response = await geminiGenerate({
+          tag: `intelligence ${asset.code}`,
+          timeoutMs: 10_000,
           contents: prompt,
           config: {
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
@@ -1646,7 +1697,7 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
           },
         });
 
-        const rawText = response.text?.trim();
+        const rawText = response?.text;
         if (rawText) {
           const parsed = JSON.parse(rawText);
           const enriched: AssetIntelligence = analysis
@@ -1712,12 +1763,14 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
 
 // ---------------------------------------------------------------------------------------
 // AI outlook engine
-// ~5 years of daily closes per asset (Yahoo; crypto from Indodax in IDR) + US rates and the
+// 10 years of daily closes per asset (Yahoo; crypto from Indodax in IDR) + US rates and the
 // dollar index, Fed decisions (recorded or inferred), walk-forward backtested logistic model.
 // The latest live price is used as today's bar, so the outlook moves with the market.
 // ---------------------------------------------------------------------------------------
 
 const AI_HISTORY_TTL_MS = 6 * 3600_000;
+/** Daily bars the AI model uses (10 years of trading days; crypto trades every day, so ~7 years). */
+const AI_MODEL_MAX_BARS = 2520;
 const AI_OUTLOOK_TTL_MS = 10 * 60_000;
 const AI_HORIZONS = [20, 60] as const;
 type AiHorizon = (typeof AI_HORIZONS)[number];
@@ -1751,7 +1804,8 @@ async function fetchYahooDaily(yahooSymbol: string): Promise<DailyBar[]> {
   const key = `y:${yahooSymbol}`;
   const cached = aiHistoryCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
+  // 10 years: what the AI model and the analysis use (the full history is in dailyOhlcFor)
+  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '10y');
   const ts: number[] = result.timestamp || [];
   const closes: Array<number | null> = result.indicators?.quote?.[0]?.close || [];
   const offsetSec = Number(result.meta?.gmtoffset) || 0;
@@ -1771,11 +1825,7 @@ async function fetchIndodaxDaily(pair: string): Promise<DailyBar[]> {
   const key = `i:${pair}`;
   const cached = aiHistoryCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const nowSec = Math.floor(Date.now() / 1000);
-  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
-  const res = await fetchWithTimeout(url, {}, 10_000);
-  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
-  const rows = await res.json();
+  const rows = await fetchIndodaxDailyRows(pair, 1);
   const bars: DailyBar[] = [];
   for (const row of Array.isArray(rows) ? rows : []) {
     const t = Number(row?.Time);
@@ -1810,7 +1860,7 @@ function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
 }
 
 
-// ---- Daily OHLC history (~5 years) for Compare, Backtest and portfolio performance ----------------
+// ---- Daily OHLC history (full, since the first trade) for Compare, Backtest and portfolio performance ----
 
 interface DailyOhlc {
   date: string;
@@ -1825,7 +1875,7 @@ const dailyOhlcCache = new Map<string, CacheEntry<DailyOhlc[]>>();
 const dailyOhlcPending = new Map<string, Promise<DailyOhlc[]>>();
 
 async function fetchYahooDailyOhlc(yahooSymbol: string): Promise<DailyOhlc[]> {
-  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
+  const result = await fetchYahooChartRaw(yahooSymbol, '1d', 'full');
   const ts: number[] = result.timestamp || [];
   const q = result.indicators?.quote?.[0] ?? {};
   const offsetSec = Number(result.meta?.gmtoffset) || 0;
@@ -1846,11 +1896,7 @@ async function fetchYahooDailyOhlc(yahooSymbol: string): Promise<DailyOhlc[]> {
 }
 
 async function fetchIndodaxDailyOhlc(pair: string): Promise<DailyOhlc[]> {
-  const nowSec = Math.floor(Date.now() / 1000);
-  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
-  const res = await fetchWithTimeout(url, {}, 10_000);
-  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
-  const rows = await res.json();
+  const rows = await fetchIndodaxDailyRows(pair);
   const bars: DailyOhlc[] = [];
   for (const row of Array.isArray(rows) ? rows : []) {
     const t = Number(row?.Time);
@@ -1865,7 +1911,7 @@ async function fetchIndodaxDailyOhlc(pair: string): Promise<DailyOhlc[]> {
   return bars;
 }
 
-/** About 5 years of daily OHLC per asset (cached 6 h): Indodax for crypto, Yahoo for the rest. */
+/** Full daily OHLC per asset since its first trade (cached 6 h): Indodax for crypto, Yahoo for the rest. */
 async function dailyOhlcFor(asset: Asset): Promise<DailyOhlc[]> {
   const cached = dailyOhlcCache.get(asset.symbol);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
@@ -1902,7 +1948,7 @@ const onDemandNewsAt = new Map<string, number>();
 
 const STOCK_GROUPS: AssetGroup[] = ['idStock', 'usStock', 'globalStock'];
 
-/** About 5 years of daily bars (without today's live bar). */
+/** About 10 years of daily closes (without today's live bar); Binance-only coins: last 1,000 days. The full history since the first trade is dailyOhlcFor. */
 async function dailyHistoryFor(asset: Asset): Promise<DailyBar[]> {
   if (asset.indodaxPair) return fetchIndodaxDaily(asset.indodaxPair);
   if (asset.group === 'crypto') {
@@ -1915,9 +1961,14 @@ async function dailyHistoryFor(asset: Asset): Promise<DailyBar[]> {
   return asset.yahooSymbol ? fetchYahooDaily(asset.yahooSymbol) : [];
 }
 
-/** Daily closes with today's live price as the last bar. */
+/** The last 10 years of the full history: what the per-asset analysis, sentiment and projections need. */
+async function recentHistoryFor(asset: Asset): Promise<DailyBar[]> {
+  return (await dailyHistoryFor(asset)).slice(-AI_MODEL_MAX_BARS);
+}
+
+/** Daily closes (last 10 years) with today's live price as the last bar. */
 async function dailyClosesFor(asset: Asset): Promise<number[]> {
-  return withLiveBar(await dailyHistoryFor(asset), asset).map((b) => b.close);
+  return withLiveBar(await recentHistoryFor(asset), asset).map((b) => b.close);
 }
 
 /** Annual statements from Yahoo's fundamentals-timeseries (stocks only, cached 12 h). */
@@ -2590,7 +2641,7 @@ function catalystsFor(asset: Asset): Catalyst[] {
 async function computeSentimentV2(asset: Asset) {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  const bars = await dailyHistoryFor(asset).catch(() => [] as DailyBar[]);
+  const bars = await recentHistoryFor(asset).catch(() => [] as DailyBar[]);
   // Closed daily bars only (no live bar): indicators need finished candles
   const closes = bars.map((b) => b.close);
   const yearBars = asset.group === 'crypto' ? 365 : 252;
@@ -2713,7 +2764,7 @@ async function computeProjections(asset: Asset, fibonacci: boolean) {
   const crypto = asset.group === 'crypto';
   const yearBars = crypto ? 365 : 252;
   const [bars, candles] = await Promise.all([
-    dailyHistoryFor(asset).catch(() => [] as DailyBar[]),
+    recentHistoryFor(asset).catch(() => [] as DailyBar[]),
     getHistoryCandles(asset, 'D').catch(() => [] as OhlcCandle[]),
   ]);
   const closes = bars.map((b) => b.close);
@@ -3020,6 +3071,28 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
+/**
+ * FRED resets or stalls requests with a browser-like User-Agent (and with Node's default "node"),
+ * but answers within about a second to a plain app User-Agent. Longer timeout and one retry,
+ * because fredgraph.csv is sometimes slow from Cloud Run.
+ */
+const FRED_USER_AGENT = 'AssetRadar/1.0 (personal research; non-commercial)';
+async function fetchFred(id: string): Promise<string> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(FRED_URL(id), { headers: { 'User-Agent': FRED_USER_AGENT, Accept: 'text/csv, */*' } }, 30_000);
+      if (res.ok) return await res.text();
+      lastError = new Error(`HTTP ${res.status}`);
+      if (res.status < 500 && res.status !== 429) break;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw lastError instanceof Error ? lastError : new Error('FRED unavailable');
+}
+
 /** World Bank Pink Sheet (monthly commodity prices; xlsx of ±600 KB, updated early each month). Cache 24 h. */
 const pinkCache: { entry: CacheEntry<PinkSheet> | null } = { entry: null };
 async function getPinkSheet(): Promise<PinkSheet> {
@@ -3049,7 +3122,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
       return fallback;
     }
   };
-  const fred = (id: string) => get(id, async () => parseFredCsv(await fetchText(FRED_URL(id))), [] as MacroPoint[]);
+  const fred = (id: string) => get(id, async () => parseFredCsv(await fetchFred(id)), [] as MacroPoint[]);
   const wb = (id: string) =>
     get(id, async () => parseWorldBank(JSON.parse(await fetchText(`https://api.worldbank.org/v2/country/IDN/indicator/${id}?format=json&per_page=60`))), [] as MacroPoint[]);
   const [biRate, biInflation, interbank, cpiYoy, cpiIndex, gdp, reserves, trade, usdIdr, wbInfl, wbGdp] = await Promise.all([
@@ -3246,7 +3319,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     series,
     biRate,
     unavailable: [
-      { id: 'sbn', label: '10-year government bond (SBN) yield', reason: 'No free source with current data was found (DJPPR timed out from the server).' },
+      { id: 'sbn', label: '10-year government bond (SBN) yield', reason: 'No free daily yield source; the retail SBN series and their coupons are shown at the top of this page.' },
       { id: 'pmi', label: 'Manufacturing PMI', reason: 'PMI data is licensed (S&P Global) and not free.' },
       { id: 'indonia', label: 'IndONIA / JIBOR, JISDOR', reason: 'bi.go.id pages not yet parsed reliably; to be checked from the laptop.' },
       { id: 'food', label: 'Daily food prices (Badan Pangan)', reason: 'The official data endpoint could not be confirmed from the server.' },
@@ -3368,17 +3441,21 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   const today = new Date().toISOString().slice(0, 10);
   const meetings = resolveMeetings(tbillBars, today);
 
-  // The AI screen covers the assets flagged `ai` (major markets with 5 years of clean daily data)
+  // The AI screen covers the assets flagged `ai` (major markets with long, clean daily data)
   const candidates = ASSETS.filter((a) => a.ai && (a.indodaxPair || a.yahooSymbol));
   const outlooks = await mapLimit(candidates, 6, async (asset): Promise<AssetOutlook | null> => {
     try {
-      const bars = withLiveBar(await dailyHistoryFor(asset), asset);
+      // The model is fitted and tested on the last 10 years (full history is used for charts,
+      // Compare, Backtest and the stored daily snapshots; older data would make the walk-forward
+      // retraining too slow for the server and mostly reflect other market regimes)
+      const bars = withLiveBar(await dailyHistoryFor(asset), asset).slice(-AI_MODEL_MAX_BARS);
       const dates = bars.map((b) => b.date);
+      const tbillAligned = alignByDate(dates, tbillBars);
       const macro = {
-        tbill: alignByDate(dates, tbillBars),
+        tbill: tbillAligned,
         yield10y: alignByDate(dates, yieldBars),
         dollar: asset.code === 'DXY' ? dates.map(() => null) : alignByDate(dates, dollarBars),
-        fedStance: fedStanceSeries(dates, meetings),
+        fedStance: fedStanceSeries(dates, meetings, tbillAligned),
       };
       const build = (m: typeof macro & { idRate?: Array<number | null>; idInflation?: Array<number | null> }) =>
         buildAssetOutlook({
@@ -3529,16 +3606,8 @@ async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile, lan
   const prompt = `You are a quantitative market analyst. Using ONLY the data below (for each instrument: its verdict and the checks behind it — a walk-forward backtested strategy judged on a holdout, a technical scorecard tested on the asset's own history, and an evidence score from technicals, momentum, value, quality and news — for the next ${payload.horizonDays} trading days), write 4-6 plain ${lang === 'id' ? 'Indonesian (Bahasa Indonesia)' : 'English'} sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the chance of a gain and the hit rate vs base rate from the passing check), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "${lang === 'id' ? 'Ini adalah penyaringan statistik, bukan nasihat keuangan pribadi.' : 'This is a statistical screen, not personal financial advice.'}"
 DATA: ${JSON.stringify(facts)}`;
   try {
-    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
-    const response = await Promise.race([
-      ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-      }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
-    ]);
-    const text = response?.text?.trim();
+    const response = await geminiGenerate({ tag: 'advisor', timeoutMs: 12_000, contents: prompt, config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } });
+    const text = response?.text;
     const data = text ? { text, aiPowered: true } : fallback;
     aiSummaryCache.set(key, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
     return data;
@@ -3654,6 +3723,179 @@ async function runServerForwardTest(): Promise<{ date: string; saved: number; sc
 }
 
 const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
+
+// ---- Daily snapshot + AI analysis (every day ≥16:15 WIB; stored per day for later analysis) ------
+
+const SNAP_PREFIX = 'snap:';
+const ANALYSIS_PREFIX = 'analysis:';
+const SENTCALLS_PREFIX = 'sentcalls:';
+const ANALYST_TIME = '16:15'; // WIB, after the IDX close; runs right after the forward test in the same call
+const TRACE_HORIZONS: TraceHorizon[] = ['short', 'medium', 'long'];
+const traceCache = new Map<string, CacheEntry<unknown>>();
+
+async function loadSentimentMonths(): Promise<Array<{ key: string; log: SentimentLog }>> {
+  const keys = (await store.keys(SENTCALLS_PREFIX)).sort();
+  const out: Array<{ key: string; log: SentimentLog }> = [];
+  for (const key of keys) out.push({ key, log: parseSentimentLog(await store.get(key)) ?? emptySentimentLog() });
+  return out;
+}
+
+async function storedReport(date: string): Promise<AnalystReport | null> {
+  return parseReport(await store.get<unknown>(`${ANALYSIS_PREFIX}${date}`).catch(() => null));
+}
+
+/**
+ * The daily analysis: snapshot of every app asset (price, 24h change, sentiment per horizon),
+ * sentiment calls saved for the recommendation trace and scored when due, facts and data checks,
+ * and an optional Gemini narrative in English and Indonesian. Everything is stored per day.
+ */
+async function runDailyAnalyst(): Promise<{ date: string; assets: number; sentiment: number; scored: number; ai: boolean }> {
+  const now = Date.now();
+  const date = wibDate(now);
+  const ticks = await collectAllTicks();
+  const priced = ASSETS.filter((a) => Number.isFinite(ticks[a.symbol]?.price) && ticks[a.symbol].price > 0);
+  const missing = ASSETS.filter((a) => !priced.includes(a)).map((a) => a.code);
+  const stale = priced.filter((a) => now - (ticks[a.symbol].updatedAt ?? now) > 4 * 86_400_000).map((a) => a.code);
+  const failed: string[] = [];
+  const snapAssets: Record<string, SnapAsset> = {};
+  await mapLimit(priced, 3, async (asset) => {
+    const t = ticks[asset.symbol];
+    const entry: SnapAsset = { p: t.price, c24: Number.isFinite(t.changePct24h) ? Math.round((t.changePct24h as number) * 100) / 100 : null };
+    try {
+      const sv = (await getSentimentV2(asset)) as { horizons?: Partial<Record<TraceHorizon, { label?: string; score?: number | null }>> };
+      const s: SnapAsset['s'] = {};
+      for (const h of TRACE_HORIZONS) {
+        const v = sv.horizons?.[h];
+        if (v && typeof v.score === 'number' && Number.isFinite(v.score) && typeof v.label === 'string') s[h] = [v.label as TraceLabel, Math.round(v.score)];
+      }
+      if (Object.keys(s).length) entry.s = s;
+    } catch {
+      failed.push(asset.code);
+    }
+    snapAssets[asset.symbol] = entry;
+  });
+  const snapshot: DailySnapshot = { version: 1, date, takenAt: now, assets: snapAssets };
+  await store.set(`${SNAP_PREFIX}${date}`, snapshot);
+
+  // Sentiment calls for the recommendation trace (one per asset, horizon and day)
+  const callKey = `${SENTCALLS_PREFIX}${date.slice(0, 7)}`;
+  const before = parseSentimentLog(await store.get(callKey)) ?? emptySentimentLog();
+  const log = recordSentimentCalls(
+    before,
+    date,
+    priced.map((a) => ({
+      symbol: a.symbol,
+      crypto: a.group === 'crypto',
+      price: snapAssets[a.symbol]?.p,
+      horizons: Object.fromEntries(
+        TRACE_HORIZONS.map((h) => {
+          const v = snapAssets[a.symbol]?.s?.[h];
+          return [h, v ? { label: v[0], score: v[1] } : null];
+        })
+      ),
+    }))
+  );
+  if (log !== before) await store.set(callKey, log);
+  // Score due calls (14 months cover the long horizon)
+  let scored = 0;
+  const months = (await loadSentimentMonths()).slice(-14);
+  const history = new Map<string, DailyClose[]>();
+  for (const m of months) {
+    const pending = pendingCallSymbols(m.log, date);
+    if (!pending.length) continue;
+    for (const sym of pending) {
+      if (history.has(sym)) continue;
+      const asset = getAssetBySymbol(sym);
+      history.set(sym, asset ? await dailyHistoryFor(asset).catch(() => []) : []);
+    }
+    const next = evaluateSentimentCalls(m.log, history);
+    if (next !== m.log) {
+      scored += next.calls.filter((c) => c.outcome).length - m.log.calls.filter((c) => c.outcome).length;
+      await store.set(m.key, next);
+    }
+  }
+
+  const prevDate = datesFromKeys(await store.keys(SNAP_PREFIX), SNAP_PREFIX).find((d) => d < date) ?? null;
+  const prev = prevDate ? parseSnapshot(await store.get(`${SNAP_PREFIX}${prevDate}`)) : null;
+  const advisorFavorable: Record<string, string[]> = {};
+  let advisorAssets = 0;
+  for (const h of AI_HORIZONS) {
+    const payload = await getAiOutlook(h).catch(() => null);
+    if (!payload) continue;
+    advisorAssets = Math.max(advisorAssets, payload.assets.length);
+    advisorFavorable[String(h)] = rankOutlooks(payload.assets, 'moderate', { geoAlertActive: payload.geoAlertActive })
+      .filter((o) => o.verdict === 'favorable')
+      .map((o) => o.symbol);
+  }
+  const allCalls = (await loadSentimentMonths()).flatMap((m) => m.log.calls);
+  const allVerdicts = (await loadForwardMonths()).flatMap((m) => m.log.snapshots);
+  const sbn = await getSbnRetail(store).catch(() => null);
+  const { strongest, weakest } = extremes(snapshot);
+  const facts: AnalystFacts = {
+    date,
+    previousDate: prev?.date ?? null,
+    assetsCovered: priced.length,
+    sentimentCovered: Object.values(snapAssets).filter((a) => a.s).length,
+    movers: topMovers(snapshot),
+    sentimentChanges: sentimentChanges(prev, snapshot),
+    strongest,
+    weakest,
+    advisorFavorable,
+    methods: methodSummaries(allCalls, allVerdicts, 'moderate'),
+    sbnOpen: (sbn?.current ?? []).filter((x) => sbnStatus(x, date) === 'open').map((x) => ({ code: x.code, couponPct: x.couponPct, offerEnd: x.offerEnd })),
+    macro: { biRate: macroCache.entry?.data.biRate.at(-1)?.value ?? null, usdIdr: Number.isFinite(ticks['USD/IDR']?.price) ? ticks['USD/IDR'].price : null },
+  };
+  const probes = await diagnosticsProbes().catch(() => []);
+  const gem = geminiStatus();
+  const quality = qualityChecks({
+    assetsTotal: ASSETS.length,
+    pricesMissing: missing,
+    pricesStale: stale,
+    sentimentTried: priced.length,
+    sentimentFailed: failed,
+    sourcesProblem: probes.filter((p) => p.status !== 'ok' && p.id !== 'finnhub' && p.id !== 'telegram').map((p) => p.id),
+    advisorAssets,
+    advisorExpected: ASSETS.filter((a) => a.ai).length,
+    forwardLastRun: jobs.state.forward ?? null,
+    today: date,
+    database: store.persistent,
+    gemini: { configured: gem.configured, lastError: gem.lastError?.kind ?? null },
+  });
+  const existing = await storedReport(date);
+  const report: AnalystReport = { version: 1, date, createdAt: Date.now(), facts, quality, ai: {}, notes: existing?.notes ?? [] };
+  // Names of the assets the facts mention, so the narrative uses real names
+  const mentioned = new Set<string>([
+    ...facts.movers.up.map((m) => m.symbol),
+    ...facts.movers.down.map((m) => m.symbol),
+    ...facts.sentimentChanges.map((c) => c.symbol),
+    ...TRACE_HORIZONS.flatMap((h) => [...strongest[h], ...weakest[h]].map((x) => x.symbol)),
+    ...Object.values(advisorFavorable).flat(),
+  ]);
+  const names = Object.fromEntries([...mentioned].map((sym) => [sym, getAssetBySymbol(sym)?.name ?? sym]));
+  for (const lang of ['en', 'id'] as const) {
+    const res = await geminiGenerate({ tag: 'analyst', timeoutMs: 40_000, contents: analystPrompt(facts, quality, names, lang), config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } });
+    if (res) {
+      report.ai[lang] = res.text.slice(0, 6000);
+      report.ai.model = res.model;
+    }
+  }
+  await store.set(`${ANALYSIS_PREFIX}${date}`, report);
+  traceCache.clear();
+  await markJobDone('analyst', date);
+  console.log(`[Analyst] ${date}: ${priced.length} assets, ${facts.sentimentCovered} with sentiment, ${scored} calls scored${report.ai.en || report.ai.id ? ', Gemini narrative' : ''}`);
+  return { date, assets: priced.length, sentiment: facts.sentimentCovered, scored, ai: Boolean(report.ai.en || report.ai.id) };
+}
+
+type TraceData = { calls: SentimentLog['calls']; forward: Array<{ key: string; log: ForwardLog }> };
+
+/** All saved calls (sentiment trace + advisor forward test), cached 10 minutes. */
+async function traceData(): Promise<TraceData> {
+  const hit = traceCache.get('all') as CacheEntry<TraceData> | undefined;
+  if (hit && hit.expiresAt > Date.now()) return hit.data;
+  const data: TraceData = { calls: (await loadSentimentMonths()).flatMap((m) => m.log.calls), forward: await loadForwardMonths() };
+  traceCache.set('all', { data, expiresAt: Date.now() + 10 * 60_000 });
+  return data;
+}
 
 // ---- Morning brief (±07:30 WIB; optional Telegram and web push) ----------------------------------
 
@@ -3803,17 +4045,14 @@ async function polishBrief(brief: MorningBrief, lang: AppLang): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && brief.sections.length > 1) {
     try {
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
       const facts = brief.sections.filter((x) => x.id !== 'overview').map((x) => `${x.title}: ${x.lines.join('; ')}`).join('\n');
-      const response = await Promise.race([
-        ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+      const response = await geminiGenerate({
+          tag: 'brief',
+          timeoutMs: 15_000,
           contents: `Write 3-4 plain ${lang === 'id' ? 'Indonesian (Bahasa Indonesia)' : 'English'} sentences summarizing this morning's market mood for an Indonesian investor, using ONLY these facts. No predictions, no buy/sell advice.\n${facts}`,
           config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-        }),
-        new Promise<null>((r) => setTimeout(() => r(null), 12_000)),
-      ]);
-      const text = response?.text?.trim();
+        });
+      const text = response?.text;
       if (text) {
         brief.sections[0] = { ...brief.sections[0], lines: [text] };
         brief.aiPolished = true;
@@ -3872,6 +4111,13 @@ async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, u
   } else {
     results.forward = { skipped: jobs.state.forward === wibDate(now) ? 'already ran today' : `not due (weekdays after ${FORWARD_TIME} WIB)` };
   }
+  if (dailyJobDue(now, jobs.state.analyst ?? null, ANALYST_TIME) && allowed('analyst')) {
+    const job = runJob('analyst', runDailyAnalyst);
+    results.analyst = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') job.catch(() => {});
+  } else {
+    results.analyst = { skipped: jobs.state.analyst === wibDate(now) ? 'already ran today' : `not due (after ${ANALYST_TIME} WIB)` };
+  }
   if (dailyJobDue(now, jobs.state.brief ?? null, BRIEF_TIME) && allowed('brief')) {
     const job = runJob('brief', runMorningBrief);
     results.brief = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
@@ -3880,6 +4126,72 @@ async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, u
     results.brief = { skipped: jobs.state.brief === wibDate(now) ? 'already ran today' : `not due (after ${BRIEF_TIME} WIB)` };
   }
   return results;
+}
+
+/** Every app price at once (Indodax, Yahoo, CoinGecko/Binance crypto, spot gold) with market caps. */
+async function collectAllTicks(): Promise<Record<string, PriceTick>> {
+  const ticks: Record<string, PriceTick> = {};
+  const now = Date.now();
+
+  const [indodaxResult, yahooTicks] = await Promise.all([
+    Promise.allSettled([getIndodaxPrices()]).then(([r]) => r),
+    getYahooTicks(),
+  ]);
+  Object.assign(ticks, yahooTicks);
+
+  if (indodaxResult.status === 'fulfilled') {
+    Object.assign(ticks, indodaxResult.value);
+  } else {
+    for (const sym of ASSETS.filter((a) => a.indodaxPair).map((a) => a.symbol)) {
+      ticks[sym] = {
+        symbol: sym,
+        group: 'crypto',
+        price: NaN,
+        currency: 'IDR',
+        source: 'Indodax',
+        updatedAt: now,
+        status: 'error',
+        errorMessage: 'Indodax data unavailable',
+      };
+    }
+  }
+
+  const usdIdrPrice = ticks['USD/IDR']?.price;
+  const usdIdrRate = Number.isFinite(usdIdrPrice) ? usdIdrPrice : 0;
+  Object.assign(ticks, await getNonIndodaxCryptoTicks(usdIdrRate).catch(() => ({})));
+
+  try {
+    const goldTick = await getGoldTick(usdIdrRate);
+    ticks['XAU/USD'] = goldTick;
+  } catch {
+    ticks['XAU/USD'] = {
+      symbol: 'XAU/USD',
+      group: 'commodity',
+      price: NaN,
+      currency: 'USD',
+      source: 'Spot XAU',
+      updatedAt: now,
+      status: 'error',
+      errorMessage: 'Gold data unavailable',
+    };
+  }
+
+  await addMarketCaps(ticks);
+  return ticks;
+}
+
+/** Live part of /api/diagnostics: Gemini model status and the daily jobs (no secrets). */
+async function diagnosticsLive(): Promise<Record<string, unknown>> {
+  await loadJobState();
+  return {
+    gemini: geminiStatus(),
+    jobs: {
+      database: store.persistent,
+      lastRun: { ...jobs.state },
+      running: [...jobs.running.keys()],
+      retryAfter: Object.fromEntries([...jobs.retryAfter].filter(([, t]) => t > Date.now())),
+    },
+  };
 }
 
 let lastDueCheck = 0;
@@ -4055,7 +4367,8 @@ async function startServer() {
 
   registerSyncRoutes(app, store, ownerAuth);
   registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
-  registerDiagnosticsRoute(app);
+  registerDiagnosticsRoute(app, diagnosticsLive);
+  registerSbnRoute(app, store);
 
   // Alerts the server checked and sent (owner only)
   app.get('/api/alerts/history', ownerAuth.requireOwner, async (_req, res) => {
@@ -4136,6 +4449,121 @@ async function startServer() {
   });
 
   // Server forward test: track record of the daily AI verdict snapshots
+  // ---- Daily AI analysis, stored data and the recommendation trace ----------------------------
+
+  /** Bearer CRON_TOKEN check for the job / agent endpoints (the token is never echoed). */
+  const cronAuthorized = (req: express.Request, res: express.Response): boolean => {
+    const expected = process.env.CRON_TOKEN?.trim();
+    if (!expected) {
+      res.status(503).json({ error: 'CRON_TOKEN is not configured on the server' });
+      return false;
+    }
+    if (!passphraseMatches(bearerToken(req.headers.authorization) ?? '', expected)) {
+      res.status(401).json({ error: 'Invalid token' });
+      return false;
+    }
+    return true;
+  };
+  const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+  // Latest stored daily analysis, or ?date=YYYY-MM-DD; with the list of stored dates
+  app.get('/api/analyst', async (req, res) => {
+    try {
+      const dates = datesFromKeys(await store.keys(ANALYSIS_PREFIX), ANALYSIS_PREFIX);
+      const date = isDate(req.query.date) ? req.query.date : dates[0];
+      const report = date ? await storedReport(date) : null;
+      res.json({ report, dates: dates.slice(0, 180), schedule: `${ANALYST_TIME} WIB`, database: store.persistent, lastRun: jobs.state.analyst ?? null });
+    } catch {
+      res.status(502).json({ error: 'Analysis unavailable' });
+    }
+  });
+
+  // Run the daily analysis now (Bearer CRON_TOKEN) — for testing or an agent
+  app.post('/api/analyst/run', async (req, res) => {
+    if (!cronAuthorized(req, res)) return;
+    try {
+      res.json({ ok: true, result: await runJob('analyst', runDailyAnalyst) });
+    } catch (err) {
+      res.status(502).json({ ok: false, error: err instanceof Error ? err.message : 'failed' });
+    }
+  });
+
+  // An outside agent (e.g. Argon in Google AI Studio) adds its own note to a day's analysis
+  app.post('/api/analyst/notes', express.json({ limit: '16kb' }), async (req, res) => {
+    if (!cronAuthorized(req, res)) return;
+    const body = (req.body ?? {}) as { date?: unknown; author?: unknown; text?: unknown };
+    const date = isDate(body.date) ? body.date : wibDate(Date.now());
+    const note = cleanNote(body.author, body.text);
+    if (!note) {
+      res.status(400).json({ error: 'text (3–4000 characters) is required' });
+      return;
+    }
+    const report = await storedReport(date);
+    if (!report) {
+      res.status(404).json({ error: `No analysis stored for ${date}` });
+      return;
+    }
+    report.notes = [...report.notes, note].slice(-20);
+    await store.set(`${ANALYSIS_PREFIX}${date}`, report);
+    res.json({ ok: true, date, notes: report.notes.length });
+  });
+
+  // Raw stored data for outside analysis: daily snapshots and reports, at most 31 days per call
+  app.get('/api/analyst/export', async (req, res) => {
+    try {
+      const all = datesFromKeys(await store.keys(SNAP_PREFIX), SNAP_PREFIX);
+      const to = isDate(req.query.to) ? req.query.to : all[0];
+      const from = isDate(req.query.from) ? req.query.from : to ? new Date(Date.parse(to) - 30 * 86_400_000).toISOString().slice(0, 10) : undefined;
+      if (!to || !from || Date.parse(to) - Date.parse(from) > 31 * 86_400_000 || from > to) {
+        res.json({ from: from ?? null, to: to ?? null, snapshots: [], reports: [], available: all.slice(0, 400) });
+        return;
+      }
+      const dates = all.filter((d) => d >= from && d <= to).sort();
+      const snapshots: DailySnapshot[] = [];
+      const reports: AnalystReport[] = [];
+      for (const d of dates) {
+        const snap = parseSnapshot(await store.get(`${SNAP_PREFIX}${d}`));
+        if (snap) snapshots.push(snap);
+        const rep = await storedReport(d);
+        if (rep) reports.push(rep);
+      }
+      res.json({ from, to, snapshots, reports, available: all.slice(0, 400) });
+    } catch {
+      res.status(502).json({ error: 'Export unavailable' });
+    }
+  });
+
+  // One asset's recommendation history: sentiment per horizon and AI Advisor verdicts, with results
+  app.get('/api/track/asset', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset) {
+      res.status(400).json({ error: 'Unknown symbol' });
+      return;
+    }
+    const profile = ['conservative', 'moderate', 'aggressive'].includes(String(req.query.profile)) ? String(req.query.profile) : 'moderate';
+    try {
+      const data = await traceData();
+      const live = livePriceFor(asset)?.price ?? null;
+      const rows = assetTrace(asset.symbol, data.calls, data.forward.map((f) => f.log), live, profile);
+      const mine = data.calls.filter((c) => c.symbol === asset.symbol);
+      const verdicts = data.forward.flatMap((f) => f.log.snapshots).filter((s) => s.symbol === asset.symbol);
+      res.json({ symbol: asset.symbol, profile, livePrice: live, database: store.persistent, rows: rows.slice(0, 600), summary: methodSummaries(mine, verdicts, profile) });
+    } catch {
+      res.status(502).json({ error: 'Trace unavailable' });
+    }
+  });
+
+  // Accuracy of each method over all assets (sentiment per horizon, AI Advisor per horizon)
+  app.get('/api/track/summary', async (req, res) => {
+    const profile = ['conservative', 'moderate', 'aggressive'].includes(String(req.query.profile)) ? String(req.query.profile) : 'moderate';
+    try {
+      const data = await traceData();
+      res.json({ profile, database: store.persistent, methods: methodSummaries(data.calls, data.forward.flatMap((f) => f.log.snapshots), profile) });
+    } catch {
+      res.status(502).json({ error: 'Summary unavailable' });
+    }
+  });
+
   app.get('/api/ai/forward-track', async (req, res) => {
     const horizon = Number(req.query.horizon) === 60 ? 60 : 20;
     const profileParam = String(req.query.profile || 'moderate');
@@ -4188,16 +4616,13 @@ async function startServer() {
       return;
     }
     try {
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
-      const response = await Promise.race([
-        ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+      const response = await geminiGenerate({
+          tag: 'translate',
+          timeoutMs: 8000,
           contents: `Translate this news headline into ${to === 'id' ? 'Indonesian' : 'English'}. Reply with the translation only.\n${text}`,
           config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-        }),
-        new Promise<null>((r) => setTimeout(() => r(null), 8000)),
-      ]);
-      const translated = response?.text?.trim().slice(0, 400);
+        });
+      const translated = response?.text.slice(0, 400);
       if (!translated) {
         res.status(502).json({ error: 'Translation unavailable' });
         return;
@@ -4213,53 +4638,8 @@ async function startServer() {
 
   // 1. All market snapshot endpoint (Indodax + Yahoo JCI & USD/IDR + Gold XAU/USD)
   app.get('/api/market/snapshot', async (_req, res) => {
-    const ticks: Record<string, PriceTick> = {};
     const now = Date.now();
-
-    const [indodaxResult, yahooTicks] = await Promise.all([
-      Promise.allSettled([getIndodaxPrices()]).then(([r]) => r),
-      getYahooTicks(),
-    ]);
-    Object.assign(ticks, yahooTicks);
-
-    if (indodaxResult.status === 'fulfilled') {
-      Object.assign(ticks, indodaxResult.value);
-    } else {
-      for (const sym of ASSETS.filter((a) => a.indodaxPair).map((a) => a.symbol)) {
-        ticks[sym] = {
-          symbol: sym,
-          group: 'crypto',
-          price: NaN,
-          currency: 'IDR',
-          source: 'Indodax',
-          updatedAt: now,
-          status: 'error',
-          errorMessage: 'Indodax data unavailable',
-        };
-      }
-    }
-
-    const usdIdrPrice = ticks['USD/IDR']?.price;
-    const usdIdrRate = Number.isFinite(usdIdrPrice) ? usdIdrPrice : 0;
-    Object.assign(ticks, await getNonIndodaxCryptoTicks(usdIdrRate).catch(() => ({})));
-
-    try {
-      const goldTick = await getGoldTick(usdIdrRate);
-      ticks['XAU/USD'] = goldTick;
-    } catch {
-      ticks['XAU/USD'] = {
-        symbol: 'XAU/USD',
-        group: 'commodity',
-        price: NaN,
-        currency: 'USD',
-        source: 'Spot XAU',
-        updatedAt: now,
-        status: 'error',
-        errorMessage: 'Gold data unavailable',
-      };
-    }
-
-    await addMarketCaps(ticks);
+    const ticks = await collectAllTicks();
     res.json({
       ticks,
       serverTime: now,
@@ -4577,7 +4957,38 @@ async function startServer() {
     }
   });
 
-  // 6b. ~5 years of daily OHLC (Compare, Backtest, portfolio performance)
+  // 6a. Market reaction since a news item was published (geopolitical alert banner)
+  app.get('/api/market/reaction', async (req, res) => {
+    const since = Number(req.query.since);
+    const now = Date.now();
+    const interval = Number.isFinite(since) ? reactionInterval(since, now) : null;
+    if (!interval) {
+      res.status(400).json({ error: 'since must be a time (ms) within the last 5 days' });
+      return;
+    }
+    const symbols = String(req.query.symbols || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const out = await Promise.all(
+      symbols.map(async (symbol) => {
+        const asset = getAssetBySymbol(symbol);
+        if (!asset) return reactionSince(symbol, [], since, Number(interval));
+        try {
+          let r = reactionSince(symbol, await getHistoryCandles(asset, interval), since, Number(interval));
+          // 1-minute bars only cover today's session; older news falls back to 5-minute bars
+          if (r.status === 'noBase' && interval === '1') r = reactionSince(symbol, await getHistoryCandles(asset, '5'), since, 5);
+          return r;
+        } catch {
+          return reactionSince(symbol, [], since, Number(interval));
+        }
+      })
+    );
+    res.json({ since, checkedAt: now, reactions: out });
+  });
+
+  // 6b. Full daily OHLC since the first trade (Compare, Backtest, portfolio performance)
   app.get('/api/market/daily', async (req, res) => {
     const asset = getAssetBySymbol(String(req.query.symbol || ''));
     if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {

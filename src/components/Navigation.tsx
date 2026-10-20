@@ -28,6 +28,7 @@ import {
   History,
   MoreHorizontal,
   X,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
@@ -37,7 +38,7 @@ import { LangToggle } from './LangToggle.tsx';
 
 export type NavTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -67,6 +68,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'nav.advisor', shortLabel: 'nav.advisorShort', icon: BrainCircuit, mobile: true },
   { id: 'brief', label: 'nav.brief', shortLabel: 'nav.briefShort', icon: Newspaper },
+  { id: 'analyst', label: 'nav.analyst', shortLabel: 'nav.analystShort', icon: ClipboardCheck },
   { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
   { id: 'screener', label: 'nav.screener', shortLabel: 'nav.screenerShort', icon: Filter },
   { id: 'compare', label: 'nav.compare', icon: GitCompare },

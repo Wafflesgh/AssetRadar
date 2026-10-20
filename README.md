@@ -54,7 +54,9 @@ backtester. The interface is available in English and Bahasa Indonesia.
 - **Live news**: publisher feeds every 60 s and Google News every 2 min (plus on-demand searches
   for assets without their own feed), pushed over Server-Sent Events, a headline tape, NEW
   badges, and a red **geopolitical alert** for a new war or major escalation (sports and
-  hypothetical scenarios are filtered out).
+  hypothetical scenarios are filtered out). Its market reaction is measured **from the moment the
+  news was published** (1-minute bars; also the first 15 and 60 minutes), and a market that has
+  not traded since says so instead of showing an old 24-hour move.
 - **Watchlist**, **light/dark theme**, a collapsible desktop sidebar, and an option to open the
   app in Terminal mode.
 - **Install as an app (PWA)**: manifest + icons, "Install app" in Settings and a dismissible
@@ -107,14 +109,33 @@ backtester. The interface is available in English and Bahasa Indonesia.
   statistical ranges per horizon with their past calibration, ATR, support/resistance from
   several methods (pivots, moving averages, 52-week high/low, classic pivots, volume nodes),
   pattern targets with their historical hit rate, optional Fibonacci (low evidence), and lines
-  on the alternative chart. An educational **position calculator** (volatility targeting with
-  the target from Settings, and risk per trade with whole IDX lots) — you type every number.
+  on the alternative chart.
 - **Crypto Binance** (`#/crypto`): the top 100 Binance USDT pairs by volume (price, 1h / 4h /
   24h / 7d change, volume, funding, sentiment), search, a pair page `#/crypto/<PAIR>` with
   closed-candle charts, ranges, levels and futures positioning (funding, open interest,
   long/short and taker ratios, basis; 30 days only). Public market data only — no account, no
   API key, no orders. The server keeps Binance usage under 20% of its weight limit and backs off
   on 429/418; a 451 (region blocked) is shown honestly. Coins in Rupiah link both ways.
+- **Retail government bonds (SBN Ritel)** on the Indonesia Macro page: the series the government
+  sells to individuals through banks, securities firms and investment apps — ORI, Sukuk Ritel
+  (tradable, fixed coupon), Savings Bond Ritel and Sukuk Tabungan (floating with a floor, early
+  redemption), Sukuk Wakaf Ritel — with coupon, tenor, maturity, offering period ("Open now" /
+  "Upcoming" / "Offer closed"), minimum and maximum order, whether it can be sold before maturity
+  and the official distribution partners. Read from the official DJPPR (Ministry of Finance)
+  pages twice a day; every series seen is kept, so earlier series stay listed.
+- **Daily AI analysis** (`#/analyst`): every day at 16:15 WIB the server stores a snapshot of all
+  147 assets (price, 24-hour change, sentiment per horizon), checks the data (missing or stale
+  prices, failed sources, AI Advisor coverage, scheduler, database, Gemini), scores earlier calls
+  against real prices, and Gemini writes an analysis from those facts only (English and
+  Indonesian; with a model fallback on quota errors, and the facts alone when Gemini is not
+  available). Every day stays selectable; an outside agent (e.g. Argon in Google AI Studio) can
+  add notes, and `GET /api/analyst/export` gives the raw stored data for further analysis.
+- **Recommendation history** (asset page and AI Advisor): every saved day's sentiment per
+  horizon (short / medium / long investor) and AI Advisor verdict (20 / 60 trading days, per risk
+  profile) with the price then, the change since, and — once the horizon has passed — whether
+  the call was right. Per method (and per asset): saved and scored calls, hit rate versus the
+  base rate and a plain verdict ("not enough results yet", "beats the base rate", "needs
+  review"), to judge whether a method works or should be updated.
 - **Indonesia Macro Pulse** (`#/macro`): one traffic light per category (monetary, inflation,
   growth, external, fiscal, financial, commodities, global) from 10-year z-scores, what each
   usually means for IHSG / the Rupiah / banks, category tabs, stale labels, IDX valuation and
@@ -140,7 +161,7 @@ backtester. The interface is available in English and Bahasa Indonesia.
   the period of each row's figures ("Not reported" when missing). A screen filters reported
   numbers — it is not a recommendation.
 - **Compare** (`#/compare?s=BBCA,BBRI,BMRI`, Terminal `CMP BBCA BBRI`): 2–4 assets rebased to 100
-  over 1M–5Y, prices and changes, and for stocks the statements and ratios side by side.
+  over 1M–10Y or the whole history since the first trade (MAX), prices and changes, and for stocks the statements and ratios side by side.
 - **Portfolio analytics**: daily value and time-weighted return against the IHSG (method
   explained on the page), volatility, max drawdown, correlation between holdings, cash dividends
   (recorded, or suggested from the dividend history × shares held before the ex-date and
@@ -153,14 +174,20 @@ backtester. The interface is available in English and Bahasa Indonesia.
   the buyback price per gram you record there (no scraping); physical gold in the portfolio is
   valued at a recent buyback price.
 - **Backtest** (`#/backtest`): your own entry/exit rules (moving-average cross, price vs MA, RSI,
-  N-day breakout, stop-loss/take-profit) on up to 5 years of daily prices, IDX costs and lots,
+  N-day breakout, stop-loss/take-profit) on 1 year up to the full daily history (e.g. IHSG since
+  1990, S&P 500 since 1927, BBCA since 2004, BTC/IDR since 2014), IDX costs and lots,
   equity vs buy & hold, statistics, first half vs second half and over-fitting warnings. Past
   results do not guarantee future results.
 
 ## AI Advisor (scientific approach)
 
-1. **Data**: ~5 years of daily closes per instrument, US 3-month and 10-year yields, the dollar
-   index; today's live price is the latest data point.
+1. **Data**: the last 10 years of daily closes per instrument (crypto from Indodax since 2016),
+   US 3-month and 10-year yields, the dollar index; today's live price is the latest data point.
+   The full history since the first trade is used for charts, Compare, Backtest and portfolio
+   analytics; the model keeps to 10 years so the walk-forward retraining stays fast on the server
+   (each retraining continues from the previous weights — same results within 0.3 points of
+   probability, about 5× faster) and older market regimes do not dominate. Before 2021, where no
+   FOMC decisions are recorded, the "Fed stance" is read from the 6-month move of the T-bill yield.
 2. **Rate events**: every FOMC decision since 2021 (recorded through 2025, later ones inferred
    from T-bill moves) feeds a "Fed stance" feature and an event study per asset.
 3. **Test 1 — backtested strategy**: a logistic model (13 features), a trend rule and a
@@ -205,7 +232,7 @@ backtester. The interface is available in English and Bahasa Indonesia.
   t−12…t−7, as in the paper); the "last six months" variant is used only if it validates better.
   Stocks without analyst coverage use Model 4 (no FEPS) and are marked.
 - Asness, Moskowitz & Pedersen (2013): momentum skips the last month (t−12…t−2); rank weights;
-  volatility targeting at 10% a year with a 3-year window (position calculator).
+  the 3-year annualized volatility is shown with the technical ranges.
 - Piotroski (2000): the F-score was tested inside high book-to-market stocks and works best for
   small and mid caps without analyst coverage; a score of 0–1 is shown as a distress warning.
 - Novy-Marx: gross profitability is demeaned by industry; the last month's return is a
@@ -243,6 +270,8 @@ backtester. The interface is available in English and Bahasa Indonesia.
 | Financial statements | SEC EDGAR company facts (28 US companies, 10-K/10-Q) and Yahoo Finance fundamentals |
 | Corporate calendar | Yahoo Finance calendar events, dividends and splits |
 | Indonesia macro | Bank Indonesia (bi.go.id), FRED (OECD/IMF/BIS series), World Bank, Yahoo Finance (LQ45, EIDO, regional FX, commodities, global markets), BPS API (optional key) |
+| Retail government bonds (SBN Ritel) | DJPPR, Ministry of Finance (djppr.kemenkeu.go.id product pages, read through the site's public page API) |
+| Full daily history since the first trade | Yahoo Finance chart API with explicit `period1/period2` (`range=max` thins daily bars out to monthly); Indodax daily candles in 10-year windows |
 | CPO, Newcastle coal, nickel, tin, rubber, cocoa, robusta coffee, Thai rice (monthly) | World Bank "Pink Sheet" (CMO historical data, monthly xlsx), read on the server without extra packages |
 | US peer group for the sentiment percentiles | S&P 500 constituents with GICS sector / sub-industry from Wikipedia (CC BY-SA), `src/config/sp500.json` |
 | Spot gold (XAU/USD) | gold-api.com; change and history from Yahoo `GC=F` futures |
@@ -311,8 +340,9 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment, AI summaries and the
-morning brief; `FINNHUB_API_KEY` (free at finnhub.io) for real-time US stock trades; `BPS_API_KEY`
+Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment, AI summaries, the
+morning brief and the daily analysis (`GEMINI_MODELS` optionally sets the model fallback chain used
+on 429 / quota errors); `FINNHUB_API_KEY` (free at finnhub.io) for real-time US stock trades; `BPS_API_KEY`
 (free, register at https://webapi.bps.go.id/developer/) for core, administered-price and
 volatile-food inflation on the macro page; and the stage 3 keys described in "Optional setup"
 (sync, cron, web push, Telegram). All are used on the server only, never logged or sent to the
@@ -365,7 +395,7 @@ Step-by-step guide in Indonesian: `docs/SETUP_Online.md`.
 To try sync locally without a database: `SYNC_PASSPHRASE='at least 8 chars' SYNC_DEV_MEMORY_DB=1 npm run dev`
 (data lives in server memory and is lost on restart).
 
-### Daily jobs (forward test 16:15 WIB, morning brief 07:30 WIB)
+### Daily jobs (forward test + daily analysis 16:15 WIB, morning brief 07:30 WIB)
 
 The server runs them on the first request after their time. To run them even when nobody opens
 the app, set `CRON_TOKEN` to a long random string and schedule a daily HTTP call, e.g. with Google
@@ -376,7 +406,8 @@ POST https://<your-app>/api/cron/daily
 Authorization: Bearer <CRON_TOKEN>
 ```
 
-Schedule it at 07:35 and 16:20 WIB (00:35 and 09:20 UTC); the call runs whatever is due. The repo
+Schedule it at 07:35 and 16:20 WIB (00:35 and 09:20 UTC) every day; the call runs whatever is due
+(the forward test only on weekdays, the daily analysis every day). The repo
 includes a ready GitHub Actions workflow (`.github/workflows/daily-jobs.yml`) that does this for
 free — add the repository secrets `APP_URL` and `CRON_TOKEN` (same value as the app's).
 
@@ -430,9 +461,11 @@ instead (as a new app), then Publish.
 | `scripts/update-sp500.mjs` | Rebuilds `src/config/sp500.json` (S&P 500 peer group, Wikipedia API). |
 | `scripts/generate-secrets.mjs` | Fills self-made secrets (cron token, sync passphrase, VAPID keys) in the local `.env` without printing them. |
 | `supabase/schema.sql` | The single table needed in Supabase. |
-| `.github/workflows/daily-jobs.yml` | Free daily scheduler: calls `POST /api/cron/daily` at 07:35 and 16:20 WIB. |
+| `.github/workflows/daily-jobs.yml` | Free daily scheduler: calls `POST /api/cron/daily` at 07:35 and 16:20 WIB every day. |
 | `server/diagnostics.ts` | `GET /api/diagnostics`: source reachability, Cloud Run region, optional-feature status. |
 | `server/xlsx.ts` | Minimal .xlsx reader (node:zlib) for the World Bank Pink Sheet. |
+| `server/gemini.ts`, `server/geminiPolicy.ts` | Every Gemini call: model chain (`GEMINI_MODELS`), rest after 429 / quota errors, next model, status for diagnostics. |
+| `server/sbn.ts` | `GET /api/sbn/retail`: retail SBN from DJPPR (12 h cache, every series kept in the database). |
 | `scripts/check-i18n.mjs` | Finds UI text that bypasses the translation system (must report 0). |
 | `server/binanceFeed.ts` | Server-side Binance feed: universe, quotes, klines, derivatives, demand-driven polling. |
 | `server/crossSection.ts` | Paced market scans (IDX / US) that feed the sentiment pillars and validation. |
@@ -453,7 +486,11 @@ instead (as a new app), then Publish.
 | `i18n/` | English source texts (`en.ts`), Indonesian translations (`id.ts`), `useT`/`t`, rich text, server text parts. |
 | `crypto/binance.ts` | Binance public-data parsers, weight governor (20% budget, 429/418/451), client with backup hosts. |
 | `crypto/cryptoPricing.ts` | USDT → Rupiah conversion and the price source of each coin. |
-| `sentiment/` | Investment sentiment: cross-section ranks, point-in-time factors, hybrid fair value, pillars, news per horizon, horizon scores, macro signal, cadence, projections (ranges, ATR, levels, position sizing), validation (IC, hit rate). |
+| `sentiment/` | Investment sentiment: cross-section ranks, point-in-time factors, hybrid fair value, pillars, news per horizon, horizon scores, macro signal, cadence, projections (ranges, ATR, levels), validation (IC, hit rate). |
+| `ai/dailyAnalyst.ts` | Daily analysis (pure): snapshot type, movers, sentiment changes, extremes, data-quality checks, Gemini prompt, agent notes. |
+| `ai/recommendationTrace.ts` | Saved sentiment calls, scoring after the horizon, hit rate vs base rate per method, one asset's trace. |
+| `utils/sbnRetail.ts` | Retail SBN (ORI, SBR, SR, ST, SWR) from the official DJPPR page text: coupons, dates, orders, tradability. |
+| `utils/geoReaction.ts` | Market reaction since a news item was published (base bar before the news, 15/60-minute marks). |
 | `utils/analyst.ts` | Analyst estimates (FEPS, earnings surprises) parser. |
 | `services/sentimentService.ts` | Client helpers for sentiment, projections, rankings and Binance endpoints. |
 | `config/idxStocks.json` | Every IDX-listed stock (code, name, shares, board, sector, industry). |
@@ -507,6 +544,9 @@ instead (as a new app), then Publish.
 | File | Description |
 |---|---|
 | `RadarView.tsx` | Radar: search, quick charts, movers, top 20 by market cap, market tables, sentiment. |
+| `AnalystView.tsx` | Daily AI analysis page (`#/analyst`): stored narrative, data checks, facts, method accuracy, agent notes. |
+| `RecommendationHistory.tsx`, `TraceSection.tsx`, `MethodAccuracy.tsx` | Recommendation history of an asset, the track record on the AI Advisor page, and the method-accuracy table. |
+| `SbnRetailSection.tsx` | Retail SBN cards on the Indonesia Macro page. |
 | `MarketTable.tsx` | Compact ranked market table with flash, changes, market cap and mini chart. |
 | `MoversPanel.tsx` | Biggest movers (live 5m, 1H, 24H, 7D) with a market filter. |
 | `AssetSearch.tsx` | Keyboard-friendly asset search box (results, recent searches). |
@@ -529,7 +569,6 @@ instead (as a new app), then Publish.
 | `CryptoBinanceView.tsx` | Crypto Binance page and pair pages (lazy-loaded). |
 | `sentiment/InvestmentSentimentPanel.tsx` | Short / Medium / Long investment sentiment card on the asset page. |
 | `sentiment/TechnicalLevelsPanel.tsx` | Technical ranges, ATR, levels and pattern targets. |
-| `sentiment/PositionCalculator.tsx` | Educational position-size calculator. |
 | `sentiment/SentimentLeaders.tsx` | Sentiment leaders card on the Radar. |
 | `FinancialStatementsPanel.tsx` | Financial statements and ratios on stock pages (lazy-loaded). |
 | `InstallApp.tsx` | "Install app" card and banner. |

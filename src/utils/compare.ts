@@ -40,13 +40,16 @@ export function buildCompareParam(symbols: string[]): string {
     .join(',');
 }
 
-export type ComparePeriod = '1M' | '3M' | '1Y' | '3Y' | '5Y';
+export type ComparePeriod = '1M' | '3M' | '1Y' | '3Y' | '5Y' | '10Y' | 'MAX';
 export const COMPARE_PERIODS: Array<{ key: ComparePeriod; label: string; months: number }> = [
   { key: '1M', label: '1M', months: 1 },
   { key: '3M', label: '3M', months: 3 },
   { key: '1Y', label: '1Y', months: 12 },
   { key: '3Y', label: '3Y', months: 36 },
   { key: '5Y', label: '5Y', months: 60 },
+  { key: '10Y', label: '10Y', months: 120 },
+  // Since the first trade: the rebasing starts where every compared asset has data
+  { key: 'MAX', label: 'MAX', months: 12 * 150 },
 ];
 
 /** First date of a period that ends on `lastDate` (YYYY-MM-DD). */

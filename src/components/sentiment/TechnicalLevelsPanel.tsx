@@ -13,7 +13,6 @@ import { Rich } from '../../i18n/Rich.tsx';
 import { patternName } from '../../i18n/analysisText.ts';
 import { fetchProjections, type Projections } from '../../services/sentimentService.ts';
 import { formatAssetPrice, formatDecimal } from '../../utils/format.ts';
-import { PositionCalculator } from './PositionCalculator.tsx';
 
 export interface ChartLine {
   price: number;
@@ -285,12 +284,6 @@ export function TechnicalLevelsPanel({ asset, onChartLines }: Props) {
             )}
           </div>
 
-          <PositionCalculator
-            volatility={data.volatility}
-            volatilityMethod={data.volatilityMethod}
-            lotSize={data.lotSize}
-            formatMoney={(v) => formatAssetPrice(v, asset)}
-          />
         </>
       )}
       <p role="note" className="text-[11px] flex items-start gap-1.5 p-2.5 rounded-lg" style={{ backgroundColor: 'var(--color-gold-soft)' }}>

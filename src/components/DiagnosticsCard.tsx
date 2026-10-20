@@ -135,6 +135,31 @@ export function DiagnosticsCard() {
             </ul>
             <p style={muted}>{t('diag.setupNote')}</p>
           </div>
+
+          {(data.gemini || data.jobs) && (
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold">{t('diag.liveTitle')}</h3>
+              {data.gemini && (
+                <p>
+                  {t('diag.gemini', { models: data.gemini.models.join(' → '), last: data.gemini.lastModel ?? '—' })}
+                  {data.gemini.lastError && (
+                    <span style={{ color: 'var(--color-gold)' }}> {t('diag.geminiError', { kind: data.gemini.lastError.kind, model: data.gemini.lastError.model })}</span>
+                  )}
+                  {data.gemini.resting.length > 0 && <span style={muted}> {t('diag.geminiResting', { list: data.gemini.resting.map((r) => `${r.model} (${r.restingSec}s)`).join(', ') })}</span>}
+                </p>
+              )}
+              {data.jobs && (
+                <p>
+                  {t('diag.jobs', {
+                    forward: data.jobs.lastRun.forward ?? '—',
+                    analyst: data.jobs.lastRun.analyst ?? '—',
+                    brief: data.jobs.lastRun.brief ?? '—',
+                  })}
+                  {data.jobs.running.length > 0 && <span style={muted}> {t('diag.jobsRunning', { list: data.jobs.running.join(', ') })}</span>}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -884,11 +884,84 @@ export type DiagnosticsReport = {
   runtime: { node: string; cloudRun: boolean };
   probes: ProbeResult[];
   setup: SetupItem[];
+  /** Live server state (no secrets): Gemini model chain and the daily jobs. */
+  gemini?: {
+    configured: boolean;
+    models: string[];
+    lastModel: string | null;
+    lastSuccessAt: number | null;
+    lastError: { kind: string; model: string; at: number } | null;
+    resting: Array<{ model: string; restingSec: number }>;
+  };
+  jobs?: { database: boolean; lastRun: Record<string, string | null>; running: string[] };
 };
 
 /** Server diagnostics: which sources the server reaches and which optional features are on. */
 export async function fetchDiagnostics(refresh = false): Promise<DiagnosticsReport> {
   const res = await fetch(refresh ? '/api/diagnostics?refresh=1' : '/api/diagnostics');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export type { Reaction } from '../utils/geoReaction.ts';
+
+/** Market reaction since a news item was published (unix ms), per app symbol. */
+export async function fetchReaction(since: number, symbols: string[]): Promise<import('../utils/geoReaction.ts').Reaction[]> {
+  const res = await fetch(`/api/market/reaction?since=${Math.round(since)}&symbols=${encodeURIComponent(symbols.join(','))}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data.reactions) ? data.reactions : [];
+}
+
+export type SbnPayload = {
+  checkedAt: number;
+  current: import('../utils/sbnRetail.ts').SbnSeries[];
+  earlier: import('../utils/sbnRetail.ts').SbnSeries[];
+  errors: Array<{ type: string; error: string }>;
+  source: string;
+};
+
+/** Retail government securities (SBN Ritel) from the official DJPPR pages. */
+export async function fetchSbnRetail(): Promise<SbnPayload> {
+  const res = await fetch('/api/sbn/retail');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export type AnalystPayload = {
+  report: import('../ai/dailyAnalyst.ts').AnalystReport | null;
+  dates: string[];
+  schedule: string;
+  database: boolean;
+  lastRun: string | null;
+};
+
+/** The stored daily AI analysis (latest, or one date). */
+export async function fetchAnalyst(date?: string): Promise<AnalystPayload> {
+  const res = await fetch(date ? `/api/analyst?date=${encodeURIComponent(date)}` : '/api/analyst');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export type AssetTracePayload = {
+  symbol: string;
+  profile: string;
+  livePrice: number | null;
+  database: boolean;
+  rows: import('../ai/recommendationTrace.ts').TraceRow[];
+  summary: import('../ai/recommendationTrace.ts').MethodSummary[];
+};
+
+/** One asset's history of sentiment calls and AI Advisor verdicts, with results. */
+export async function fetchAssetTrace(symbol: string, profile = 'moderate'): Promise<AssetTracePayload> {
+  const res = await fetch(`/api/track/asset?symbol=${encodeURIComponent(symbol)}&profile=${encodeURIComponent(profile)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+/** Accuracy of each method over all assets. */
+export async function fetchTrackSummary(profile = 'moderate'): Promise<{ profile: string; database: boolean; methods: import('../ai/recommendationTrace.ts').MethodSummary[] }> {
+  const res = await fetch(`/api/track/summary?profile=${encodeURIComponent(profile)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

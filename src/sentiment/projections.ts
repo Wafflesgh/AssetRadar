@@ -311,39 +311,3 @@ export function annualVol(closes: number[], yearBars = 252, years = 3, ewma = fa
   return Number.isFinite(s) ? s * Math.sqrt(yearBars) : null;
 }
 
-/** AMP volatility targeting: the largest portfolio weight that keeps this position at the target volatility. */
-export function volTargetWeight(targetVolPct: number, assetVol: number | null): number | null {
-  if (assetVol === null || !(assetVol > 0) || !(targetVolPct > 0)) return null;
-  return Math.min(1, targetVolPct / 100 / assetVol);
-}
-
-export interface RiskSizing {
-  units: number;
-  lots: number | null;
-  positionValue: number;
-  riskAmount: number;
-  /** Position value ÷ capital. */
-  weight: number;
-  error: 'stop-above-entry' | 'invalid-input' | null;
-}
-
-/**
- * Risk per trade: capital × risk% ÷ (entry − stop) units, rounded down to whole lots of `lotSize`
- * (100 shares on IDX; 1 elsewhere, fractional allowed when lotSize is 0).
- */
-export function riskPositionSize(capital: number, riskPct: number, entry: number, stop: number, lotSize = 1): RiskSizing {
-  const bad: RiskSizing = { units: 0, lots: null, positionValue: 0, riskAmount: 0, weight: 0, error: 'invalid-input' };
-  if (![capital, riskPct, entry, stop].every((x) => Number.isFinite(x)) || capital <= 0 || riskPct <= 0 || entry <= 0 || stop <= 0) return bad;
-  if (stop >= entry) return { ...bad, error: 'stop-above-entry' };
-  const raw = (capital * (riskPct / 100)) / (entry - stop);
-  const units = lotSize > 0 ? Math.floor(raw / lotSize) * lotSize : raw;
-  const capped = Math.min(units, lotSize > 0 ? Math.floor(capital / entry / lotSize) * lotSize : capital / entry);
-  return {
-    units: capped,
-    lots: lotSize > 1 ? capped / lotSize : null,
-    positionValue: capped * entry,
-    riskAmount: capped * (entry - stop),
-    weight: (capped * entry) / capital,
-    error: null,
-  };
-}

@@ -47,7 +47,7 @@ export const PROBES: ProbeDef[] = [
   { id: 'fearGreed', name: 'Fear & Greed (alternative.me)', url: 'https://api.alternative.me/fng/?limit=1', features: ['binance'] },
   { id: 'goldApi', name: 'gold-api.com', url: 'https://api.gold-api.com/price/XAU', features: ['gold'] },
   { id: 'googleNews', name: 'Google News', url: 'https://news.google.com/rss/search?q=IHSG&hl=id&gl=ID&ceid=ID:id', features: ['news', 'sentiment'] },
-  { id: 'fred', name: 'FRED (St. Louis Fed)', url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=IRSTCI01IDM156N', features: ['macro'] },
+  { id: 'fred', name: 'FRED (St. Louis Fed)', url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=IRSTCI01IDM156N', headers: { 'User-Agent': 'AssetRadar/1.0 (personal research; non-commercial)' }, features: ['macro'] },
   { id: 'worldBank', name: 'World Bank', url: 'https://api.worldbank.org/v2/country/IDN/indicator/FP.CPI.TOTL.ZG?format=json&per_page=1', features: ['macro'] },
   { id: 'worldBankCmo', name: 'World Bank commodity prices', url: 'https://www.worldbank.org/en/research/commodity-markets', features: ['commodities'] },
   { id: 'bi', name: 'Bank Indonesia', url: 'https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx', features: ['macro'] },

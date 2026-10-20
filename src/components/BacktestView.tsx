@@ -1,6 +1,6 @@
 /**
  * BacktestView.tsx — "Test your own strategy" (#/backtest): pick an asset (core assets or any IDX
- * stock) and a period of up to ~5 years of daily bars, build entry rules (all must hold) and exit
+ * stock) and a period from 1 year up to the full history since the first trade, build entry rules (all must hold) and exit
  * rules (any one) from simple blocks — moving-average cross, price vs moving average, RSI, N-day
  * breakout — plus stop-loss / take-profit, costs and lot size. Shows the equity curve against buy &
  * hold, return, yearly return, volatility, max drawdown, win rate, trades, the in-sample vs
@@ -42,6 +42,8 @@ const PERIODS = [
   { label: '2Y', years: 2 },
   { label: '3Y', years: 3 },
   { label: '5Y', years: 5 },
+  { label: '10Y', years: 10 },
+  { label: 'MAX', years: 150 },
 ];
 const pct = (v: number | null | undefined, digits = 1) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(digits)}%`);
 

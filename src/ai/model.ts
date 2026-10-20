@@ -19,9 +19,9 @@ const sigmoid = (z: number) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))
 export function trainLogistic(
   X: number[][],
   y: number[],
-  opts: { iterations?: number; learningRate?: number; l2?: number } = {}
+  opts: { iterations?: number; learningRate?: number; l2?: number; init?: Pick<LogisticModel, 'weights' | 'bias'> } = {}
 ): LogisticModel {
-  const { iterations = 400, learningRate = 0.2, l2 = 0.05 } = opts;
+  const { iterations = 400, learningRate = 0.2, l2 = 0.05, init } = opts;
   const n = X.length;
   const d = X[0]?.length ?? 0;
   const mean = Array<number>(d).fill(0);
@@ -29,25 +29,36 @@ export function trainLogistic(
   for (const row of X) row.forEach((v, j) => (mean[j] += v / n));
   for (const row of X) row.forEach((v, j) => (std[j] += (v - mean[j]) ** 2 / n));
   for (let j = 0; j < d; j++) std[j] = Math.sqrt(std[j]) || 1;
-  const Z = X.map((row) => row.map((v, j) => (v - mean[j]) / std[j]));
+  // Standardized features in one flat typed array (row-major): the gradient loop below runs
+  // iterations × n × d times, so plain indexed loops matter here (same math as before)
+  const Z = new Float64Array(n * d);
+  for (let i = 0; i < n; i++) for (let j = 0; j < d; j++) Z[i * d + j] = (X[i][j] - mean[j]) / std[j];
 
-  const weights = Array<number>(d).fill(0);
+  const w = new Float64Array(d);
+  const grad = new Float64Array(d);
   // Start the bias at the base rate so an uninformative model predicts the base rate
   const base = Math.min(0.99, Math.max(0.01, y.reduce((a, b) => a + b, 0) / Math.max(1, n)));
   let bias = Math.log(base / (1 - base));
+  // Warm start (walk-forward retraining): continue from the previous block's solution
+  if (init && init.weights.length === d) {
+    for (let j = 0; j < d; j++) w[j] = init.weights[j];
+    bias = init.bias;
+  }
   for (let it = 0; it < iterations; it++) {
-    const grad = Array<number>(d).fill(0);
+    grad.fill(0);
     let gradB = 0;
     for (let i = 0; i < n; i++) {
-      const p = sigmoid(Z[i].reduce((s, v, j) => s + v * weights[j], bias));
-      const err = p - y[i];
-      for (let j = 0; j < d; j++) grad[j] += (err * Z[i][j]) / n;
-      gradB += err / n;
+      const o = i * d;
+      let z = bias;
+      for (let j = 0; j < d; j++) z += Z[o + j] * w[j];
+      const err = (sigmoid(z) - y[i]) / n;
+      for (let j = 0; j < d; j++) grad[j] += err * Z[o + j];
+      gradB += err;
     }
-    for (let j = 0; j < d; j++) weights[j] -= learningRate * (grad[j] + l2 * weights[j]);
+    for (let j = 0; j < d; j++) w[j] -= learningRate * (grad[j] + l2 * w[j]);
     bias -= learningRate * gradB;
   }
-  return { weights, bias, mean, std };
+  return { weights: Array.from(w), bias, mean, std };
 }
 
 export function predictProba(model: LogisticModel, x: number[]): number {
@@ -104,15 +115,19 @@ export function walkForwardPredictions(
   const { minTrain = 250, step = 21 } = opts;
   const preds: Prediction[] = [];
   if (samples.length < minTrain + step) return preds;
+  let previous: LogisticModel | null = null;
   for (let start = minTrain; start < samples.length; start += step) {
     const blockStartT = samples[start].t;
     const train = samples.filter((s) => s.t + horizon < blockStartT);
     if (train.length < minTrain / 2) continue;
-    const model = trainLogistic(
+    // First fit from scratch; later fits only add one block of data, so they continue from the
+    // previous weights with fewer iterations (keeps 10 years of history affordable on the server)
+    const model: LogisticModel = trainLogistic(
       train.map((s) => s.x),
       train.map((s) => s.y),
-      { iterations: 250 }
+      previous ? { iterations: 80, init: previous } : { iterations: 250 }
     );
+    previous = model;
     for (const s of samples.slice(start, start + step)) {
       preds.push({ t: s.t, p: predictProba(model, s.x), y: s.y, r: s.fwdReturn });
     }

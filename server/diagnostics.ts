@@ -70,12 +70,28 @@ async function runDiagnostics(): Promise<DiagnosticsReport> {
   };
 }
 
-export function registerDiagnosticsRoute(app: Express): void {
+/** The probe report, from the 5-minute cache when fresh (used by the daily analysis). */
+export async function diagnosticsProbes(): Promise<ProbeResult[]> {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.data.probes;
+  pending ??= runDiagnostics().finally(() => {
+    pending = null;
+  });
+  const data = await pending;
+  cache = { at: Date.now(), data };
+  return data.probes;
+}
+
+/**
+ * `live` adds fields that are cheap and change often (Gemini model status, daily job status);
+ * they are read on every request, not cached with the probes.
+ */
+export function registerDiagnosticsRoute(app: Express, live?: () => Promise<Record<string, unknown>> | Record<string, unknown>): void {
+  const withLive = async (data: DiagnosticsReport) => ({ ...data, ...(live ? await Promise.resolve(live()).catch(() => ({})) : {}) });
   app.get('/api/diagnostics', async (req, res) => {
     const fresh = req.query.refresh === '1';
     try {
       if (!fresh && cache && Date.now() - cache.at < TTL_MS) {
-        res.json(cache.data);
+        res.json(await withLive(cache.data));
         return;
       }
       pending ??= runDiagnostics().finally(() => {
@@ -83,7 +99,7 @@ export function registerDiagnosticsRoute(app: Express): void {
       });
       const data = await pending;
       cache = { at: Date.now(), data };
-      res.json(data);
+      res.json(await withLive(data));
     } catch {
       res.status(500).json({ error: 'Diagnostics failed' });
     }

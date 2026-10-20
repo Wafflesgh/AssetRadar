@@ -58,6 +58,13 @@ test('fedStanceSeries reflects recent cuts and hikes', () => {
     { date: '2024-09-18', decision: 'cut' as const, inferred: false },
   ];
   assert.deepEqual(fedStanceSeries(['2022-04-01', '2023-06-01', '2024-10-01'], meetings), [-1, 0, 1]);
+  // Before 2021: stance from the T-bill move over ~6 months (cut 2 points → cutting)
+  const old = Array.from({ length: 200 }, (_, i) => `2019-${String(1 + Math.floor(i / 28)).padStart(2, '0')}-${String(1 + (i % 28)).padStart(2, '0')}`);
+  const bills = old.map((_, i) => 2.4 - (i / 199) * 2);
+  const st = fedStanceSeries(old, meetings, bills);
+  assert.equal(st[0], 0); // not enough history yet
+  assert.equal(st[199], 1);
+  assert.equal(fedStanceSeries(old, meetings, bills.map((b) => 5 - b))[199], -1);
 });
 
 test('eventStudy averages returns after each decision type', () => {

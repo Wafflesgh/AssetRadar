@@ -33,6 +33,7 @@ import { formatRelativeTime } from '../utils/marketHours.ts';
 import { getAiPrefs, getSavedRiskResult, saveAiPrefs, type AiPrefs } from '../utils/storage.ts';
 import { profileForAnswers } from '../config/riskProfiles.ts';
 import { LiveTrackRecord } from './LiveTrackRecord.tsx';
+import { TraceSection } from './TraceSection.tsx';
 import { useLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { assetName, groupTitle } from '../i18n/assetNames.ts';
@@ -255,6 +256,7 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
             )
           )}
           <LiveTrackRecord ranked={ranked} horizonDays={data.horizonDays} profile={prefs.profile} ticks={ticks} />
+          <TraceSection ticks={ticks} profile={prefs.profile} />
           <Methodology open={showMethod} onToggle={() => setShowMethod((s) => !s)} />
         </>
       ) : null}

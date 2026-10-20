@@ -2,27 +2,29 @@
  * GeoAlertBanner.tsx — Large red banner shown on every page when the live news hub detects a
  * sudden war / attack / major escalation ("high" geo alert in the last 3 hours). Shows the
  * lead headline in its original language, corroborating sources, how key safe-haven and
- * risk assets are moving right now, and offers desktop notifications. Dismissible per alert.
+ * risk assets moved since the news was published (1-minute bars; first 15 / 60 minutes too),
+ * and offers desktop notifications. Dismissible per alert.
  */
 import { assetShortName } from '../i18n/assetNames.ts';
 import { useT } from '../i18n/index.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertOctagon, Bell, ExternalLink, X } from 'lucide-react';
-import { ASSETS, PriceTick } from '../config/assets.ts';
+import { ASSETS } from '../config/assets.ts';
+import { fetchReaction, type Reaction } from '../services/marketDataService.ts';
 import { isBreaking, useLiveNews, useNow } from '../hooks/useLiveNews.ts';
 import { formatAge } from '../utils/marketHours.ts';
 import { formatPercent } from '../utils/format.ts';
 import { selectGeoAlert } from '../utils/newsTags.ts';
 import { getDismissedAlerts, saveDismissedAlerts } from '../utils/storage.ts';
 
-// Assets that usually react first to conflict news (shown as "market reaction now")
+// Assets that usually react first to conflict news (shown as "market reaction since the news")
 const REACTION_SYMBOLS = ['XAU/USD', 'USD/IDR', '^JKSE', 'BTC/IDR'];
 
 function notificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window;
 }
 
-export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) {
+export function GeoAlertBanner() {
   const news = useLiveNews();
   const now = useNow(15_000);
   const [dismissed, setDismissed] = useState<string[]>(() => getDismissedAlerts());
@@ -37,6 +39,29 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
     [news.items, now, dismissed]
   );
   const breaking = alert ? isBreaking(news, alert.lead.id, now) : false;
+  const since = alert?.lead.publishedAtMs ?? null;
+  const [reactions, setReactions] = useState<{ since: number; rows: Reaction[] } | null>(null);
+  const [reactionFailed, setReactionFailed] = useState(false);
+
+  // Reaction since the publish time, refreshed every minute while the banner is shown
+  useEffect(() => {
+    if (!since) return;
+    let stop = false;
+    const load = () =>
+      fetchReaction(since, REACTION_SYMBOLS)
+        .then((rows) => {
+          if (stop) return;
+          setReactions({ since, rows });
+          setReactionFailed(false);
+        })
+        .catch(() => !stop && setReactionFailed(true));
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, [since]);
 
   // Desktop notification + tab title flash for alerts that arrive live
   useEffect(() => {
@@ -87,6 +112,7 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
   };
 
   const { lead, related, sources } = alert;
+  const rows = reactions && reactions.since === lead.publishedAtMs ? reactions.rows : [];
   const age = formatAge(lead.publishedAtMs, now);
 
   return (
@@ -130,25 +156,34 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
             <ExternalLink className="w-4 h-4 mt-1 shrink-0 opacity-60 group-hover:opacity-100" />
           </a>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono-num">
-            <span style={{ color: 'var(--text-secondary)' }}>{t('geo.reaction')}</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {(() => {
+                const mins = rows.filter((x) => x.status === 'ok').map((x) => x.minutes ?? 0);
+                return mins.length ? t('geo.reactionSince', { minutes: Math.max(...mins) }) : t('geo.reactionSinceShort');
+              })()}
+            </span>
             {REACTION_SYMBOLS.map((symbol) => {
               const asset = ASSETS.find((a) => a.symbol === symbol);
-              const pct = ticks[symbol]?.changePct24h;
+              const row = rows.find((x) => x.symbol === symbol);
+              const pct = row?.status === 'ok' ? row.changePct : null;
+              const color = (v: number | null) => (v === null || v === 0 ? 'var(--text-secondary)' : v > 0 ? 'var(--color-up)' : 'var(--color-down)');
               return (
                 <span key={symbol} className="font-semibold">
                   {asset ? assetShortName(asset) : ''}{' '}
-                  <span
-                    style={{
-                      color:
-                        pct === undefined || pct === 0
-                          ? 'var(--text-secondary)'
-                          : pct > 0
-                            ? 'var(--color-up)'
-                            : 'var(--color-down)',
-                    }}
-                  >
-                    {formatPercent(pct)}
-                  </span>
+                  {row?.status === 'noTradeSince' ? (
+                    <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>{t('geo.closedSince')}</span>
+                  ) : (
+                    <span style={{ color: color(pct) }}>{reactions || reactionFailed ? formatPercent(pct ?? undefined) : '…'}</span>
+                  )}
+                  {row?.status === 'ok' && (row.after15Pct !== null || row.after60Pct !== null) && (
+                    <span className="font-normal text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                      {' ('}
+                      {row.after15Pct !== null && t('geo.after15', { pct: formatPercent(row.after15Pct) })}
+                      {row.after15Pct !== null && row.after60Pct !== null && ' · '}
+                      {row.after60Pct !== null && t('geo.after60', { pct: formatPercent(row.after60Pct) })}
+                      {')'}
+                    </span>
+                  )}
                 </span>
               );
             })}

@@ -20,6 +20,8 @@ test('period start dates', () => {
   assert.equal(periodStart('1M', '2026-10-20'), '2026-09-20');
   assert.equal(periodStart('1Y', '2026-10-20'), '2025-10-20');
   assert.equal(periodStart('5Y', '2026-10-20'), '2021-10-20');
+  assert.equal(periodStart('10Y', '2026-10-20'), '2016-10-20');
+  assert.ok(periodStart('MAX', '2026-10-20') < '1900-01-01');
 });
 
 test('normalization: start at 100, carry closes over another exchange holiday', () => {

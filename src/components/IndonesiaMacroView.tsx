@@ -11,6 +11,7 @@ import { Rich } from '../i18n/Rich.tsx';
 import { ExternalLink, Landmark, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, type IndonesiaMacro } from '../services/marketDataService.ts';
+import { SbnRetailSection } from './SbnRetailSection.tsx';
 import { formatDecimal, formatNumber } from '../utils/format.ts';
 import { MACRO_CATEGORIES, latest, type MacroCategory, type MacroIndicator, type MacroSeries, type PulseCategory } from '../utils/macro.ts';
 
@@ -99,6 +100,8 @@ export function IndonesiaMacroView() {
           {t('macro.intro')}
         </p>
       </section>
+
+      <SbnRetailSection />
 
       {error && !data ? (
         <div className="p-6 rounded-xl border text-sm space-y-3" style={card} role="alert">

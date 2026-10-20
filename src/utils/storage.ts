@@ -28,7 +28,6 @@ const STORAGE_KEYS = {
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
   LANG: 'assetradar_lang_v1',
   NUMBER_FORMAT: 'assetradar_number_format_v1',
-  VOL_TARGET: 'assetradar_vol_target_v1',
   SYNC_SESSION: 'assetradar_sync_session',
   SYNC_META: 'assetradar_sync_meta_v1',
   ALERTS: 'assetradar_alerts_v1',
@@ -685,12 +684,3 @@ export function saveNumberFormatPref(pref: NumberFormatPref): void {
   safeSet(STORAGE_KEYS.NUMBER_FORMAT, pref);
 }
 
-/** Default annual volatility target for the position-size calculator (percent). */
-export function getVolTarget(): number {
-  const v = Number(safeGet(STORAGE_KEYS.VOL_TARGET));
-  return Number.isFinite(v) && v > 0 && v <= 100 ? v : 10;
-}
-
-export function saveVolTarget(pct: number): void {
-  safeSet(STORAGE_KEYS.VOL_TARGET, String(pct));
-}

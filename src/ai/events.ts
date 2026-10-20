@@ -75,9 +75,23 @@ export function resolveMeetings(tbill: DailyBar[], today: string): ResolvedMeeti
  * Fed stance per target date: +1 if a cut happened in the previous 180 days and no hike
  * since, −1 for a recent hike, 0 otherwise. Uses only meetings on or before each date.
  */
-export function fedStanceSeries(dates: string[], meetings: ResolvedMeeting[]): number[] {
+/**
+ * Before the first meeting in FOMC_MEETINGS (2021) there are no recorded decisions. When the
+ * aligned 3-month T-bill yield is given, the stance there is read from its move over the last
+ * ~6 months (≥ 0.5 point down = cutting, ≥ 0.5 up = hiking), so older history is not mistaken
+ * for "no recent change".
+ */
+export function fedStanceSeries(dates: string[], meetings: ResolvedMeeting[], tbill?: Array<number | null>): number[] {
   const past = meetings.filter((m) => m.decision && m.decision !== 'hold');
-  return dates.map((date) => {
+  const first = FOMC_MEETINGS[0]?.date ?? '';
+  return dates.map((date, i) => {
+    if (tbill && date < first) {
+      const now = tbill[i];
+      const then = i >= 126 ? tbill[i - 126] : null;
+      if (now === null || now === undefined || then === null || then === undefined) return 0;
+      const move = now - then;
+      return move <= -0.5 ? 1 : move >= 0.5 ? -1 : 0;
+    }
     const limit = shiftDays(date, -180);
     let last: ResolvedMeeting | undefined;
     for (const m of past) {

@@ -17,7 +17,7 @@ Skrip `node scripts/generate-secrets.mjs` sudah mengisi `.env` di laptop dengan:
 
 Buka file `D:\Asset Radar\assetradar\.env` dengan Notepad untuk melihat nilainya. Kalau ingin kata sandi sinkronisasi buatan sendiri, ganti nilai `SYNC_PASSPHRASE` (minimal 8 karakter).
 
-## 1. Database gratis (Supabase) — untuk sinkronisasi, notifikasi HP, dan catatan uji nyata
+## 1. Database gratis (Supabase) — untuk sinkronisasi, notifikasi HP, uji nyata, dan analisis AI harian yang tersimpan
 
 1. Buka https://supabase.com → **Start your project** → login (bisa dengan GitHub).
 2. **New project**: nama `assetradar`, buat password database (simpan sendiri, tidak dipakai aplikasi), region **Southeast Asia (Singapore)** → **Create new project**. Tunggu ±2 menit.
@@ -46,7 +46,8 @@ Di app AssetRadar di AI Studio → panel **Secrets** (ikon kunci) → tambahkan 
 | `FINNHUB_API_KEY` | `.env` (sudah ada) |
 | `APP_URL` | alamat aplikasi yang sudah dipublish (lihat langkah 4) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | opsional, langkah 6 |
-| `GEMINI_API_KEY`, `BPS_API_KEY` | opsional |
+| `GEMINI_API_KEY`, `BPS_API_KEY` | opsional (di AI Studio biasanya `GEMINI_API_KEY` sudah otomatis) |
+| `GEMINI_MODELS` | opsional — urutan model Gemini cadangan saat kuota habis, mis. `gemini-3.8-flash,gemini-flash-latest,gemini-flash-lite-latest` (tanpa ini dipakai urutan itu) |
 
 Lalu **Publish** ulang (aplikasi harus dijalankan ulang agar membaca Secrets baru).
 
@@ -56,10 +57,12 @@ Buka aplikasi online → **Settings** → **Server diagnostics** → **Run diagn
 
 - Tabel sumber data: mana yang **OK** dan mana yang **Blocked here** dari server Google (mis. Binance bila server ada di AS). Fitur yang terdampak tetap jalan dengan pesan jujur.
 - Bagian **Optional features on this server**: setelah langkah 2, *Database*, *Sync*, *Phone notifications* dan *Daily scheduler* harus bercentang hijau. Kalau masih silang, nama secret yang kurang ditampilkan di situ.
+- Bagian **AI and daily jobs on this server**: model Gemini yang dipakai (dan yang sedang "istirahat" karena kuota), serta kapan forward test, analisis harian, dan ringkasan pagi terakhir berjalan.
+- Halaman **Daily AI Analysis** (`#/analyst`) menampilkan analisis yang tersimpan beserta pemeriksaan kualitas data.
 
 ## 4. Jadwal harian otomatis (GitHub Actions, gratis)
 
-Repo sudah berisi `.github/workflows/daily-jobs.yml`, yang memanggil aplikasi pukul 07:35 WIB setiap hari (ringkasan pagi) dan 16:20 WIB hari kerja (uji nyata AI).
+Repo sudah berisi `.github/workflows/daily-jobs.yml`, yang memanggil aplikasi pukul 07:35 WIB setiap hari (ringkasan pagi) dan 16:20 WIB setiap hari (uji nyata AI di hari kerja + analisis AI harian yang disimpan).
 
 1. Buka https://github.com/Wafflesgh/AssetRadar → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
    - `APP_URL` = alamat aplikasi online (contoh `https://xxxx.run.app`, tanpa `/` di akhir).

@@ -1,6 +1,7 @@
 # daily-jobs.yml — Free daily scheduler for AssetRadar: calls POST /api/cron/daily on the
-# published app at 07:35 WIB every day (morning brief) and 16:20 WIB on weekdays (AI forward test),
-# so they run even when nobody opens the app; it also keeps a free Supabase project from pausing.
+# published app at 07:35 WIB every day (morning brief) and 16:20 WIB every day (AI forward test on
+# weekdays, then the daily snapshot + AI analysis that is stored for later), so they run even when
+# nobody opens the app; it also keeps a free Supabase project from pausing.
 # Needs two repository secrets (GitHub → Settings → Secrets and variables → Actions):
 #   APP_URL    — the published app address, e.g. https://xxxx.run.app
 #   CRON_TOKEN — the same value as the app's CRON_TOKEN secret
@@ -10,7 +11,7 @@ name: AssetRadar daily jobs
 on:
   schedule:
     - cron: '35 0 * * *' # 07:35 WIB (UTC+7) every day: morning brief
-    - cron: '20 9 * * 1-5' # 16:20 WIB on weekdays: AI forward test
+    - cron: '20 9 * * *' # 16:20 WIB every day: forward test (weekdays) + daily analysis
   workflow_dispatch: {}
 
 permissions: {}
@@ -18,7 +19,7 @@ permissions: {}
 jobs:
   call-app:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - name: Call /api/cron/daily
         env:
@@ -32,7 +33,7 @@ jobs:
           url="${APP_URL%/}/api/cron/daily"
           # The server may be asleep (Cloud Run cold start): try a few times
           for attempt in 1 2 3; do
-            code=$(curl -s -o response.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_TOKEN" --max-time 150 "$url" || echo 000)
+            code=$(curl -s -o response.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_TOKEN" --max-time 290 "$url" || echo 000)
             echo "Attempt $attempt: HTTP $code"
             if [ "$code" = "200" ]; then
               cat response.json

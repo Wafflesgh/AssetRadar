@@ -199,3 +199,14 @@ Pull request tahap 3 (https://github.com/Wafflesgh/AssetRadar/pull/1) **belum di
 - **Komoditas Bank Dunia**: Pink Sheet dibaca tanpa paket tambahan → CPO, batu bara Newcastle, nikel, timah, karet TSR20, kakao, kopi robusta, beras Thailand (bulanan, data s.d. Sep 2026) di ID Macro → Komoditas.
 - **Harga emas Antam/Pegadaian**: logammulia.com menolak akses skrip (HTTP 403, bahkan robots.txt), pegadaian.co.id di balik Cloudflare → tetap input manual.
 - **Masih butuh pemilik**: membuat proyek Supabase, mengisi Secrets di AI Studio dan 2 repo secret di GitHub, bot Telegram (opsional).
+
+## Permintaan lanjutan pemilik (laptop, 20 Okt 2026 malam)
+
+- **2 error dari Argon diperbaiki**: FRED kini diakses dengan User-Agent aplikasi (FRED memutus UA browser dan menggantung UA bawaan Node `node` — penyebab timeout di Cloud Run), timeout 30 dtk + 1 ulang. Semua panggilan Gemini lewat `server/gemini.ts` dengan rantai model cadangan (`GEMINI_MODELS`), istirahat sesuai `retryDelay` saat 429, lalu model berikutnya; status di Server diagnostics.
+- **Kalkulator ukuran posisi dihapus** (komponen, pengaturan target volatilitas, fungsi & test, teks).
+- **Reaksi pasar geo-alert** dihitung sejak berita terbit (bar 1 menit; +15/+60 menit; "tutup sejak berita"), bukan 24 jam. Diuji live: emas −0,20% / USD/IDR −0,29% / BTC −0,01% dalam 31–40 menit; IHSG "tutup sejak berita".
+- **SBN Ritel** di ID Macro dari halaman resmi DJPPR (API CMS publik situsnya): ORI030 (6,90%/7,00% tetap), SBR015 (6,75%/6,85% mengambang, ditawarkan s.d. 22 Okt 2026), SR025, ST016, SWR007 — semua angka terbaca benar dibanding teks halaman.
+- **Data penuh**: `/api/market/daily` sejak aset pertama ada (IHSG 1990, S&P 500 1927, BTC/IDR Indodax 2014); Compare/Backtest pilihan 10Y & MAX. Model AI Advisor 10 tahun (sebelumnya 5) dengan warm start: komputasi pertama ±21 dtk untuk 55 aset (data penuh untuk model diuji: >10 menit & 800 MB → ditolak).
+- **Analisis AI harian + riwayat rekomendasi**: job `analyst` 16:15 WIB setiap hari menyimpan foto 147 aset, rekomendasi sentimen per horizon, pemeriksaan kualitas data, narasi Gemini EN/ID; halaman `#/analyst`, riwayat rekomendasi di halaman aset dan AI Advisor, penilaian metode (≥30 hasil). Diuji lokal: 52 dtk, 147 aset, 140 dengan sentimen; token salah → 401.
+- **Dokumen**: `docs/PANDUAN_Fitur_Terbaru.md` (ringkasan untuk pemilik), `docs/PROMPT_Argon.md` (perintah agen Argon).
+- **Masih butuh pemilik**: Supabase + Secrets AI Studio + 2 repo secret GitHub (tanpa database, riwayat hilang saat server restart).

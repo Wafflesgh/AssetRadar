@@ -90,6 +90,9 @@ test('screener and compare routes', () => {
 test('brief route', () => {
   assert.deepEqual(parseHashRoute('#/brief'), { tab: 'brief' });
   assert.equal(buildHashRoute('brief'), '#/brief');
+  assert.deepEqual(parseHashRoute('#/analyst'), { tab: 'analyst' });
+  assert.deepEqual(parseHashRoute('#/analisis'), { tab: 'analyst' });
+  assert.equal(buildHashRoute('analyst'), '#/analyst');
 });
 
 test('backtest route', () => {
