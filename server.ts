@@ -67,6 +67,8 @@ import {
   spotQuotes,
   warmBinance,
 } from './server/binanceFeed.ts';
+import { CrossSection, monthlyFromBars, type CrossMarket } from './server/crossSection.ts';
+import { ANALYST_MODULES, parseAnalystData, type AnalystData } from './src/utils/analyst.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -2308,6 +2310,52 @@ async function fetchQuoteSummary(yahooSymbol: string, modules: string): Promise<
   return res.json();
 }
 
+
+// ---- Cross-section data for the sentiment pillars (paced background scans) -------------------
+
+const analystCache = new Map<string, CacheEntry<AnalystData | null>>();
+
+/** Analyst consensus and EPS surprises (Yahoo quoteSummary with cookie + crumb; cache 12 h). */
+async function analystFor(asset: Asset): Promise<AnalystData | null> {
+  if (!asset.yahooSymbol || !['idStock', 'usStock', 'globalStock'].includes(asset.group)) return null;
+  const cached = analystCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const data = parseAnalystData(await fetchQuoteSummary(asset.yahooSymbol, ANALYST_MODULES));
+  analystCache.set(asset.symbol, { data, expiresAt: Date.now() + 12 * 3600_000 });
+  return data;
+}
+
+function crossLoaders() {
+  return {
+    symbolOf: (a: Asset) => a.symbol,
+    monthly: async (batch: Asset[]) => {
+      const bySymbol = new Map(batch.map((a) => [a.yahooSymbol as string, a.symbol]));
+      const spark = await fetchYahooSpark([...bySymbol.keys()], '10y', '1mo');
+      const out = new Map<string, ReturnType<typeof monthlyFromBars>>();
+      for (const [ysym, series] of spark) {
+        const app = bySymbol.get(ysym);
+        if (app) out.set(app, monthlyFromBars(series.timestamps, series.closes));
+      }
+      return out;
+    },
+    statements: async (a: Asset) => {
+      const raw = await rawStatementsFor(a);
+      return raw ? { annual: raw.annual, quarterly: raw.quarterly, currency: raw.currency } : null;
+    },
+    analyst: analystFor,
+  };
+}
+
+const crossSections: Record<CrossMarket, CrossSection<Asset>> = {
+  idx: new CrossSection('idx', () => ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol), crossLoaders()),
+  us: new CrossSection('us', () => ASSETS.filter((a) => a.group === 'usStock' && a.yahooSymbol), crossLoaders()),
+};
+
+/** The cross-section a stock belongs to (null for other asset classes). */
+function crossSectionOf(asset: Asset): CrossSection<Asset> | null {
+  return asset.group === 'idStock' ? crossSections.idx : asset.group === 'usStock' ? crossSections.us : null;
+}
+
 const CALENDAR_TTL_MS = 12 * 3600_000;
 const calendarCache = new Map<string, CacheEntry<CalendarEvent[]>>();
 
@@ -3102,6 +3150,27 @@ async function startServer() {
     }
   });
 
+
+
+  // Analyst consensus (next-year EPS, surprises) for one stock
+  app.get('/api/fundamentals/analyst', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset || !['idStock', 'usStock', 'globalStock'].includes(asset.group)) {
+      res.status(400).json({ error: 'Stocks only' });
+      return;
+    }
+    try {
+      res.json({ symbol: asset.symbol, analyst: await analystFor(asset), source: 'Yahoo Finance (earningsTrend, earningsHistory)' });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Analyst data unavailable' });
+    }
+  });
+
+  // Progress of the cross-section scans (starts them when stale)
+  app.get('/api/sentiment/scan-status', (_req, res) => {
+    for (const cs of Object.values(crossSections)) cs.touch();
+    res.json({ markets: Object.values(crossSections).map((cs) => cs.status()), binance: binanceStatus(), serverTime: Date.now() });
+  });
 
   // ---- Binance (public market data only; no API key) ----------------------------------------
   // Top-100 USDT pairs with live price, 1h/4h/24h/7d change, volume and funding

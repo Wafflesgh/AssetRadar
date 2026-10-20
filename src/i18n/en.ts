@@ -1281,6 +1281,12 @@ export const en = {
   "fs.notReportedBanks": "Not reported (common for banks)",
   "fs.ofAssets": "of assets",
   "fs.shares": "shares",
+  "item.costOfRevenue": "Cost of revenue",
+  "item.sga": "Selling, general & administrative",
+  "item.pretaxIncome": "Pretax income",
+  "item.taxProvision": "Income tax",
+  "item.inventory": "Inventory",
+  "item.receivables": "Accounts receivable",
   // @@KEYS@@
 } as const;
 

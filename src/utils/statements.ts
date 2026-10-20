@@ -30,7 +30,13 @@ export type ItemKey =
   | 'capex'
   | 'freeCashFlow'
   | 'dividendsPaid'
-  | 'shares';
+  | 'shares'
+  | 'costOfRevenue'
+  | 'sga'
+  | 'pretaxIncome'
+  | 'taxProvision'
+  | 'inventory'
+  | 'receivables';
 
 export type Statement = 'income' | 'balance' | 'cashflow';
 
@@ -55,6 +61,13 @@ export const LINE_ITEMS: Array<{ key: ItemKey; label: string; statement: Stateme
   { key: 'freeCashFlow', label: 'Free cash flow', statement: 'cashflow', flow: true },
   { key: 'dividendsPaid', label: 'Dividends paid', statement: 'cashflow', flow: true },
   { key: 'shares', label: 'Shares (diluted / outstanding)', statement: 'balance', flow: false },
+  // Inputs for the operational audit (Abarbanell & Bushee) and the effective tax rate
+  { key: 'costOfRevenue', label: 'Cost of revenue', statement: 'income', flow: true },
+  { key: 'sga', label: 'Selling, general & administrative', statement: 'income', flow: true },
+  { key: 'pretaxIncome', label: 'Pretax income', statement: 'income', flow: true },
+  { key: 'taxProvision', label: 'Income tax', statement: 'income', flow: true },
+  { key: 'inventory', label: 'Inventory', statement: 'balance', flow: false },
+  { key: 'receivables', label: 'Accounts receivable', statement: 'balance', flow: false },
 ];
 
 const FLOW = new Set(LINE_ITEMS.filter((i) => i.flow && !i.perShare).map((i) => i.key));
@@ -65,6 +78,8 @@ export interface PeriodValues {
   /** Period end, YYYY-MM-DD. */
   end: string;
   months: 3 | 6 | 12;
+  /** First SEC filing date of this period's figures (point-in-time checks); absent for Yahoo. */
+  filed?: string;
   values: Partial<Record<ItemKey, number>>;
   sources: Partial<Record<ItemKey, ValueSource>>;
 }
@@ -92,6 +107,12 @@ export const YAHOO_STATEMENT_TYPES: Record<ItemKey, string | null> = {
   freeCashFlow: 'FreeCashFlow',
   dividendsPaid: 'CashDividendsPaid',
   shares: 'OrdinarySharesNumber',
+  costOfRevenue: 'CostOfRevenue',
+  sga: 'SellingGeneralAndAdministration',
+  pretaxIncome: 'PretaxIncome',
+  taxProvision: 'TaxProvision',
+  inventory: 'Inventory',
+  receivables: 'AccountsReceivable',
 };
 
 /** All "annualX,quarterlyX" type names for one fundamentals-timeseries request. */
@@ -151,6 +172,15 @@ const SEC_TAGS: Partial<Record<ItemKey, string[]>> = {
   capex: ['PaymentsToAcquirePropertyPlantAndEquipment'],
   dividendsPaid: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'],
   shares: ['WeightedAverageNumberOfDilutedSharesOutstanding'],
+  costOfRevenue: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
+  sga: ['SellingGeneralAndAdministrativeExpense'],
+  pretaxIncome: [
+    'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
+    'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments',
+  ],
+  taxProvision: ['IncomeTaxExpenseBenefit'],
+  inventory: ['InventoryNet'],
+  receivables: ['AccountsReceivableNetCurrent'],
 };
 
 interface SecFact {
@@ -159,6 +189,8 @@ interface SecFact {
   val: number;
   filed?: string;
   form?: string;
+  /** Earliest filing that reported this period (later 10-Ks repeat it as a comparative). */
+  firstFiled?: string;
 }
 
 const dayMs = 86_400_000;
@@ -172,7 +204,10 @@ function dedupe(facts: SecFact[]): SecFact[] {
     if (f.form && !/^(10-K|10-Q|10-K\/A|10-Q\/A)/.test(f.form)) continue;
     const k = `${f.start ?? ''}|${f.end}`;
     const prev = by.get(k);
-    if (!prev || (f.filed ?? '') > (prev.filed ?? '')) by.set(k, f);
+    const first = [prev?.firstFiled, f.filed].filter((x): x is string => Boolean(x)).sort()[0];
+    // The latest filing's value (restatements) with the date it first became public
+    if (!prev || (f.filed ?? '') > (prev.filed ?? '')) by.set(k, { ...f, firstFiled: first });
+    else prev.firstFiled = first;
   }
   return [...by.values()];
 }
@@ -201,12 +236,14 @@ export function parseSecFacts(json: unknown): { annual: PeriodValues[]; quarterl
   const gaap = (json as { facts?: { 'us-gaap'?: Record<string, { units?: Record<string, SecFact[]> }> } })?.facts?.['us-gaap'] ?? {};
   const annual = new Map<string, PeriodValues>();
   const quarterly = new Map<string, PeriodValues>();
-  const put = (target: Map<string, PeriodValues>, end: string, months: 3 | 12, key: ItemKey, value: number, src: ValueSource) => {
-    const p = target.get(end) ?? { end, months, values: {}, sources: {} };
+  const put = (target: Map<string, PeriodValues>, end: string, months: 3 | 12, key: ItemKey, value: number, src: ValueSource, filed?: string) => {
+    const p: PeriodValues = target.get(end) ?? { end, months, values: {}, sources: {} };
     if (p.values[key] === undefined || (p.sources[key] === 'derived' && src === 'sec')) {
       p.values[key] = value;
       p.sources[key] = src;
     }
+    // A period is public once its last needed figure is filed
+    if (filed && (!p.filed || filed > p.filed)) p.filed = filed;
     target.set(end, p);
   };
 
@@ -216,17 +253,17 @@ export function parseSecFacts(json: unknown): { annual: PeriodValues[]; quarterl
     const isInstant = !LINE_ITEMS.find((i) => i.key === key)?.flow || key === 'shares';
     if (isInstant && key !== 'shares') {
       // Balance sheet: one value per period end; attach to the quarter and (if it is a FY end) the year
-      for (const f of facts.filter((x) => !x.start)) put(quarterly, f.end, 3, key, f.val, 'sec');
+      for (const f of facts.filter((x) => !x.start)) put(quarterly, f.end, 3, key, f.val, 'sec', f.firstFiled);
       continue;
     }
     const withDur = facts.filter((f) => f.start).map((f) => ({ ...f, months: monthsBetween(f.start as string, f.end) }));
     for (const f of withDur) {
-      if (f.months === 12) put(annual, f.end, 12, key, f.val, 'sec');
-      if (f.months === 3) put(quarterly, f.end, 3, key, f.val, 'sec');
+      if (f.months === 12) put(annual, f.end, 12, key, f.val, 'sec', f.firstFiled);
+      if (f.months === 3) put(quarterly, f.end, 3, key, f.val, 'sec', f.firstFiled);
     }
     if (key === 'eps' || key === 'shares') continue; // not additive: no differencing
     // Year-to-date → quarters: group cumulative values by fiscal-year start
-    const byStart = new Map<string, Array<{ end: string; months: number; val: number }>>();
+    const byStart = new Map<string, Array<{ end: string; months: number; val: number; firstFiled?: string }>>();
     for (const f of withDur) {
       if (![3, 6, 9, 12].includes(f.months)) continue;
       byStart.set(f.start as string, [...(byStart.get(f.start as string) ?? []), f]);
@@ -235,7 +272,7 @@ export function parseSecFacts(json: unknown): { annual: PeriodValues[]; quarterl
       list.sort((a, b) => a.months - b.months);
       for (let i = 1; i < list.length; i++) {
         if (list[i].months - list[i - 1].months !== 3) continue;
-        put(quarterly, list[i].end, 3, key, list[i].val - list[i - 1].val, 'derived');
+        put(quarterly, list[i].end, 3, key, list[i].val - list[i - 1].val, 'derived', list[i].firstFiled);
       }
     }
     // Fourth quarter when only the three quarters and the full year are filed: year − Q1..Q3
@@ -243,7 +280,7 @@ export function parseSecFacts(json: unknown): { annual: PeriodValues[]; quarterl
       if (quarterly.get(y.end)?.values[key] !== undefined) continue;
       const inYear = [...quarterly.values()].filter((p) => p.end > (y.start as string) && p.end < y.end && p.values[key] !== undefined);
       if (inYear.length !== 3) continue;
-      put(quarterly, y.end, 3, key, y.val - inYear.reduce((sum, p) => sum + (p.values[key] as number), 0), 'derived');
+      put(quarterly, y.end, 3, key, y.val - inYear.reduce((sum, p) => sum + (p.values[key] as number), 0), 'derived', y.firstFiled);
     }
   }
   // Balance-sheet values at fiscal year ends also belong to the annual periods

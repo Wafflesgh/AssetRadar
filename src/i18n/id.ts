@@ -1282,5 +1282,11 @@ export const id: Record<TranslationKey, string> = {
   "fs.notReportedBanks": "Tidak dilaporkan (umum untuk bank)",
   "fs.ofAssets": "dari aset",
   "fs.shares": "saham",
+  "item.costOfRevenue": "Beban pokok pendapatan",
+  "item.sga": "Beban penjualan, umum & administrasi",
+  "item.pretaxIncome": "Laba sebelum pajak",
+  "item.taxProvision": "Beban pajak penghasilan",
+  "item.inventory": "Persediaan",
+  "item.receivables": "Piutang usaha",
   // @@KEYS@@
 };

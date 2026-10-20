@@ -35,7 +35,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 
 - [x] 0. Cek sumber (di atas)
 - [x] 1. Dua bahasa (English / Bahasa Indonesia)
-- [ ] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
+- [x] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
 - [ ] 3. Pilar & horizon sentimen
 - [ ] 4. Proyeksi teknikal & kalkulator posisi
 - [ ] 5. Validasi & cadence
@@ -54,9 +54,22 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - Belum diterjemahkan (sengaja/sisa kecil): referensi jurnal (nama penulis), sumber data, judul berita, label 2 indikator makro "tidak tersedia" dari server (akan dirombak di Fase 7), kode perintah Terminal.
 - Test: paritas kunci, placeholder sama, tidak ada string kosong, fallback ke Inggris, format id-ID, waktu relatif Indonesia, verdict AI Advisor dalam bahasa Indonesia, teks analisis berkunci (Inggris identik dengan teks asli, Indonesia tidak jatuh ke fallback). 129 test lulus.
 
+## Fase 2 — Lapisan data
+
+- **Binance (hanya data pasar publik, tanpa kunci API, tanpa endpoint akun/order)** — `src/crypto/binance.ts`: urutan alamat `data-api.binance.vision` → `api.binance.com` → `api-gcp` → `api1…api4` (gagal jaringan → alamat berikutnya); parser `exchangeInfo` (termasuk `rateLimits` → batas weight dibaca, bukan di-hardcode), `ticker/24hr` (FULL & MINI), `klines` (unik per open time, candle terakhir ditandai **belum selesai** dan dibuang untuk indikator), `!miniTicker@arr`, `premiumIndex`, statistik futures (`openInterestHist`, `globalLongShortAccountRatio`, `takerlongshortRatio`, `basis`); filter universe USDT (stablecoin & token leverage UP/DOWN/BULL/BEAR dibuang, simbol non-ASCII seperti `币安人生USDT` tetap, selalu `encodeURIComponent`); **WeightGovernor**: maksimal 20% batas per IP, membaca `X-MBX-USED-WEIGHT-1M`, 429 → berhenti sesuai `Retry-After`, 418 → semua permintaan berhenti (default 10 menit), 451 → "Binance data is not available from this server's region"; timeout 12 dtk; `planRounds` membagi antrean candle per anggaran.
+- `server/binanceFeed.ts`: top 100 pasangan USDT menurut volume 24 jam (peringkat ulang tiap jam, exchangeInfo sehari sekali), **satu** WebSocket `!miniTicker@arr` (tutup sebelum 24 jam, sambung ulang dengan backoff) dengan cadangan polling `ticker/24hr` tiap 15 dtk, futures `premiumIndex` + `ticker/24hr` tiap 1 menit, antrean candle 1h (200) & 1d (500) untuk top 100 dalam batas weight, statistik derivatif per kontrak (cache 5 mnt, anggaran 20% dari 1000/5 mnt). Polling hanya bila ada permintaan ≤ 10 menit terakhir.
+- Endpoint: `GET /api/crypto/binance` (tabel 100 pasangan: harga USDT, % 1h/4h/24h/7d, volume, funding, tautan ke aset aplikasi + status/weight/progres pemindaian), `GET /api/crypto/binance/klines?symbol=&interval=1h|4h|1d|1w` (hanya pasangan yang ada di exchangeInfo), `GET /api/crypto/binance/derivatives?contract=`.
+- **50 crypto** (`src/config/cryptoUniverse.json`): 30 koin baru ditambahkan setelah 20 koin lama (id/kode lama tidak berubah; TON tetap `ton`, tampil "Toncoin (GRAM)", perintah `GRAM` juga dikenali). Total aset inti **147**. Satu sumber harga per aset (`priceSource`): Indodax (IDR) → Binance spot → Binance futures (dibagi `futuresMultiplier`, mis. `1000PEPEUSDT`) → CoinGecko; harga USDT/USD dikonversi ke Rupiah dengan USD/IDR live dan ditandai `converted` (+ `priceUsdt`). Grafik: Indodax bila ada, selain itu candle Binance dikonversi ke Rupiah (kurs hari ini); koin yang hanya ada di CoinGecko (WBT, RAIN, HTX) hanya grafik harian. Koin baru **tidak** ikut AI Advisor (syarat riwayat ≥ 2 tahun belum bisa dicek dari cloud).
+- **Laporan keuangan diperluas** (`statements.ts`): beban pokok, SG&A, laba sebelum pajak, pajak, persediaan, piutang (Yahoo + SEC) untuk audit operasional Abarbanell & Bushee dan tarif pajak efektif; tiap periode SEC menyimpan tanggal **pertama kali diajukan** (`filed`) untuk uji point-in-time.
+- **Estimasi analis** (`src/utils/analyst.ts`, `GET /api/fundamentals/analyst?symbol=`): EPS konsensus tahun depan (FEPS) + jumlah analis, tahun berjalan, 4 kejutan EPS terakhir (proksi SUE, di-winsorize ±100%), sektor/industri, book value per share. Hanya konsensus hari ini (tidak ada riwayat) → FEPS tidak bisa ikut uji historis.
+- **Cross-section** (`server/crossSection.ts`): antrean pelan per pasar (BEI ±960 saham, AS 29 saham): harga bulanan 10 tahun (spark 20 simbol/permintaan, jeda 1,5 dtk), laporan keuangan (1,2 dtk), estimasi analis (2 dtk); cache 24/12/12 jam; berjalan selama ada permintaan ≤ 30 menit; progres & umur data di `GET /api/sentiment/scan-status`. Industri: IDX-IC dari `idxStocks.json`; AS dari profil Yahoo.
+- Keterbatasan: daftar konstituen S&P 500 untuk peringkat saham AS tidak bisa diunduh dari cloud → peringkat AS memakai 29 saham inti dengan peringatan "small peer group" (lihat Butuh keputusan pemilik).
+- Test baru: parser & universe Binance (fixture), governor (20%, header, 429/418/451, Retry-After), klien (pindah alamat, berhenti saat 429, deteksi wilayah), jadwal weight, perubahan 1h/4h/7d, snapshot derivatif, pemilihan sumber harga crypto & konversi USDT→IDR, parser analis, antrean cross-section.
+
 ## Butuh keputusan pemilik
 
-(diisi per fase)
+- **Peer group saham AS**: untuk desil/percentile yang bermakna perlu daftar konstituen S&P 500 (mis. file holdings ETF IVV/SPY yang diunduh di laptop lalu disimpan statis seperti `idxStocks.json`). Sampai ada, peringkat AS memakai 29 saham inti + label "small peer group".
+- **Binance dari server produksi**: Cloud Run AI Studio kemungkinan di AS; bila Binance membalas 451, halaman crypto Binance akan menampilkan pesan wilayah. Pilihan (keputusan pemilik): biarkan, atau jalankan server di region lain.
 
 ## Laporan akhir
 
