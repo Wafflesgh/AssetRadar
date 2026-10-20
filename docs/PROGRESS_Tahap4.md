@@ -41,7 +41,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 5. Validasi & cadence
 - [x] 6. Tampilan
 - [x] 7. Makro Indonesia diperluas
-- [ ] 8. Penutup
+- [x] 8. Penutup
 
 ## Fase 1 — Dua bahasa
 
@@ -113,6 +113,13 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 - **Tidak tersedia / belum**: imbal hasil SBN 10 tahun, PMI (berlisensi), IndONIA/JIBOR/JISDOR (halaman bi.go.id belum bisa dibaca andal dari server), harga pangan harian Badan Pangan (endpoint data resmi belum terkonfirmasi), Pink Sheet Bank Dunia (CPO, nikel, timah, karet — file xlsx; butuh paket pembaca spreadsheet, lihat "Butuh keputusan pemilik") sehingga indeks terms-of-trade juga belum, utang luar negeri / defisit APBN / M2 (hanya PDF/xls atau seri berhenti), penjualan mobil/motor/semen (tanpa API), jadwal RDG BI & rilis BPS (dokumen, bukan data).
 - Semua sumber terblokir dari cloud ini → **belum diverifikasi live**. Cek tampilan headless `#/macro` dengan data contoh (fixture, hanya untuk uji) dan dengan keadaan semua sumber gagal: EN/ID × terang/gelap × 375/1440 → **tanpa scroll horizontal**.
 
+## Fase 8 — Penutup
+
+- `CLAUDE.md` (arsitektur tahap 4, endpoint, aturan dua bahasa, `BPS_API_KEY`, status 4d) dan `README.md` (fitur baru, cara kerja sentimen, catatan & koreksi jurnal, sumber & keterbatasan, kunci opsional, daftar file) diperbarui.
+- `npm run lint && npm test && npm run build` lulus (169 test), `node scripts/check-i18n.mjs` = 0.
+- Uji server produksi (`NODE_ENV=production`): `/`, `manifest.webmanifest`, `sw.js` = 200; stream SSE dilewati service worker; simbol salah → 400/404 dengan pesan; sumber gagal → status jujur (`unreachable`, `waiting-for-data`), bukan angka contoh.
+- Cek tampilan headless akhir: 16 halaman (Radar, detail BBCA/BTC/ZEC, `#/crypto`, `#/crypto/BTCUSDT`, Makro, Terminal, Settings, AI Advisor, Quant Lab, Profil Risiko, Portofolio, Saham BEI, Kalender, Watchlist) × EN/ID × terang/gelap × 375/1440 = **128/128 tanpa scroll horizontal**. Uji offline (internet browser dimatikan setelah halaman terbuka): Radar, Makro, Crypto, detail BBCA, Terminal tetap tampil, label "Offline – data terakhir", tanpa error JavaScript.
+
 ## Butuh keputusan pemilik
 
 - **Peer group saham AS**: untuk desil/percentile yang bermakna perlu daftar konstituen S&P 500 (mis. file holdings ETF IVV/SPY yang diunduh di laptop lalu disimpan statis seperti `idxStocks.json`). Sampai ada, peringkat AS memakai 29 saham inti + label "small peer group".
@@ -121,4 +128,56 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 
 ## Laporan akhir
 
-(diisi di akhir)
+**Singkatnya:** semua fase 0–8 sudah dikerjakan di branch `claude/tahap4-sentiment` dan ada di pull request https://github.com/Wafflesgh/AssetRadar/pull/2. Kodenya lengkap dan lulus semua pengecekan. **Tetapi** jaringan cloud ini memblokir semua sumber data (Yahoo, Binance, BPS, FRED, bi.go.id, dll.), jadi belum ada satu pun angka asli yang bisa saya lihat. Semua fitur perlu dicoba sekali di laptop/HP Anda.
+
+### Yang selesai dan cara mencobanya
+
+1. **Dua bahasa (English / Bahasa Indonesia)** — tombol **EN | ID** di kanan atas (di HP: menu "More"), juga di Settings. Di Settings ada pilihan format angka "ikuti bahasa" atau "selalu en-US". Judul berita tetap dalam bahasa aslinya.
+2. **Sentimen investasi 3 jangka waktu** — buka halaman aset mana pun (mis. BBCA): kartu **Investment sentiment** dengan tab Short / Medium / Long, skor 0–100, label (Strong Bearish … Strong Bullish), seberapa yakin, kapan sebaiknya ditinjau lagi, dan rincian komponen beserta jurnalnya. Di Radar ada kartu **Sentiment leaders** (saham BEI/AS terkuat & terlemah). Terminal: `BBCA SENT`, `RANK IDX SHORT`.
+3. **Kisaran harga & level teknikal + kalkulator posisi** — di halaman aset, di bawah sentimen: kisaran 68%/90% per jangka waktu, support/resistance, target pola, tombol "tampilkan level di grafik", dan kalkulator ukuran posisi (Anda mengisi sendiri modal, risiko, entry, stop). Target volatilitas diatur di Settings. Terminal: `BTC LVL`.
+4. **Crypto Binance** — menu **Crypto Binance** (`#/crypto`): 100 pasangan USDT terbesar, klik salah satu untuk halaman pasangan (grafik, kisaran, level, data futures). Terminal: `BINANCE`, `BNB SOLUSDT`. 30 koin baru (dari 50 crypto terbesar) juga muncul di Radar, harganya dalam Rupiah hasil konversi USDT.
+5. **Makro Indonesia diperluas** — menu **Makro RI** (`#/macro`): "Denyut Makro Indonesia" (lampu hijau/kuning/merah per kategori + artinya untuk IHSG/Rupiah/bank), tab kategori, kartu indikator dengan perbandingan terhadap 10 tahun terakhir, valuasi BEI, dan tanggal rapat Fed berikutnya.
+
+### Contoh nyata & hasil validasi
+
+- **Belum bisa diberikan.** Skor Short/Medium/Long dan kisaran 1 minggu untuk BBCA, BTCUSDT, dan IHSG butuh data asli, yang terblokir dari cloud. Setelah aplikasi jalan di tempat Anda, angka-angka itu langsung muncul di halaman masing-masing.
+- **Validasi** (apakah skor terbukti di data historis) berjalan otomatis di server setelah data pasar terkumpul (±beberapa jam pemindaian pertama), lalu hasilnya terlihat di kartu sentimen ("historical evidence") dan di `/api/sentiment/validation?market=idx|us|crypto`. Sampai saat itu semua skor berlabel keyakinan **Low – not validated yet** — ini disengaja, bukan error.
+
+### Sumber data
+
+- **Dipakai** (semua gratis, tanpa kunci kecuali BPS): Yahoo Finance (harga, laporan, estimasi analis), SEC EDGAR, Binance data publik (spot, WebSocket, futures), CoinGecko (cadangan), Indodax, FRED, World Bank, Bank Indonesia, BPS (opsional), Google News.
+- **Terverifikasi live dari cloud:** tidak ada — semuanya terblokir (lihat tabel Fase 0). Logikanya diuji dengan data contoh kecil yang hanya dipakai di test, **tidak pernah** ditampilkan di aplikasi.
+
+### Yang tidak bisa dipenuhi dan alasannya
+
+- Contoh angka nyata & hasil validasi nyata — sumber terblokir dari cloud.
+- Imbal hasil SBN 10 tahun, PMI, IndONIA/JIBOR/JISDOR, harga pangan harian, utang luar negeri, defisit APBN, M2, penjualan mobil/motor/semen, jadwal RDG BI & rilis BPS — tidak ada sumber data gratis yang bisa dibaca mesin (atau berlisensi). Halaman Makro menulis alasannya.
+- CPO, nikel, timah, karet (Pink Sheet Bank Dunia) dan indeks terms-of-trade — butuh paket pembaca Excel (lihat keputusan di bawah).
+- Berita & teknikal harian tidak punya riwayat tersimpan, jadi tidak ikut uji historis; validasi fundamental BEI pendek (Yahoo hanya ±4 tahun laporan tahunan).
+- Peringkat saham AS hanya dari 29 saham inti (belum ada daftar S&P 500).
+
+### Kunci yang bisa diisi (semua opsional)
+
+| Nama | Untuk apa | Cara mendapatkan | Diisi di mana |
+|---|---|---|---|
+| `BPS_API_KEY` | Inflasi inti, administered, volatile food di halaman Makro | Daftar gratis di https://webapi.bps.go.id/developer/ | `.env` di laptop, atau panel Secrets di AI Studio |
+| `GEMINI_API_KEY` | Ringkasan AI & tombol Translate berita | (sudah ada sebelumnya) | sama |
+| `FINNHUB_API_KEY` | Harga real-time saham AS | (sudah ada sebelumnya) | sama |
+
+Binance **tidak** butuh kunci dan jangan pernah memasukkan kunci Binance.
+
+### Yang perlu Anda cek di HP/PC
+
+- Tampilan di HP (lebar ±375px) dan PC, mode terang & gelap, bahasa EN & ID — terutama halaman aset (kartu sentimen & level), `#/crypto`, dan `#/macro`.
+- Halaman Crypto Binance: kalau muncul pesan "wilayah diblokir (451)", berarti server Anda di wilayah yang ditolak Binance (lihat keputusan di bawah).
+- Setelah beberapa jam berjalan: apakah "Sentiment leaders" terisi dan keyakinan berubah dari "not validated yet".
+
+### Catatan konflik dengan PR tahap 3
+
+Pull request tahap 3 (https://github.com/Wafflesgh/AssetRadar/pull/1) **belum di-merge**. Branch tahap 4 dibuat dari `main` terbaru dan mengubah hampir semua komponen (dua bahasa), jadi PR yang di-merge **kedua** kemungkinan besar akan konflik. Saran: merge salah satu dulu, lalu minta Claude menggabungkan `main` ke branch PR yang lain dan membereskan konfliknya (teks baru dari tahap 3 juga perlu diterjemahkan).
+
+### Langkah berikutnya
+
+1. Buka https://github.com/Wafflesgh/AssetRadar/pull/2, review, lalu klik **"Merge pull request"** (dengan memperhatikan catatan konflik di atas).
+2. Perbarui aplikasi online dengan cara Anda biasanya (yang mengambil versi terbaru dari `main`). **Jangan** klik Push/Sync dari AI Studio.
+3. Opsional: isi `BPS_API_KEY`, lalu putuskan hal-hal di "Butuh keputusan pemilik".
