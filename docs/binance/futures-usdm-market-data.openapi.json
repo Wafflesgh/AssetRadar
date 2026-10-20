@@ -1,0 +1,3275 @@
+{
+ "openapi": "3.0.2",
+ "info": {
+  "title": "Binance USDⓈ-M Futures — public market data (AssetRadar subset)",
+  "version": "1.0.0",
+  "description": "Subset of Binance's official \"Futures (USDⓈ-M) REST API\" OpenAPI spec: only the public market-data GET endpoints AssetRadar uses (no API key). Full docs: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info. Terms: https://www.binance.com/en/terms"
+ },
+ "servers": [
+  {
+   "url": "https://fapi.binance.com"
+  }
+ ],
+ "paths": {
+  "/fapi/v1/ping": {
+   "get": {
+    "summary": "Test Connectivity",
+    "description": "Test connectivity to the Rest API.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "testConnectivity",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#test-connectivity"
+    },
+    "x-ip-weight": 1,
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "x-description-cn": "成功"
+     }
+    }
+   }
+  },
+  "/fapi/v1/time": {
+   "get": {
+    "summary": "Check Server Time",
+    "description": "Test connectivity to the Rest API and get the current server time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "checkServerTime",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#check-server-time"
+    },
+    "x-ip-weight": 1,
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Check Server Time",
+      "x-description-cn": "检查Server 时间",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "serverTime": {
+           "type": "integer",
+           "example": 1499827319559,
+           "format": "int64",
+           "x-description-cn": "当前的系统时间",
+           "description": "Server Time."
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/exchangeInfo": {
+   "get": {
+    "summary": "Exchange Information",
+    "description": "Current exchange trading rules and symbol information",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "exchangeInformation",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#exchange-information"
+    },
+    "x-ip-weight": 1,
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Exchange Information",
+      "x-description-cn": "Exchange 信息",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "exchangeFilters": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "example": ""
+           }
+          },
+          "rateLimits": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "interval": {
+              "type": "string",
+              "example": "MINUTE",
+              "x-description-cn": "按照分钟计算",
+              "description": "Interval."
+             },
+             "intervalNum": {
+              "type": "integer",
+              "example": 1,
+              "format": "int64",
+              "x-description-cn": "按照1分钟计算",
+              "description": "Interval Num."
+             },
+             "limit": {
+              "type": "integer",
+              "example": 2400,
+              "format": "int64",
+              "x-description-cn": "上限次数",
+              "description": "Limit."
+             },
+             "rateLimitType": {
+              "type": "string",
+              "example": "REQUEST_WEIGHT",
+              "x-description-cn": "按照访问权重来计算",
+              "description": "Rate Limit Type."
+             }
+            },
+            "x-description-cn": "API访问的限制",
+            "description": "API"
+           },
+           "x-description-cn": "API访问的限制",
+           "description": "Rate Limits."
+          },
+          "serverTime": {
+           "type": "integer",
+           "example": 1565613908500,
+           "format": "int64",
+           "description": "Ignore please. If you want to check current server time, please check via \"GET /fapi/v1/time\"",
+           "x-description-cn": "请忽略。如果需要获取当前系统时间，请查询接口 “GET /fapi/v1/time”"
+          },
+          "assets": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "asset": {
+              "type": "string",
+              "example": "BTC"
+             },
+             "marginAvailable": {
+              "type": "boolean",
+              "example": true,
+              "description": "whether the asset can be used as margin in Multi-Assets mode",
+              "x-description-cn": "是否可用作保证金"
+             },
+             "autoAssetExchange": {
+              "type": "string",
+              "example": "-0.10",
+              "description": "auto-exchange threshold in Multi-Assets margin mode",
+              "x-description-cn": "保证金资产自动兑换阈值"
+             }
+            },
+            "description": "assets information",
+            "x-description-cn": "资产信息"
+           },
+           "description": "assets information",
+           "x-description-cn": "资产信息"
+          },
+          "symbols": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "symbol": {
+              "type": "string",
+              "example": "BLZUSDT",
+              "x-description-cn": "交易对",
+              "description": "Symbol."
+             },
+             "pair": {
+              "type": "string",
+              "example": "BLZUSDT",
+              "x-description-cn": "标的交易对",
+              "description": "Pair."
+             },
+             "contractType": {
+              "type": "string",
+              "example": "PERPETUAL",
+              "x-description-cn": "合约类型",
+              "description": "Contract Type."
+             },
+             "deliveryDate": {
+              "type": "integer",
+              "example": 4133404800000,
+              "format": "int64",
+              "x-description-cn": "交割日期",
+              "description": "Delivery Date."
+             },
+             "onboardDate": {
+              "type": "integer",
+              "example": 1598252400000,
+              "format": "int64",
+              "x-description-cn": "上线日期",
+              "description": "Onboard Date."
+             },
+             "status": {
+              "type": "string",
+              "example": "TRADING",
+              "x-description-cn": "交易对状态",
+              "description": "Status."
+             },
+             "maintMarginPercent": {
+              "type": "string",
+              "example": "2.5000",
+              "description": "ignore",
+              "x-description-cn": "请忽略"
+             },
+             "requiredMarginPercent": {
+              "type": "string",
+              "example": "5.0000",
+              "description": "ignore",
+              "x-description-cn": "请忽略"
+             },
+             "baseAsset": {
+              "type": "string",
+              "example": "BLZ",
+              "x-description-cn": "标的资产",
+              "description": "Base Asset."
+             },
+             "quoteAsset": {
+              "type": "string",
+              "example": "USDT",
+              "x-description-cn": "报价资产",
+              "description": "Quote Asset."
+             },
+             "marginAsset": {
+              "type": "string",
+              "example": "USDT",
+              "x-description-cn": "保证金资产",
+              "description": "Margin Asset."
+             },
+             "pricePrecision": {
+              "type": "integer",
+              "example": 5,
+              "format": "int64",
+              "description": "please do not use it as tickSize",
+              "x-description-cn": "价格小数点位数(仅作为系统精度使用，注意同tickSize 区分）"
+             },
+             "quantityPrecision": {
+              "type": "integer",
+              "example": 0,
+              "format": "int64",
+              "description": "please do not use it as stepSize",
+              "x-description-cn": "数量小数点位数(仅作为系统精度使用，注意同stepSize 区分）"
+             },
+             "baseAssetPrecision": {
+              "type": "integer",
+              "example": 8,
+              "format": "int64",
+              "x-description-cn": "标的资产精度",
+              "description": "Base Asset Precision."
+             },
+             "quotePrecision": {
+              "type": "integer",
+              "example": 8,
+              "format": "int64",
+              "x-description-cn": "报价资产精度",
+              "description": "Quote Precision."
+             },
+             "underlyingType": {
+              "type": "string",
+              "example": "COIN"
+             },
+             "underlyingSubType": {
+              "type": "array",
+              "items": {
+               "type": "string",
+               "example": "STORAGE"
+              }
+             },
+             "settlePlan": {
+              "type": "integer",
+              "example": 0,
+              "format": "int64"
+             },
+             "triggerProtect": {
+              "type": "string",
+              "example": "0.15",
+              "description": "threshold for algo order with \"priceProtect\"",
+              "x-description-cn": "开启\"priceProtect\"的条件订单的触发阈值"
+             },
+             "filters": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "properties": {
+                "filterType": {
+                 "type": "string",
+                 "example": "PRICE_FILTER",
+                 "x-description-cn": "市价订单数量限制",
+                 "description": "Filter Type."
+                },
+                "maxPrice": {
+                 "type": "string",
+                 "example": "300",
+                 "x-description-cn": "价格上限, 最大价格",
+                 "description": "Max Price."
+                },
+                "minPrice": {
+                 "type": "string",
+                 "example": "0.0001",
+                 "x-description-cn": "价格下限, 最小价格",
+                 "description": "Min Price."
+                },
+                "tickSize": {
+                 "type": "string",
+                 "example": "0.0001",
+                 "x-description-cn": "订单最小价格间隔",
+                 "description": "Tick Size."
+                },
+                "maxQty": {
+                 "type": "string",
+                 "example": "10000000",
+                 "x-description-cn": "数量上限, 最大数量",
+                 "description": "Max Qty."
+                },
+                "minQty": {
+                 "type": "string",
+                 "example": "1",
+                 "x-description-cn": "数量下限, 最小数量",
+                 "description": "Min Qty."
+                },
+                "stepSize": {
+                 "type": "string",
+                 "example": "1",
+                 "x-description-cn": "订单最小数量间隔",
+                 "description": "Step Size."
+                },
+                "limit": {
+                 "type": "integer",
+                 "example": 200,
+                 "format": "int64",
+                 "x-description-cn": "上限次数",
+                 "description": "Limit."
+                },
+                "notional": {
+                 "type": "string",
+                 "example": "5.0"
+                },
+                "multiplierUp": {
+                 "type": "string",
+                 "example": "1.1500",
+                 "x-description-cn": "价格上限百分比",
+                 "description": "Multiplier Up."
+                },
+                "multiplierDown": {
+                 "type": "string",
+                 "example": "0.8500",
+                 "x-description-cn": "价格下限百分比",
+                 "description": "Multiplier Down."
+                },
+                "multiplierDecimal": {
+                 "type": "string",
+                 "example": "4"
+                }
+               }
+              }
+             },
+             "orderTypes": {
+              "type": "array",
+              "items": {
+               "type": "string",
+               "example": "LIMIT"
+              }
+             },
+             "timeInForce": {
+              "type": "array",
+              "items": {
+               "type": "string",
+               "example": "GTC",
+               "x-description-cn": "有效方式",
+               "description": "timeInForce."
+              },
+              "x-description-cn": "有效方式",
+              "description": "Time In Force."
+             },
+             "liquidationFee": {
+              "type": "string",
+              "example": "0.010000",
+              "description": "liquidation fee rate",
+              "x-description-cn": "强平费率"
+             },
+             "marketTakeBound": {
+              "type": "string",
+              "example": "0.30",
+              "description": "the max price difference rate( from mark price) a market order can make",
+              "x-description-cn": "市价吃单(相对于标记价格)允许可造成的最大价格偏离比例"
+             }
+            },
+            "x-description-cn": "交易对信息",
+            "description": "symbols."
+           },
+           "x-description-cn": "交易对信息",
+           "description": "Symbols."
+          },
+          "timezone": {
+           "type": "string",
+           "example": "UTC",
+           "x-description-cn": "服务器所用的时间区域",
+           "description": "Timezone."
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/klines": {
+   "get": {
+    "summary": "Kline/Candlestick Data",
+    "description": "Kline/candlestick bars for a symbol.\nKlines are uniquely identified by their open time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "klineCandlestickData",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#kline-candlestick-data"
+    },
+    "x-weight": "based on parameter `LIMIT`\n\n| LIMIT       | weight |\n| ----------- | ------ |\n| [1,100)     | 1      |\n| [100, 500)  | 2      |\n| [500, 1000] | 5      |\n| > 1000      | 10     |",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      },
+      "description": "After CM migration, accepts both UM and CM symbols.",
+      "x-description-cn": "交易对 迁移后支持传入 UM 与 CM 的 symbol。"
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "1m",
+       "enum": [
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "8h",
+        "12h",
+        "1d",
+        "3d",
+        "1w",
+        "1M"
+       ]
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Start time",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "End time",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1500
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent klines are returned.",
+    "responses": {
+     "200": {
+      "description": "Kline/Candlestick Data",
+      "x-description-cn": "K线/Candlestick Data",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "x-prefixItems": [
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Open time",
+            "x-description-cn": "开盘时间",
+            "example": 1499040000000
+           },
+           {
+            "type": "string",
+            "description": "Open",
+            "x-description-cn": "开盘价",
+            "example": "0.01634790"
+           },
+           {
+            "type": "string",
+            "description": "High",
+            "x-description-cn": "最高价",
+            "example": "0.80000000"
+           },
+           {
+            "type": "string",
+            "description": "Low",
+            "x-description-cn": "最低价",
+            "example": "0.01575800"
+           },
+           {
+            "type": "string",
+            "description": "Close",
+            "x-description-cn": "收盘价",
+            "example": "0.01577100"
+           },
+           {
+            "type": "string",
+            "description": "Volume",
+            "x-description-cn": "成交量",
+            "example": "148976.11427815"
+           },
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Close time",
+            "x-description-cn": "收盘时间",
+            "example": 1499644799999
+           },
+           {
+            "type": "string",
+            "description": "Quote asset volume",
+            "x-description-cn": "成交额",
+            "example": "2434.19055334"
+           },
+           {
+            "type": "integer",
+            "description": "Number of trades",
+            "x-description-cn": "成交笔数",
+            "example": 308
+           },
+           {
+            "type": "string",
+            "description": "Taker buy base asset volume",
+            "x-description-cn": "主动买入成交量",
+            "example": "1756.87402397"
+           },
+           {
+            "type": "string",
+            "description": "Taker buy quote asset volume",
+            "x-description-cn": "主动买入成交额",
+            "example": "28.46694368"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "17928899.62484339"
+           }
+          ],
+          "items": {
+           "oneOf": [
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Open time",
+             "x-description-cn": "开盘时间",
+             "example": 1499040000000
+            },
+            {
+             "type": "string",
+             "description": "Open",
+             "x-description-cn": "开盘价",
+             "example": "0.01634790"
+            },
+            {
+             "type": "string",
+             "description": "High",
+             "x-description-cn": "最高价",
+             "example": "0.80000000"
+            },
+            {
+             "type": "string",
+             "description": "Low",
+             "x-description-cn": "最低价",
+             "example": "0.01575800"
+            },
+            {
+             "type": "string",
+             "description": "Close",
+             "x-description-cn": "收盘价",
+             "example": "0.01577100"
+            },
+            {
+             "type": "string",
+             "description": "Volume",
+             "x-description-cn": "成交量",
+             "example": "148976.11427815"
+            },
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Close time",
+             "x-description-cn": "收盘时间",
+             "example": 1499644799999
+            },
+            {
+             "type": "string",
+             "description": "Quote asset volume",
+             "x-description-cn": "成交额",
+             "example": "2434.19055334"
+            },
+            {
+             "type": "integer",
+             "description": "Number of trades",
+             "x-description-cn": "成交笔数",
+             "example": 308
+            },
+            {
+             "type": "string",
+             "description": "Taker buy base asset volume",
+             "x-description-cn": "主动买入成交量",
+             "example": "1756.87402397"
+            },
+            {
+             "type": "string",
+             "description": "Taker buy quote asset volume",
+             "x-description-cn": "主动买入成交额",
+             "example": "28.46694368"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "17928899.62484339"
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/markPriceKlines": {
+   "get": {
+    "summary": "Mark Price Kline/Candlestick Data",
+    "description": "Kline/candlestick bars for the mark price of a symbol.\nKlines are uniquely identified by their open time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "markPriceKlineCandlestickData",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#mark-price-kline-candlestick-data"
+    },
+    "x-weight": "based on parameter `LIMIT`\n\n| LIMIT       | weight |\n| ----------- | ------ |\n| [1,100)     | 1      |\n| [100, 500)  | 2      |\n| [500, 1000] | 5      |\n| > 1000      | 10     |",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      },
+      "description": "After CM migration, accepts both UM and CM symbols.",
+      "x-description-cn": "交易对 迁移后支持传入 UM 与 CM 的 symbol。"
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "1m",
+       "enum": [
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "8h",
+        "12h",
+        "1d",
+        "3d",
+        "1w",
+        "1M"
+       ]
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Start time",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "End time",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1500
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent klines are returned.",
+    "responses": {
+     "200": {
+      "description": "Mark Price Kline/Candlestick Data",
+      "x-description-cn": "Mark 价格 K线/Candlestick Data",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "x-prefixItems": [
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Open time",
+            "x-description-cn": "开盘时间",
+            "example": 1591256460000
+           },
+           {
+            "type": "string",
+            "description": "Open",
+            "x-description-cn": "开盘价",
+            "example": "9653.29201333"
+           },
+           {
+            "type": "string",
+            "description": "High",
+            "x-description-cn": "最高价",
+            "example": "9654.56401333"
+           },
+           {
+            "type": "string",
+            "description": "Low",
+            "x-description-cn": "最低价",
+            "example": "9653.07367333"
+           },
+           {
+            "type": "string",
+            "description": "Close",
+            "x-description-cn": "收盘价",
+            "example": "9653.07367333"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Close time",
+            "x-description-cn": "收盘时间",
+            "example": 1591256519999
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": 60
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           }
+          ],
+          "items": {
+           "oneOf": [
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Open time",
+             "x-description-cn": "开盘时间",
+             "example": 1591256460000
+            },
+            {
+             "type": "string",
+             "description": "Open",
+             "x-description-cn": "开盘价",
+             "example": "9653.29201333"
+            },
+            {
+             "type": "string",
+             "description": "High",
+             "x-description-cn": "最高价",
+             "example": "9654.56401333"
+            },
+            {
+             "type": "string",
+             "description": "Low",
+             "x-description-cn": "最低价",
+             "example": "9653.07367333"
+            },
+            {
+             "type": "string",
+             "description": "Close",
+             "x-description-cn": "收盘价",
+             "example": "9653.07367333"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Close time",
+             "x-description-cn": "收盘时间",
+             "example": 1591256519999
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": 60
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/indexPriceKlines": {
+   "get": {
+    "summary": "Index Price Kline/Candlestick Data",
+    "description": "Kline/candlestick bars for the index price of a pair.\nKlines are uniquely identified by their open time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "indexPriceKlineCandlestickData",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#index-price-kline-candlestick-data"
+    },
+    "x-weight": "based on parameter `LIMIT`\n\n| LIMIT       | weight |\n| ----------- | ------ |\n| [1,100)     | 1      |\n| [100, 500)  | 2      |\n| [500, 1000] | 5      |\n| > 1000      | 10     |",
+    "parameters": [
+     {
+      "name": "pair",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      },
+      "description": "After CM migration, accepts both UM and CM pair values.",
+      "x-description-cn": "标的交易对 迁移后支持传入 UM 与 CM 的 pair。"
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "1m",
+       "enum": [
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "8h",
+        "12h",
+        "1d",
+        "3d",
+        "1w",
+        "1M"
+       ]
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Start time",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "End time",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1500
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent klines are returned.",
+    "responses": {
+     "200": {
+      "description": "Index Price Kline/Candlestick Data",
+      "x-description-cn": "Index 价格 K线/Candlestick Data",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "x-prefixItems": [
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Open time",
+            "x-description-cn": "开盘时间",
+            "example": 1591256400000
+           },
+           {
+            "type": "string",
+            "description": "Open",
+            "x-description-cn": "开盘价",
+            "example": "9653.69440000"
+           },
+           {
+            "type": "string",
+            "description": "High",
+            "x-description-cn": "最高价",
+            "example": "9653.69640000"
+           },
+           {
+            "type": "string",
+            "description": "Low",
+            "x-description-cn": "最低价",
+            "example": "9651.38600000"
+           },
+           {
+            "type": "string",
+            "description": "Close",
+            "x-description-cn": "收盘价",
+            "example": "9651.55200000"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Close time",
+            "x-description-cn": "收盘时间",
+            "example": 1591256459999
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": 60
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           }
+          ],
+          "items": {
+           "oneOf": [
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Open time",
+             "x-description-cn": "开盘时间",
+             "example": 1591256400000
+            },
+            {
+             "type": "string",
+             "description": "Open",
+             "x-description-cn": "开盘价",
+             "example": "9653.69440000"
+            },
+            {
+             "type": "string",
+             "description": "High",
+             "x-description-cn": "最高价",
+             "example": "9653.69640000"
+            },
+            {
+             "type": "string",
+             "description": "Low",
+             "x-description-cn": "最低价",
+             "example": "9651.38600000"
+            },
+            {
+             "type": "string",
+             "description": "Close",
+             "x-description-cn": "收盘价",
+             "example": "9651.55200000"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Close time",
+             "x-description-cn": "收盘时间",
+             "example": 1591256459999
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": 60
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/premiumIndexKlines": {
+   "get": {
+    "summary": "Premium index Kline Data",
+    "description": "Premium index kline bars of a symbol. Klines are uniquely identified by their open time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "premiumIndexKlineData",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#premium-index-kline-data"
+    },
+    "x-weight": "based on parameter `LIMIT`\n\n| LIMIT       | weight |\n| ----------- | ------ |\n| [1,100)     | 1      |\n| [100, 500)  | 2      |\n| [500, 1000] | 5      |\n| > 1000      | 10     |",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      },
+      "description": "After CM migration, accepts both UM and CM symbols.",
+      "x-description-cn": "交易对。迁移后支持传入 UM 与 CM 的 symbol。"
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "1m",
+       "enum": [
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "8h",
+        "12h",
+        "1d",
+        "3d",
+        "1w",
+        "1M"
+       ]
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Start time",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "End time",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1500
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent klines are returned.",
+    "responses": {
+     "200": {
+      "description": "Premium index Kline Data",
+      "x-description-cn": "Premium index K线 Data",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "x-prefixItems": [
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Open time",
+            "x-description-cn": "开盘时间",
+            "example": 1691603820000
+           },
+           {
+            "type": "string",
+            "description": "Open",
+            "x-description-cn": "开盘价",
+            "example": "-0.00042931"
+           },
+           {
+            "type": "string",
+            "description": "High",
+            "x-description-cn": "最高价",
+            "example": "-0.00023641"
+           },
+           {
+            "type": "string",
+            "description": "Low",
+            "x-description-cn": "最低价",
+            "example": "-0.00059406"
+           },
+           {
+            "type": "string",
+            "description": "Close",
+            "x-description-cn": "收盘价",
+            "example": "-0.00043659"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Close time",
+            "x-description-cn": "收盘时间",
+            "example": 1691603879999
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "integer",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": 12
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           }
+          ],
+          "items": {
+           "oneOf": [
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Open time",
+             "x-description-cn": "开盘时间",
+             "example": 1691603820000
+            },
+            {
+             "type": "string",
+             "description": "Open",
+             "x-description-cn": "开盘价",
+             "example": "-0.00042931"
+            },
+            {
+             "type": "string",
+             "description": "High",
+             "x-description-cn": "最高价",
+             "example": "-0.00023641"
+            },
+            {
+             "type": "string",
+             "description": "Low",
+             "x-description-cn": "最低价",
+             "example": "-0.00059406"
+            },
+            {
+             "type": "string",
+             "description": "Close",
+             "x-description-cn": "收盘价",
+             "example": "-0.00043659"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Close time",
+             "x-description-cn": "收盘时间",
+             "example": 1691603879999
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "integer",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": 12
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/continuousKlines": {
+   "get": {
+    "summary": "Continuous Contract Kline/Candlestick Data",
+    "description": "Kline/candlestick bars for a specific contract type.\nKlines are uniquely identified by their open time.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "continuousContractKlineCandlestickData",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#continuous-contract-kline-candlestick-data"
+    },
+    "x-weight": "based on parameter `LIMIT`\n\n| LIMIT       | weight |\n| ----------- | ------ |\n| [1,100)     | 1      |\n| [100, 500)  | 2      |\n| [500, 1000] | 5      |\n| > 1000      | 10     |",
+    "parameters": [
+     {
+      "name": "pair",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      },
+      "description": "After CM migration, accepts both UM and CM pair values.",
+      "x-description-cn": "标的交易对 迁移后支持传入 UM 与 CM 的 pair。"
+     },
+     {
+      "name": "contractType",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "PERPETUAL",
+       "enum": [
+        "PERPETUAL",
+        "CURRENT_QUARTER",
+        "NEXT_QUARTER",
+        "TRADIFI_PERPETUAL"
+       ]
+      },
+      "description": "Futurestype",
+      "x-description-cn": "合约类型"
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "1m",
+       "enum": [
+        "1s",
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "8h",
+        "12h",
+        "1d",
+        "3d",
+        "1w",
+        "1M"
+       ]
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Start time",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "End time",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1500
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent klines are returned.",
+    "responses": {
+     "200": {
+      "description": "Continuous Contract Kline/Candlestick Data",
+      "x-description-cn": "Continuous Contract K线/Candlestick Data",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "x-prefixItems": [
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Open time",
+            "x-description-cn": "开盘时间",
+            "example": 1607444700000
+           },
+           {
+            "type": "string",
+            "description": "Open",
+            "x-description-cn": "开盘价",
+            "example": "18879.99"
+           },
+           {
+            "type": "string",
+            "description": "High",
+            "x-description-cn": "最高价",
+            "example": "18900.00"
+           },
+           {
+            "type": "string",
+            "description": "Low",
+            "x-description-cn": "最低价",
+            "example": "18878.98"
+           },
+           {
+            "type": "string",
+            "description": "Close",
+            "x-description-cn": "收盘价",
+            "example": "18896.13"
+           },
+           {
+            "type": "string",
+            "description": "Volume",
+            "x-description-cn": "成交量",
+            "example": "492.363"
+           },
+           {
+            "type": "integer",
+            "format": "int64",
+            "description": "Close time",
+            "x-description-cn": "收盘时间",
+            "example": 1607444759999
+           },
+           {
+            "type": "string",
+            "description": "Quote asset volume",
+            "x-description-cn": "成交额",
+            "example": "9302145.66080"
+           },
+           {
+            "type": "integer",
+            "description": "Number of trades",
+            "x-description-cn": "成交笔数",
+            "example": 1874
+           },
+           {
+            "type": "string",
+            "description": "Taker buy base asset volume",
+            "x-description-cn": "主动买入成交量",
+            "example": "385.983"
+           },
+           {
+            "type": "string",
+            "description": "Taker buy quote asset volume",
+            "x-description-cn": "主动买入成交额",
+            "example": "7292402.33267"
+           },
+           {
+            "type": "string",
+            "description": "Ignore",
+            "x-description-cn": "忽略字段",
+            "example": "0"
+           }
+          ],
+          "items": {
+           "oneOf": [
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Open time",
+             "x-description-cn": "开盘时间",
+             "example": 1607444700000
+            },
+            {
+             "type": "string",
+             "description": "Open",
+             "x-description-cn": "开盘价",
+             "example": "18879.99"
+            },
+            {
+             "type": "string",
+             "description": "High",
+             "x-description-cn": "最高价",
+             "example": "18900.00"
+            },
+            {
+             "type": "string",
+             "description": "Low",
+             "x-description-cn": "最低价",
+             "example": "18878.98"
+            },
+            {
+             "type": "string",
+             "description": "Close",
+             "x-description-cn": "收盘价",
+             "example": "18896.13"
+            },
+            {
+             "type": "string",
+             "description": "Volume",
+             "x-description-cn": "成交量",
+             "example": "492.363"
+            },
+            {
+             "type": "integer",
+             "format": "int64",
+             "description": "Close time",
+             "x-description-cn": "收盘时间",
+             "example": 1607444759999
+            },
+            {
+             "type": "string",
+             "description": "Quote asset volume",
+             "x-description-cn": "成交额",
+             "example": "9302145.66080"
+            },
+            {
+             "type": "integer",
+             "description": "Number of trades",
+             "x-description-cn": "成交笔数",
+             "example": 1874
+            },
+            {
+             "type": "string",
+             "description": "Taker buy base asset volume",
+             "x-description-cn": "主动买入成交量",
+             "example": "385.983"
+            },
+            {
+             "type": "string",
+             "description": "Taker buy quote asset volume",
+             "x-description-cn": "主动买入成交额",
+             "example": "7292402.33267"
+            },
+            {
+             "type": "string",
+             "description": "Ignore",
+             "x-description-cn": "忽略字段",
+             "example": "0"
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/ticker/24hr": {
+   "get": {
+    "summary": "24hr Ticker Price Change Statistics",
+    "description": "24 hour rolling window price change statistics.\n**Careful** when accessing this with no symbol.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "ticker24hrPriceChangeStatistics",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#ticker24hr-price-change-statistics"
+    },
+    "x-weight": "**1** for a single symbol;\n**40** when the symbol parameter is omitted",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If the symbol is not sent, tickers for all symbols will be returned in an array.",
+    "responses": {
+     "200": {
+      "description": "24hr Ticker Price Change Statistics",
+      "x-description-cn": "24hr 行情 价格 修改Statistics",
+      "content": {
+       "application/json": {
+        "schema": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "symbol": {
+             "type": "string",
+             "example": "BTCUSDT"
+            },
+            "priceChange": {
+             "type": "string",
+             "example": "-94.99999800",
+             "x-description-cn": "24小时价格变动",
+             "description": "Price Change."
+            },
+            "priceChangePercent": {
+             "type": "string",
+             "example": "-95.960",
+             "x-description-cn": "24小时价格变动百分比",
+             "description": "Price Change Percent."
+            },
+            "weightedAvgPrice": {
+             "type": "string",
+             "example": "0.29628482",
+             "x-description-cn": "加权平均价",
+             "description": "Weighted Avg Price."
+            },
+            "lastPrice": {
+             "type": "string",
+             "example": "4.00000200",
+             "x-description-cn": "最近一次成交价",
+             "description": "Last Price."
+            },
+            "lastQty": {
+             "type": "string",
+             "example": "200.00000000",
+             "x-description-cn": "最近一次成交额",
+             "description": "Last Qty."
+            },
+            "openPrice": {
+             "type": "string",
+             "example": "99.00000000",
+             "x-description-cn": "24小时内第一次成交的价格",
+             "description": "Open Price."
+            },
+            "highPrice": {
+             "type": "string",
+             "example": "100.00000000",
+             "x-description-cn": "24小时最高价",
+             "description": "High Price."
+            },
+            "lowPrice": {
+             "type": "string",
+             "example": "0.10000000",
+             "x-description-cn": "24小时最低价",
+             "description": "Low Price."
+            },
+            "volume": {
+             "type": "string",
+             "example": "8913.30000000",
+             "x-description-cn": "24小时成交量",
+             "description": "Volume."
+            },
+            "quoteVolume": {
+             "type": "string",
+             "example": "15.30000000",
+             "x-description-cn": "24小时成交额",
+             "description": "Quote Volume."
+            },
+            "openTime": {
+             "type": "integer",
+             "example": 1499783499040,
+             "format": "int64",
+             "x-description-cn": "24小时内，第一笔交易的发生时间",
+             "description": "Open Time."
+            },
+            "closeTime": {
+             "type": "integer",
+             "example": 1499869899040,
+             "format": "int64",
+             "x-description-cn": "24小时内，最后一笔交易的发生时间",
+             "description": "Close Time."
+            },
+            "firstId": {
+             "type": "integer",
+             "example": 28385,
+             "format": "int64",
+             "description": "First tradeId",
+             "x-description-cn": "首笔成交id"
+            },
+            "lastId": {
+             "type": "integer",
+             "example": 28460,
+             "format": "int64",
+             "description": "Last tradeId",
+             "x-description-cn": "末笔成交id"
+            },
+            "count": {
+             "type": "integer",
+             "example": 76,
+             "format": "int64",
+             "description": "Trade count",
+             "x-description-cn": "成交笔数"
+            }
+           }
+          },
+          {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "symbol": {
+              "type": "string",
+              "example": "BTCUSDT"
+             },
+             "priceChange": {
+              "type": "string",
+              "example": "-94.99999800",
+              "x-description-cn": "24小时价格变动",
+              "description": "Price Change."
+             },
+             "priceChangePercent": {
+              "type": "string",
+              "example": "-95.960",
+              "x-description-cn": "24小时价格变动百分比",
+              "description": "Price Change Percent."
+             },
+             "weightedAvgPrice": {
+              "type": "string",
+              "example": "0.29628482",
+              "x-description-cn": "加权平均价",
+              "description": "Weighted Avg Price."
+             },
+             "lastPrice": {
+              "type": "string",
+              "example": "4.00000200",
+              "x-description-cn": "最近一次成交价",
+              "description": "Last Price."
+             },
+             "lastQty": {
+              "type": "string",
+              "example": "200.00000000",
+              "x-description-cn": "最近一次成交额",
+              "description": "Last Qty."
+             },
+             "openPrice": {
+              "type": "string",
+              "example": "99.00000000",
+              "x-description-cn": "24小时内第一次成交的价格",
+              "description": "Open Price."
+             },
+             "highPrice": {
+              "type": "string",
+              "example": "100.00000000",
+              "x-description-cn": "24小时最高价",
+              "description": "High Price."
+             },
+             "lowPrice": {
+              "type": "string",
+              "example": "0.10000000",
+              "x-description-cn": "24小时最低价",
+              "description": "Low Price."
+             },
+             "volume": {
+              "type": "string",
+              "example": "8913.30000000",
+              "x-description-cn": "24小时成交量",
+              "description": "Volume."
+             },
+             "quoteVolume": {
+              "type": "string",
+              "example": "15.30000000",
+              "x-description-cn": "24小时成交额",
+              "description": "Quote Volume."
+             },
+             "openTime": {
+              "type": "integer",
+              "example": 1499783499040,
+              "format": "int64",
+              "x-description-cn": "24小时内，第一笔交易的发生时间",
+              "description": "Open Time."
+             },
+             "closeTime": {
+              "type": "integer",
+              "example": 1499869899040,
+              "format": "int64",
+              "x-description-cn": "24小时内，最后一笔交易的发生时间",
+              "description": "Close Time."
+             },
+             "firstId": {
+              "type": "integer",
+              "example": 28385,
+              "format": "int64",
+              "description": "First tradeId",
+              "x-description-cn": "首笔成交id"
+             },
+             "lastId": {
+              "type": "integer",
+              "example": 28460,
+              "format": "int64",
+              "description": "Last tradeId",
+              "x-description-cn": "末笔成交id"
+             },
+             "count": {
+              "type": "integer",
+              "example": 76,
+              "format": "int64",
+              "description": "Trade count",
+              "x-description-cn": "成交笔数"
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/ticker/price": {
+   "get": {
+    "summary": "Symbol Price Ticker",
+    "description": "Latest price for a symbol or symbols.",
+    "deprecated": true,
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "symbolPriceTicker",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#symbol-price-ticker"
+    },
+    "x-weight": "1 for a single symbol;\n2 when the symbol parameter is omitted",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If the symbol is not sent, prices for all symbols will be returned in an array.",
+    "responses": {
+     "200": {
+      "description": "Symbol Price Ticker",
+      "x-description-cn": "交易对 价格 行情",
+      "content": {
+       "application/json": {
+        "schema": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "symbol": {
+             "type": "string",
+             "example": "BTCUSDT",
+             "x-description-cn": "交易对",
+             "description": "Symbol."
+            },
+            "price": {
+             "type": "string",
+             "example": "6000.01",
+             "x-description-cn": "价格",
+             "description": "Price."
+            },
+            "time": {
+             "type": "integer",
+             "example": 1589437530011,
+             "format": "int64",
+             "description": "Transaction time",
+             "x-description-cn": "撮合引擎时间"
+            }
+           }
+          },
+          {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "symbol": {
+              "type": "string",
+              "example": "BTCUSDT",
+              "x-description-cn": "交易对",
+              "description": "Symbol."
+             },
+             "price": {
+              "type": "string",
+              "example": "6000.01",
+              "x-description-cn": "价格",
+              "description": "Price."
+             },
+             "time": {
+              "type": "integer",
+              "example": 1589437530011,
+              "format": "int64",
+              "description": "Transaction time",
+              "x-description-cn": "撮合引擎时间"
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/ticker/bookTicker": {
+   "get": {
+    "summary": "Symbol Order Book Ticker",
+    "description": "Best price/qty on the order book for a symbol or symbols.\n\nRetail Price Improvement(RPI) orders are not visible and excluded in the\nresponse message.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "symbolOrderBookTicker",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#symbol-order-book-ticker"
+    },
+    "x-weight": "**2** for a single symbol;\n**5** when the symbol parameter is omitted",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If the symbol is not sent, bookTickers for all symbols will be returned in an array.\n- The field `X-MBX-USED-WEIGHT-1M` in response header is not accurate from this endpoint, please ignore.",
+    "responses": {
+     "200": {
+      "description": "Symbol Order Book Ticker",
+      "x-description-cn": "交易对 订单 最优挂单",
+      "content": {
+       "application/json": {
+        "schema": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "symbol": {
+             "type": "string",
+             "example": "BTCUSDT",
+             "x-description-cn": "交易对",
+             "description": "Symbol."
+            },
+            "bidPrice": {
+             "type": "string",
+             "example": "4.00000000",
+             "x-description-cn": "最优买单价",
+             "description": "Bid Price."
+            },
+            "bidQty": {
+             "type": "string",
+             "example": "431.00000000",
+             "x-description-cn": "挂单量",
+             "description": "Bid Qty."
+            },
+            "askPrice": {
+             "type": "string",
+             "example": "4.00000200",
+             "x-description-cn": "最优卖单价",
+             "description": "Ask Price."
+            },
+            "askQty": {
+             "type": "string",
+             "example": "9.00000000",
+             "x-description-cn": "挂单量",
+             "description": "Ask Qty."
+            },
+            "time": {
+             "type": "integer",
+             "example": 1589437530011,
+             "format": "int64",
+             "description": "Transaction time",
+             "x-description-cn": "撮合引擎时间"
+            }
+           }
+          },
+          {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "symbol": {
+              "type": "string",
+              "example": "BTCUSDT",
+              "x-description-cn": "交易对",
+              "description": "Symbol."
+             },
+             "bidPrice": {
+              "type": "string",
+              "example": "4.00000000",
+              "x-description-cn": "最优买单价",
+              "description": "Bid Price."
+             },
+             "bidQty": {
+              "type": "string",
+              "example": "431.00000000",
+              "x-description-cn": "挂单量",
+              "description": "Bid Qty."
+             },
+             "askPrice": {
+              "type": "string",
+              "example": "4.00000200",
+              "x-description-cn": "最优卖单价",
+              "description": "Ask Price."
+             },
+             "askQty": {
+              "type": "string",
+              "example": "9.00000000",
+              "x-description-cn": "挂单量",
+              "description": "Ask Qty."
+             },
+             "time": {
+              "type": "integer",
+              "example": 1589437530011,
+              "format": "int64",
+              "description": "Transaction time",
+              "x-description-cn": "撮合引擎时间"
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/premiumIndex": {
+   "get": {
+    "summary": "Mark Price",
+    "description": "Mark Price and Funding Rate",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "markPrice",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#mark-price"
+    },
+    "x-weight": "**1** with symbol, **10** without symbol",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Mark Price",
+      "x-description-cn": "Mark 价格",
+      "content": {
+       "application/json": {
+        "schema": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "symbol": {
+             "type": "string",
+             "example": "BTCUSDT",
+             "x-description-cn": "交易对",
+             "description": "Symbol."
+            },
+            "markPrice": {
+             "type": "string",
+             "example": "11793.63104562",
+             "description": "mark price",
+             "x-description-cn": "标记价格"
+            },
+            "indexPrice": {
+             "type": "string",
+             "example": "11781.80495970",
+             "description": "index price",
+             "x-description-cn": "指数价格"
+            },
+            "estimatedSettlePrice": {
+             "type": "string",
+             "example": "11781.16138815",
+             "description": "Estimated Settle Price, only useful in the last hour before the settlement starts.",
+             "x-description-cn": "预估结算价,仅在交割开始前最后一小时有意义"
+            },
+            "lastFundingRate": {
+             "type": "string",
+             "example": "0.00038246",
+             "description": "This is the Latest funding rate",
+             "x-description-cn": "最近更新的资金费率"
+            },
+            "interestRate": {
+             "type": "string",
+             "example": "0.00010000",
+             "x-description-cn": "标的资产基础利率",
+             "description": "Interest Rate."
+            },
+            "nextFundingTime": {
+             "type": "integer",
+             "example": 1597392000000,
+             "format": "int64",
+             "x-description-cn": "下次资金费时间",
+             "description": "Next Funding Time."
+            },
+            "time": {
+             "type": "integer",
+             "example": 1597370495002,
+             "format": "int64",
+             "x-description-cn": "更新时间",
+             "description": "Time."
+            }
+           }
+          },
+          {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "symbol": {
+              "type": "string",
+              "example": "BTCUSDT",
+              "x-description-cn": "交易对",
+              "description": "Symbol."
+             },
+             "markPrice": {
+              "type": "string",
+              "example": "11793.63104562",
+              "description": "mark price",
+              "x-description-cn": "标记价格"
+             },
+             "indexPrice": {
+              "type": "string",
+              "example": "11781.80495970",
+              "description": "index price",
+              "x-description-cn": "指数价格"
+             },
+             "estimatedSettlePrice": {
+              "type": "string",
+              "example": "11781.16138815",
+              "description": "Estimated Settle Price, only useful in the last hour before the settlement starts.",
+              "x-description-cn": "预估结算价,仅在交割开始前最后一小时有意义"
+             },
+             "lastFundingRate": {
+              "type": "string",
+              "example": "0.00038246",
+              "description": "This is the Latest funding rate",
+              "x-description-cn": "最近更新的资金费率"
+             },
+             "interestRate": {
+              "type": "string",
+              "example": "0.00010000",
+              "x-description-cn": "标的资产基础利率",
+              "description": "Interest Rate."
+             },
+             "nextFundingTime": {
+              "type": "integer",
+              "example": 1597392000000,
+              "format": "int64",
+              "x-description-cn": "下次资金费时间",
+              "description": "Next Funding Time."
+             },
+             "time": {
+              "type": "integer",
+              "example": 1597370495002,
+              "format": "int64",
+              "x-description-cn": "更新时间",
+              "description": "Time."
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/fundingRate": {
+   "get": {
+    "summary": "Get Funding Rate History",
+    "description": "Get Funding Rate History",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "getFundingRateHistory",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#get-funding-rate-history"
+    },
+    "x-weight": "share 500/5min/IP rate limit with GET /fapi/v1/fundingInfo",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      },
+      "description": "Timestamp in ms to get funding rate from INCLUSIVE.",
+      "x-description-cn": "起始时间"
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      },
+      "description": "Timestamp in ms to get funding rate until INCLUSIVE.",
+      "x-description-cn": "结束时间"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 100,
+       "maximum": 1000
+      }
+     }
+    ],
+    "x-parameters-notes": "- If `startTime` and `endTime` are not sent, the most recent 200 records are returned.\n- If the number of data between `startTime` and `endTime` is larger than `limit`, return as `startTime` + `limit`.\n- In ascending order.",
+    "responses": {
+     "200": {
+      "description": "Get Funding Rate History",
+      "x-description-cn": "获取Funding 利率 历史",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "symbol": {
+            "type": "string",
+            "example": "BTCUSDT",
+            "x-description-cn": "交易对",
+            "description": "Symbol."
+           },
+           "fundingRate": {
+            "type": "string",
+            "example": "-0.03750000",
+            "x-description-cn": "资金费率",
+            "description": "Funding Rate."
+           },
+           "fundingTime": {
+            "type": "integer",
+            "example": 1570608000000,
+            "format": "int64",
+            "x-description-cn": "资金费时间",
+            "description": "Funding Time."
+           },
+           "markPrice": {
+            "type": "string",
+            "example": "34287.54619963",
+            "description": "mark price associated with a particular funding fee charge",
+            "x-description-cn": "资金费对应标记价格"
+           },
+           "rateType": {
+            "type": "string",
+            "enum": [
+             "Regular",
+             "Special"
+            ],
+            "example": "Regular",
+            "description": "Funding rate type. `Regular` for the normal funding rate; `Special` for the additional funding rate generated by stock dividends.",
+            "x-description-cn": "资金费率类型。`Regular` 为正常资金费率；`Special` 为股票分红产生的额外资金费率。"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/fundingInfo": {
+   "get": {
+    "summary": "Get Funding Rate Info",
+    "description": "Query funding rate info for symbols that had FundingRateCap/FundingRateFloor / fundingIntervalHours adjustment",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "getFundingRateInfo",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#get-funding-rate-info"
+    },
+    "x-weight": "**0**\n\nshare 500/5min/IP rate limit with `GET /fapi/v1/fundingRate`",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Get Funding Rate Info",
+      "x-description-cn": "获取Funding 利率 Info",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "symbol": {
+            "type": "string",
+            "example": "BLZUSDT"
+           },
+           "adjustedFundingRateCap": {
+            "type": "string",
+            "example": "0.02500000"
+           },
+           "adjustedFundingRateFloor": {
+            "type": "string",
+            "example": "-0.02500000"
+           },
+           "fundingIntervalHours": {
+            "type": "integer",
+            "example": 8,
+            "format": "int64"
+           },
+           "disclaimer": {
+            "type": "boolean",
+            "example": false,
+            "description": "ingore",
+            "x-description-cn": "ingore"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/openInterest": {
+   "get": {
+    "summary": "Open Interest",
+    "description": "Get present open interest of a specific symbol.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "openInterest",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#open-interest"
+    },
+    "x-ip-weight": 1,
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Open Interest",
+      "x-description-cn": "未完成利息",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "openInterest": {
+           "type": "string",
+           "example": "10659.509",
+           "x-description-cn": "未平仓合约数量",
+           "description": "Open Interest."
+          },
+          "symbol": {
+           "type": "string",
+           "example": "BTCUSDT",
+           "x-description-cn": "交易对",
+           "description": "Symbol."
+          },
+          "time": {
+           "type": "integer",
+           "example": 1589437530011,
+           "format": "int64",
+           "description": "Transaction time",
+           "x-description-cn": "撮合引擎时间"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fapi/v1/depth": {
+   "get": {
+    "summary": "Order Book",
+    "description": "Query symbol orderbook\n\nRetail Price Improvement(RPI) orders are not visible and excluded in the\nresponse message.",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "orderBook",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#order-book"
+    },
+    "x-weight": "Adjusted based on the limit:\n\n| Limit         | Weight |\n| ------------- | ------ |\n| 5, 10, 20, 50 | 2      |\n| 100           | 5      |\n| 500           | 10     |\n| 1000          | 20     |",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 500,
+       "maximum": 1000
+      },
+      "description": "Valid limits:[5, 10, 20, 50, 100, 500, 1000]",
+      "x-description-cn": "可选值:[5, 10, 20, 50, 100, 500, 1000]"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Order Book",
+      "x-description-cn": "订单 Book",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "lastUpdateId": {
+           "type": "integer",
+           "example": 1027024,
+           "format": "int64"
+          },
+          "E": {
+           "type": "integer",
+           "example": 1589436922972,
+           "format": "int64",
+           "description": "Message output time",
+           "x-description-cn": "消息时间"
+          },
+          "T": {
+           "type": "integer",
+           "example": 1589436922959,
+           "format": "int64",
+           "description": "Transaction time",
+           "x-description-cn": "撮合引擎时间"
+          },
+          "bids": {
+           "type": "array",
+           "description": "Bid orders. Each entry is [price, quantity].",
+           "x-description-cn": "买单列表。每项为 [价格, 数量]。",
+           "example": [
+            [
+             "4.00000000",
+             "431.00000000"
+            ]
+           ],
+           "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "x-prefixItems": [
+             {
+              "type": "string",
+              "description": "Price",
+              "example": "4.00000000"
+             },
+             {
+              "type": "string",
+              "description": "Quantity",
+              "example": "431.00000000"
+             }
+            ],
+            "items": {
+             "oneOf": [
+              {
+               "type": "string",
+               "description": "Price",
+               "example": "4.00000000"
+              },
+              {
+               "type": "string",
+               "description": "Quantity",
+               "example": "431.00000000"
+              }
+             ]
+            }
+           }
+          },
+          "asks": {
+           "type": "array",
+           "description": "Ask orders. Each entry is [price, quantity].",
+           "x-description-cn": "卖单列表。每项为 [价格, 数量]。",
+           "example": [
+            [
+             "4.00000200",
+             "12.00000000"
+            ]
+           ],
+           "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "x-prefixItems": [
+             {
+              "type": "string",
+              "description": "Price",
+              "example": "4.00000200"
+             },
+             {
+              "type": "string",
+              "description": "Quantity",
+              "example": "12.00000000"
+             }
+            ],
+            "items": {
+             "oneOf": [
+              {
+               "type": "string",
+               "description": "Price",
+               "example": "4.00000200"
+              },
+              {
+               "type": "string",
+               "description": "Quantity",
+               "example": "12.00000000"
+              }
+             ]
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/futures/data/openInterestHist": {
+   "get": {
+    "summary": "Open Interest Statistics",
+    "description": "Open Interest Statistics",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "openInterestStatistics",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#open-interest-statistics"
+    },
+    "x-ip-weight": 0,
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "5m",
+       "enum": [
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d"
+       ]
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 30,
+       "maximum": 500
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      }
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent data is returned.\n- Only the data of the latest 1 month is available.\n- IP rate limit 1000 requests/5min\n- A period with no trades has no record and is omitted from the response. Such gaps are expected and are not backfilled.",
+    "responses": {
+     "200": {
+      "description": "Open Interest Statistics",
+      "x-description-cn": "未完成利息 Statistics",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "symbol": {
+            "type": "string",
+            "example": "BTCUSDT"
+           },
+           "sumOpenInterest": {
+            "type": "string",
+            "example": "20403.12345678",
+            "description": "total open interest",
+            "x-description-cn": "持仓总数量"
+           },
+           "sumOpenInterestValue": {
+            "type": "string",
+            "example": "176196512.12345678",
+            "description": "total open interest value",
+            "x-description-cn": "持仓总价值"
+           },
+           "CMCCirculatingSupply": {
+            "type": "string",
+            "example": "165880.538",
+            "description": "circulating supply provided by CMC",
+            "x-description-cn": "CMC提供的流通供应量"
+           },
+           "timestamp": {
+            "type": "integer",
+            "example": 1591261042378,
+            "format": "int64",
+            "description": "End time of the period, in milliseconds.",
+            "x-description-cn": "该周期的结束时间，单位为毫秒。"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/futures/data/globalLongShortAccountRatio": {
+   "get": {
+    "summary": "Long/Short Ratio",
+    "description": "Query symbol Long/Short Ratio",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "longShortRatio",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#long-short-ratio"
+    },
+    "x-ip-weight": 0,
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "5m",
+       "enum": [
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d"
+       ]
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 30,
+       "maximum": 500
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      }
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent data is returned.\n- Only the data of the latest 30 days is available.\n- IP rate limit 1000 requests/5min",
+    "responses": {
+     "200": {
+      "description": "Long/Short Ratio",
+      "x-description-cn": "请参见英文说明：Long/Short Ratio",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "symbol": {
+            "type": "string",
+            "example": "BTCUSDT",
+            "description": "long/short account num ratio of all traders",
+            "x-description-cn": "long/short account num ratio of all traders"
+           },
+           "longShortRatio": {
+            "type": "string",
+            "example": "0.1960",
+            "description": "long account num ratio of all traders",
+            "x-description-cn": "多空人数比值"
+           },
+           "longAccount": {
+            "type": "string",
+            "example": "0.6622",
+            "description": "short account num ratio of all traders",
+            "x-description-cn": "多仓人数比例"
+           },
+           "shortAccount": {
+            "type": "string",
+            "example": "0.3378",
+            "x-description-cn": "空仓人数比例",
+            "description": "Short Account."
+           },
+           "timestamp": {
+            "type": "integer",
+            "example": 1591261042378,
+            "format": "int64",
+            "description": "End time of the period, in milliseconds.",
+            "x-description-cn": "该周期的结束时间，单位为毫秒。"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/futures/data/takerlongshortRatio": {
+   "get": {
+    "summary": "Taker Buy/Sell Volume",
+    "description": "Taker Buy/Sell Volume",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "takerBuySellVolume",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#taker-buy-sell-volume"
+    },
+    "x-ip-weight": 0,
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "5m",
+       "enum": [
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d"
+       ]
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50,
+       "format": "int64",
+       "default": 30,
+       "maximum": 500
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      }
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent data is returned.\n- Only the data of the latest 30 days is available.\n- IP rate limit 1000 requests/5min",
+    "responses": {
+     "200": {
+      "description": "Taker Buy/Sell Volume",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "buySellRatio": {
+            "type": "string",
+            "example": "1.5586"
+           },
+           "buyVol": {
+            "type": "string",
+            "example": "387.3300"
+           },
+           "sellVol": {
+            "type": "string",
+            "example": "248.5030"
+           },
+           "timestamp": {
+            "type": "integer",
+            "example": 1591261042378,
+            "format": "int64",
+            "description": "Start time of the period, in milliseconds.",
+            "x-description-cn": "该周期的开始时间，单位为毫秒。"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/futures/data/basis": {
+   "get": {
+    "summary": "Basis",
+    "description": "Query future basis",
+    "tags": [
+     "market-data"
+    ],
+    "operationId": "basis",
+    "externalDocs": {
+     "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#basis"
+    },
+    "x-ip-weight": 0,
+    "parameters": [
+     {
+      "name": "pair",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "BTCUSDT"
+      }
+     },
+     {
+      "name": "contractType",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "PERPETUAL",
+       "enum": [
+        "PERPETUAL",
+        "CURRENT_QUARTER",
+        "NEXT_QUARTER"
+       ]
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "example": "5m",
+       "enum": [
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d"
+       ]
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 30,
+       "format": "int64",
+       "default": 30,
+       "maximum": 500
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1623319461670,
+       "format": "int64"
+      }
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 1641782889000,
+       "format": "int64"
+      }
+     }
+    ],
+    "x-parameters-notes": "- If startTime and endTime are not sent, the most recent data is returned.\n- Only the data of the latest 30 days is available.",
+    "responses": {
+     "200": {
+      "description": "Basis",
+      "x-description-cn": "请参见英文说明：Basis",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "indexPrice": {
+            "type": "string",
+            "example": "34400.15945055"
+           },
+           "contractType": {
+            "type": "string",
+            "example": "PERPETUAL"
+           },
+           "basisRate": {
+            "type": "string",
+            "example": "0.0004"
+           },
+           "futuresPrice": {
+            "type": "string",
+            "example": "34414.10"
+           },
+           "annualizedBasisRate": {
+            "type": "string",
+            "example": ""
+           },
+           "basis": {
+            "type": "string",
+            "example": "13.94054945"
+           },
+           "pair": {
+            "type": "string",
+            "example": "BTCUSDT"
+           },
+           "timestamp": {
+            "type": "integer",
+            "example": 1698742800000,
+            "format": "int64",
+            "description": "Start time of the period, in milliseconds.",
+            "x-description-cn": "该周期的开始时间，单位为毫秒。"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {}
+}

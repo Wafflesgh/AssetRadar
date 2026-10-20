@@ -16,8 +16,9 @@ Kamu adalah Claude Code yang berjalan di **cloud**, di salinan repo AssetRadar d
 
 1. `CLAUDE.md` — aturan wajib, arsitektur, status.
 2. `docs/PROMPT_Fitur_Lanjutan_4.md` — **rencana lengkap** (sentimen multi-horizon dengan 3 pilar jurnal, proyeksi teknikal, Binance, dua bahasa, makro Indonesia diperluas, infrastruktur data, fase 0–8). Ikuti semua isinya, termasuk **catatan & koreksi jurnal di bagian 1** (PDF jurnal tidak ada di repo; rangkuman itu sudah dicek terhadap PDF-nya), **kecuali bagian Git, kunci, dan pengecekan browser** yang diganti aturan di file ini.
-3. `docs/PROGRESS_Tahap2.md` (contoh format) dan `docs/PROGRESS_Tahap4.md` (buat bila belum ada). Kalau sudah ada fase yang dicentang, **lanjutkan dari fase berikutnya** di branch yang sama.
-4. Cek apakah ada pull request tahap 3 (`claude/tahap3-features`) yang belum di-merge. **Jangan mengubah branch itu.** Mulai dari `main` terbaru dan tulis di laporan bahwa mungkin ada konflik yang perlu dibereskan saat salah satu PR di-merge (perubahan dua bahasa menyentuh hampir semua komponen).
+3. `docs/binance/README.md` + dua schema OpenAPI ringkas di `docs/binance/` (endpoint publik Binance Spot & USDⓈ-M Futures, weight, batas) dan `src/config/cryptoUniverse.json` (50 aset crypto terverifikasi, dibuat `scripts/update-crypto-universe.mjs`).
+4. `docs/PROGRESS_Tahap2.md` (contoh format) dan `docs/PROGRESS_Tahap4.md` (buat bila belum ada). Kalau sudah ada fase yang dicentang, **lanjutkan dari fase berikutnya** di branch yang sama.
+5. Cek apakah ada pull request tahap 3 (`claude/tahap3-features`) yang belum di-merge. **Jangan mengubah branch itu.** Mulai dari `main` terbaru dan tulis di laporan bahwa mungkin ada konflik yang perlu dibereskan saat salah satu PR di-merge (perubahan dua bahasa menyentuh hampir semua komponen).
 
 ## 1. Cek lingkungan cloud (wajib sebelum menulis kode)
 

@@ -115,7 +115,7 @@ Aset tanpa fundamental (crypto, indeks, kurs, komoditas): bobot pilar 2–3 diba
 
 ### 2.6 Crypto untuk trading aktif di Binance
 
-Ikuti dokumentasi resmi Binance Spot API (developers.binance.com; salinan resmi di GitHub `binance/binance-spot-api-docs`: `rest-api.md`, `web-socket-streams.md`, `faqs/market_data_only.md`). Fakta di bawah sudah dicek 20 Okt 2026:
+Ikuti dokumentasi resmi Binance (developers.binance.com; salinan resmi di GitHub `binance/binance-spot-api-docs`: `rest-api.md`, `web-socket-streams.md`, `faqs/market_data_only.md`) dan **schema OpenAPI resmi dari pemilik yang sudah diringkas di `docs/binance/`** (`spot-market-data.openapi.json`, `futures-usdm-market-data.openapi.json`, plus `docs/binance/README.md` berisi tabel endpoint, weight, batas, dan kegunaannya). Pakai nama field persis seperti di schema itu. Fakta di bawah sudah dicek 20 Okt 2026:
 
 **Hanya data pasar publik — tanpa kunci API.**
 - Aplikasi **tidak pernah** meminta, menyimpan, atau memakai API key / secret Binance milik pemilik (HMAC/RSA/Ed25519) dan tidak memakai endpoint akun/order. Kalau suatu saat fitur akun diminta, itu keputusan pemilik terpisah.
@@ -125,7 +125,7 @@ Ikuti dokumentasi resmi Binance Spot API (developers.binance.com; salinan resmi 
 - Cadangan berurutan bila utama gagal: `https://api.binance.com` → `https://api-gcp.binance.com` → `https://api1…api4.binance.com` (api1–api4 lebih cepat tetapi kurang stabil). Semua 7 alamat membalas 200 dari Indonesia.
 - **Kuota weight dihitung per IP dan dipakai bersama oleh semua alamat itu** (dicek: angka `X-MBX-USED-WEIGHT-1M` terus bertambah saat berpindah alamat). Berpindah alamat **bukan** cara menghindari batas.
 - Live stream: WebSocket `wss://data-stream.binance.vision:443` (stream pasar publik; user data stream tidak tersedia di sini).
-- Futures (funding, open interest, long/short) ada di `https://fapi.binance.com` — bukan bagian dari dokumen spot ini; perlakukan sebagai opsional.
+- Futures USDⓈ-M di `https://fapi.binance.com`: batas weight **2400/menit per IP**; endpoint `/futures/data/*` (open interest history, rasio long/short semua akun, taker buy/sell, basis) **hanya menyimpan 30 hari terakhir** dan dibatasi **1000 permintaan / 5 menit per IP**; `fundingRate` + `fundingInfo` berbagi **500 / 5 menit per IP**. Endpoint bertipe `MARKET_DATA` (rasio long/short **top trader**, historical trades) butuh API key → **tidak dipakai**. Karena riwayat statistik futures hanya 30 hari, faktor derivatif hanya bisa divalidasi singkat (tulis di UI) kecuali server menyimpan snapshot harian (butuh database tahap 3).
 
 **Batas & aturan (dari `rest-api.md` / `web-socket-streams.md`)**
 - `REQUEST_WEIGHT` 6000 per menit per IP (dari `exchangeInfo.rateLimits` — baca dari sana saat start, jangan di-hardcode). Batasi diri sendiri maksimal **20%** (±1200/menit) karena IP server bisa dipakai bersama.
@@ -142,13 +142,30 @@ Ikuti dokumentasi resmi Binance Spot API (developers.binance.com; salinan resmi 
 - Universe: dari `exchangeInfo` (`permissions=SPOT&symbolStatus=TRADING`): pasangan `quoteAsset = USDT` (±511 saat dicek), buang stablecoin dan token leverage, ambil **100 teratas menurut volume 24 jam** (`ticker/24hr` sekali untuk semua: weight 80) untuk ranking & desil.
 - Harga live: **satu** koneksi WebSocket di server ke `!miniTicker@arr` (semua pasangan, update ±1 detik) lalu diteruskan ke browser lewat price stream SSE yang sudah ada (hanya pasangan yang dilihat/difokus, maks 1 update per pasangan per detik). Tanpa WebSocket (runtime tidak mendukung atau diblokir) → polling `ticker/24hr` per 20 simbol tiap 10 detik.
 - Candle: `klines` 1h/4h/1d hanya untuk pasangan yang sedang dibuka + 100 teratas (untuk skor), cache 1 menit (1h/4h) dan 5 menit (1d). Contoh anggaran: 100 pasangan × 3 timeframe × weight 2 = 600 per putaran → jadwalkan bertahap supaya tetap < 1200/menit.
-- Futures (opsional): `fapi` funding rate, `openInterestHist`, `globalLongShortAccountRatio` untuk pasangan yang dibuka, cache 5 menit. Sentimen pasar: Fear & Greed `https://api.alternative.me/fng/`.
+- Futures (opsional): `premiumIndex` tanpa simbol (semua pair sekaligus, weight 10: mark price, funding terakhir, waktu funding berikutnya) tiap 1 menit; `openInterestHist`, `globalLongShortAccountRatio`, `takerlongshortRatio`, `basis` hanya untuk pair yang dibuka, cache 5 menit, patuhi 1000/5 menit. Kontrak berawalan `1000` (mis. `1000PEPEUSDT`) harganya per 1000 koin — bagi dengan multiplier. Sentimen pasar: Fear & Greed `https://api.alternative.me/fng/`.
 - **Risiko wilayah**: server produksi (Cloud Run AI Studio) mungkin di AS, dan Binance bisa membalas 451, terutama `fapi`. Deteksi otomatis: coba urutan alamat di atas; bila semua 451 → tampilkan "Binance data is not available from this server's region" (spot) atau sembunyikan blok futures dengan keterangan yang sama. Jangan memakai proxy pihak ketiga.
 
 **Tampilan**
 - Halaman `#/crypto` (Binance): tabel 100 pasangan (harga USDT live, % 1h/4h/24h/7d, volume, skor Short/Medium/Long, funding, perubahan OI 24 jam, long/short ratio), filter & cari (termasuk simbol non-ASCII), klik → detail pasangan dengan timeframe 1h/4h/1D, level teknikal (bagian 3), dan kalkulator posisi.
 - Pasangan yang sama dengan aset IDR di Indodax (BTC, ETH, …) ditautkan dua arah.
 - Test: parser `exchangeInfo`/`klines`/`ticker` (fixture), filter universe (stablecoin, leverage, non-ASCII), penghitung weight + reaksi 429/418/451 (`Retry-After`), candle belum selesai, penjadwal anggaran weight.
+
+### 2.7 Crypto diperluas: Top 50 menurut market cap
+
+Pemilik ingin cakupan crypto lebih luas dari 20 koin sekarang. Daftar awal sudah dibuat dan dicek (20 Okt 2026):
+
+- **`src/config/cryptoUniverse.json`** — 50 aset teratas menurut market cap CoinGecko, **tanpa** stablecoin, versi wrapped/staked/bridged, dana/obligasi tokenisasi (BUIDL, USYC, USDY, EURSAFO, FIGR_HELOC) dan token emas (XAUT, PAXG — emas sudah ada di aplikasi). Setiap aset berisi `code`, `name`, `coingeckoId`, `binanceSpot`, `binanceFutures` (+ `futuresMultiplier` untuk kontrak `1000…` seperti `1000PEPEUSDT`, `1000SHIBUSDT`), `indodaxPair`, `priceSource`, `circulatingSupply`. Sebuah pair hanya diterima bila harganya ±5% dari harga CoinGecko (mencegah ticker yang ternyata koin lain).
+- Hasil pemetaan: **41** punya pair Rupiah di Indodax, **37** pair Spot Binance, **42** perpetual USDⓈ-M; 6 hanya di Binance (mis. ZEC, XMR — spot XMR sudah tidak ada, hanya futures), 3 hanya punya harga CoinGecko (WBT, RAIN, HTX). Toncoin kini bernama **GRAM** (`GRAMUSDT`) tetapi Indodax masih `tonidr` — sudah ditangani lewat alias.
+- **`scripts/update-crypto-universe.mjs`** membangun ulang file itu (`node scripts/update-crypto-universe.mjs 50`). Peringkat berubah setiap hari: server mengurutkan ulang dari CoinGecko `/coins/markets` (cache 2 menit yang sudah ada) dan memakai file ini sebagai daftar awal & cadangan.
+
+Ketentuan implementasi:
+- Tambahkan aset dari file ini ke `ASSETS` (grup `crypto`) lewat factory baru, **tanpa mengubah id/kode 20 aset yang sudah ada** (watchlist, portofolio dan forward test pemilik memakai id itu; TON tetap id `ton`, tampil "Toncoin (GRAM)").
+- Sumber harga per aset sesuai `priceSource`: Indodax (IDR, WebSocket yang sudah ada) → Binance Spot USDT (WebSocket `!miniTicker@arr`) → Binance futures → CoinGecko. Harga USDT ditampilkan dalam USDT **dan** dikonversi ke Rupiah memakai USD/IDR (tandai "converted"). Satu sumber per aset, ditulis di tabel ("Source").
+- Market cap = harga × `circulatingSupply` (perbarui dari CoinGecko), seperti aset lain.
+- Grafik: Indodax (IDR) bila ada, jika tidak Binance klines (USDT); widget TradingView `BINANCE:<pair>` untuk yang ada di Binance.
+- Hanya `quick`/`ai` untuk koin yang sekarang sudah begitu; koin baru ikut AI Advisor hanya bila riwayat harian ≥ 2 tahun.
+- Halaman `#/crypto` (2.6) memakai 100 pair Binance untuk ranking trading; Radar & tabel Crypto memakai 50 aset ini.
+- Test: pemetaan alias, multiplier `1000…`, pemilihan sumber harga, konversi USDT→IDR, aset tanpa pair.
 
 ## 3. B — Proyeksi teknikal (naik sampai berapa, turun sampai berapa)
 
@@ -278,7 +295,7 @@ Ketentuan:
 
 1. **Fase 0 — Cek sumber**: verifikasi semua sumber di 2.6 dan 6 (status HTTP, contoh data, tanggal data terbaru, syarat penggunaan). Catat di `PROGRESS_Tahap4.md`. Yang ✗/terblokir → tampil jujur di UI.
 2. **Fase 1 — Dua bahasa (C)** dulu, supaya semua teks baru langsung memakai `t()`. Terjemahkan seluruh UI yang ada.
-3. **Fase 2 — Lapisan data**: snapshot cross-section IDX/AS, fundamental tambahan, estimasi analis, industri, Binance; antrean pemindaian + progres.
+3. **Fase 2 — Lapisan data**: snapshot cross-section IDX/AS, fundamental tambahan, estimasi analis, industri, Binance (pakai `docs/binance/`), **50 aset crypto dari `src/config/cryptoUniverse.json` (bagian 2.7)**; antrean pemindaian + progres.
 4. **Fase 3 — Pilar & horizon (A)**: `crossSection`, `pillars`, `hybridValue`, `operational`, `sue`, `newsHorizon`, `horizons` + test.
 5. **Fase 4 — Proyeksi & kalkulator posisi (B)** + kalibrasi + test.
 6. **Fase 5 — Validasi & cadence** (bagian 4).
