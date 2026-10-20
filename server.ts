@@ -150,6 +150,7 @@ import {
   type UserAlert,
 } from './src/utils/alerts.ts';
 import { formatAssetPrice } from './src/utils/format.ts';
+import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2281,6 +2282,82 @@ setInterval(() => {
   if (!calendarScan.running && now - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
 }, 60_000);
 
+// ---- IDX screener: slow scan of the statements of every listed stock (24 h) -----------------------
+
+const SCREENER_TTL_MS = 24 * 3600_000;
+const SCREENER_STORE_KEY = 'screener:fundamentals';
+const screenerFund = new Map<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>();
+const screenerScan = { running: null as Promise<void> | null, lastDemandAt: 0, startedAt: 0, finishedAt: 0, done: 0, loaded: false };
+
+/** Ratios from the latest annual / trailing-12-month statements, valued at today's price. */
+async function screenerFundamentalsFor(asset: Asset): Promise<{ f: ScreenerFundamentals | null; price: number | null }> {
+  const raw = await rawStatementsFor(asset);
+  const live = idxSweep.ticks.get(asset.symbol)?.price ?? yahooCache.get(asset.symbol)?.data.price;
+  const price = typeof live === 'number' && live > 0 ? live : null;
+  if (!raw) return { f: null, price };
+  const fyEnd = fiscalYearEndMonth(raw.annual);
+  const quarters = fillQuartersFromAnnual(raw.quarterly, raw.annual, fyEnd);
+  const opts = { sameCurrency: !raw.currency || raw.currency === asset.currency, livePrice: price ?? undefined };
+  const annual = buildStatementRows(fillMissingPeriods(fiscalYears(raw.annual, fyEnd)), fyEnd, opts);
+  const quarterly = buildStatementRows(fillMissingPeriods(quarters), fyEnd, opts);
+  const fund = await fundamentalsFor(asset).catch(() => null);
+  const f = fund ? piotroski([...fund.years].sort((a, b) => a.fiscalYearEnd.localeCompare(b.fiscalYearEnd))) : null;
+  return { f: fundamentalsFromRows(annual, quarterly, raw.currency || asset.currency, f), price };
+}
+
+async function loadScreenerFromStore(): Promise<void> {
+  if (screenerScan.loaded) return;
+  screenerScan.loaded = true;
+  try {
+    const saved = await store.get<Record<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>>(SCREENER_STORE_KEY);
+    for (const [sym, v] of Object.entries(saved ?? {})) if (v && typeof v.fetchedAt === 'number') screenerFund.set(sym, v);
+  } catch (err) {
+    console.warn('[Screener] could not load saved data:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** Two stocks at a time with a pause; stocks fetched in the last 24 h are skipped; stops without viewers. */
+function runScreenerScan(): Promise<void> {
+  if (screenerScan.running) return screenerScan.running;
+  screenerScan.done = 0;
+  screenerScan.startedAt = Date.now();
+  screenerScan.running = (async () => {
+    // A fresh price sweep first, so P/E and P/B use today's prices
+    if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+    await mapLimit(IDX_ALL, 2, async (a) => {
+      const prev = screenerFund.get(a.symbol);
+      if (prev && Date.now() - prev.fetchedAt < SCREENER_TTL_MS) {
+        screenerScan.done += 1;
+        return;
+      }
+      if (Date.now() - screenerScan.lastDemandAt > 60 * 60_000) return; // nobody is looking any more
+      try {
+        const { f, price } = await screenerFundamentalsFor(a);
+        // Nothing found may also be a failed request: try again after 2 hours instead of 24
+        screenerFund.set(a.symbol, { f, price, fetchedAt: f ? Date.now() : Date.now() - SCREENER_TTL_MS + 2 * 3600_000 });
+      } catch {
+        // Left for the next scan
+      }
+      screenerScan.done += 1;
+      // Save progress now and then so a restart does not start over
+      if (screenerScan.done % 50 === 0) await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+    screenerScan.finishedAt = Date.now();
+  })().finally(() => {
+    screenerScan.running = null;
+  });
+  return screenerScan.running;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  if (now - screenerScan.lastDemandAt > 60 * 60_000 || screenerScan.running) return;
+  const stale = IDX_ALL.some((a) => now - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS);
+  if (stale) runScreenerScan().catch(() => {});
+}, 5 * 60_000);
+
 // ---- Indonesia macro (Bank Indonesia pages, FRED, World Bank) -----------------------------
 
 const MACRO_TTL_MS = 6 * 3600_000;
@@ -3229,6 +3306,53 @@ async function startServer() {
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'IDX data unavailable' });
+    }
+  });
+
+  // 5g2. IDX screener: prices from the sweep + ratios from the slow statements scan
+  app.get('/api/screener/idx', async (_req, res) => {
+    screenerScan.lastDemandAt = Date.now();
+    idxSweep.lastDemandAt = Date.now();
+    try {
+      await loadScreenerFromStore();
+      if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) runIdxSweep().catch(() => {});
+      if (!screenerScan.running && IDX_ALL.some((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS)) {
+        runScreenerScan().catch(() => {});
+      }
+      const rows: ScreenerRow[] = IDX_ALL.map((a) => {
+        const t = idxSweep.ticks.get(a.symbol);
+        const price = t && Number.isFinite(t.price) ? t.price : null;
+        const fund = screenerFund.get(a.symbol);
+        return {
+          symbol: a.symbol,
+          code: a.code.replace(/\.JK$/, ''),
+          name: a.name,
+          sector: a.sector ?? 'Other',
+          board: a.board ?? 'Other',
+          price,
+          chg1d: t?.changePct24h ?? null,
+          chg1w: t?.changePct7d ?? null,
+          valueTraded: t?.valueTraded ?? null,
+          marketCap: price !== null && a.supply ? price * a.supply : null,
+          f: fund ? (fund.f ? rescaleForPrice(fund.f, fund.price, price) : null) : undefined,
+          fetchedAt: fund?.fetchedAt ?? null,
+        };
+      });
+      res.json({
+        rows,
+        scan: {
+          scanned: IDX_ALL.filter((a) => screenerFund.has(a.symbol)).length,
+          withData: IDX_ALL.filter((a) => screenerFund.get(a.symbol)?.f).length,
+          total: IDX_ALL.length,
+          scanning: Boolean(screenerScan.running),
+          finishedAt: screenerScan.finishedAt || null,
+        },
+        pricesAt: idxSweep.lastRunAt || null,
+        source: 'Yahoo Finance (prices, financial statements)',
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Screener data unavailable' });
     }
   });
 

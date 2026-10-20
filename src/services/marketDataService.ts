@@ -793,3 +793,17 @@ export async function fetchIndonesiaMacro(): Promise<IndonesiaMacro> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
+export interface ScreenerResponse {
+  rows: import('../utils/screener.ts').ScreenerRow[];
+  scan: { scanned: number; withData: number; total: number; scanning: boolean; finishedAt: number | null };
+  pricesAt: number | null;
+  source: string;
+}
+
+/** Every IDX stock with prices and statement ratios (the server scans statements slowly, 24 h cache). */
+export async function fetchScreener(): Promise<ScreenerResponse> {
+  const res = await fetch('/api/screener/idx');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}

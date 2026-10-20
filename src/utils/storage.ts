@@ -32,6 +32,7 @@ const STORAGE_KEYS = {
   ALERT_STATE: 'assetradar_alert_state_v1',
   ALERT_HISTORY: 'assetradar_alert_history_v1',
   ALERT_SETTINGS: 'assetradar_alert_settings_v1',
+  SCREENS: 'assetradar_screens_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -590,4 +591,16 @@ export function getAlertSettingsRaw(): unknown {
 
 export function saveAlertSettings(settings: unknown): void {
   tracked('settings', () => safeSet(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings)));
+}
+
+// ---- Saved screener screens (synced) ----------------------------------------------------------------
+
+registerSyncAdapter('screens', listAdapter(STORAGE_KEYS.SCREENS));
+
+export function getScreensRaw(): unknown {
+  return readJson(STORAGE_KEYS.SCREENS);
+}
+
+export function saveScreens(screens: unknown[]): void {
+  tracked('screens', () => safeSet(STORAGE_KEYS.SCREENS, JSON.stringify(screens)));
 }

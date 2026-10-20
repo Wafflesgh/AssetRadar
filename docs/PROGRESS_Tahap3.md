@@ -45,7 +45,13 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
   - Tanpa kunci (VAPID/DB/passphrase): alert disimpan lokal dan diperiksa di browser hanya saat aplikasi terbuka — dijelaskan di halaman Alerts.
   - Uji server (curl, kunci VAPID sementara yang tidak disimpan): config publik tanpa jumlah subscription, subscribe tanpa login 401, subscription tidak valid 400, subscribe ok, test push ke endpoint palsu → `failed: 1` (jaringan cloud), riwayat tanpa login 401.
   - Status verifikasi live: **belum** — pengiriman push ke HP sungguhan dan harga live tidak bisa dicoba dari cloud. Perlu dicek pemilik: izin notifikasi di Android/PC, iPhone setelah install PWA.
-- [ ] 3. Screener saham BEI
+- [x] 3. Screener saham BEI
+  - Rencana: harga dari sapuan IDX yang sudah ada + rasio dari logika `statements.ts`; pemindaian laporan keuangan pelan di server (2 paralel + jeda 300 ms, cache 24 jam, hanya bila ada penonton ≤1 jam), progres terlihat di UI.
+  - Dibuat: `src/utils/screener.ts` (+8 test: filter rentang dalam satuan tampilan, sektor/papan/teks, baris tanpa angka dihitung "left out because not reported", urutan dengan nilai kosong selalu di bawah, preset, CSV "Not reported", pemilihan tahunan vs TTM, penyesuaian P/E–P/B–yield ke harga terkini). Server `GET /api/screener/idx` (962 baris: harga, % 1 hari/1 minggu, nilai transaksi, market cap, P/E, P/B, ROE, net margin, DER, dividend yield, F-score, pertumbuhan laba YoY, periode data per baris; progres pemindaian). Hasil pindaian disimpan di DB (bila ada) agar restart tidak mulai ulang; "tidak ada data" dicoba lagi setelah 2 jam (bisa karena gagal jaringan).
+  - Halaman **`#/screener`** (lazy): 5 preset ("High ROE, low P/E", "Dividend payers", "Strong F-score", "Liquid, below book value", "Profit growth, low debt"), filter teks/sektor/papan + rentang min/max 13 kolom, simpan screen sendiri (ikut sinkronisasi, koleksi `screens`), urutkan kolom, unduh CSV, 50 baris/halaman, klik baris → detail saham, centang 2–4 saham → Compare (Fitur 4). Tulisan "A screen filters reported numbers — it is not a recommendation." Tabel di dalam `overflow-x-auto`.
+  - Uji server (curl): 962 baris, pemindaian berjalan & progres naik (34 saham dalam ±5 dtk saat sumber gagal), baris tanpa data tetap tampil.
+  - Keterbatasan: sumber hanya Yahoo (saham IDX ±4 tahun tahunan, ±5 kuartal); pemindaian penuh ±10–20 menit; P/E dll. memakai harga tertunda dari sapuan IDX.
+  - Status verifikasi live: **belum** (Yahoo diblokir jaringan cloud).
 - [ ] 4. Bandingkan saham/aset
 - [ ] 5. Portofolio lanjutan
 - [ ] 6. Ringkasan pagi (morning brief)

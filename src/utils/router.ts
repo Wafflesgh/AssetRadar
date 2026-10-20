@@ -1,17 +1,20 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio, #/calendar, #/macro, #/alerts.
+ * #/idx, #/portfolio, #/calendar, #/macro, #/alerts, #/screener, #/compare?s=BBCA,BBRI.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
+import { buildCompareParam, parseCompareParam } from './compare.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare';
 
 export interface ParsedRoute {
   tab: RouteTab;
   assetSymbol?: string;
+  /** Compare page: asset symbols from ?s= (2–4). */
+  compare?: string[];
 }
 
 // Legacy asset ids from before the English rename
@@ -23,6 +26,13 @@ const LEGACY_ASSET_IDS: Record<string, string> = { ihsg: '^JKSE' };
  */
 export function parseHashRoute(hash: string): ParsedRoute {
   const cleaned = hash.trim().replace(/^#\/?/, '').toLowerCase();
+  const [path, query = ''] = cleaned.split('?');
+  if (path === 'compare' || path === 'bandingkan') {
+    return { tab: 'compare', compare: parseCompareParam(new URLSearchParams(query).get('s')) };
+  }
+  if (path === 'screener') {
+    return { tab: 'screener' };
+  }
   if (!cleaned || cleaned === 'radar') {
     return { tab: 'radar' };
   }
@@ -82,8 +92,12 @@ export function parseHashRoute(hash: string): ParsedRoute {
 /**
  * Builds the canonical URL hash string for a given tab and asset symbol/id.
  */
-export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string {
+export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?: string[]): string {
   switch (tab) {
+    case 'screener':
+      return '#/screener';
+    case 'compare':
+      return compare && compare.length ? `#/compare?s=${buildCompareParam(compare)}` : '#/compare';
     case 'radar':
       return '#/radar';
     case 'watchlist':

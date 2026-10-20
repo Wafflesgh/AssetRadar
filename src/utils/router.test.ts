@@ -70,3 +70,11 @@ test('alerts route', () => {
   assert.deepEqual(parseHashRoute('#/alerts'), { tab: 'alerts' });
   assert.equal(buildHashRoute('alerts'), '#/alerts');
 });
+
+test('screener and compare routes', () => {
+  assert.deepEqual(parseHashRoute('#/screener'), { tab: 'screener' });
+  assert.deepEqual(parseHashRoute('#/compare?s=BBCA,bbri,BMRI'), { tab: 'compare', compare: ['BBCA.JK', 'BBRI.JK', 'BMRI.JK'] });
+  assert.deepEqual(parseHashRoute('#/compare'), { tab: 'compare', compare: [] });
+  assert.equal(buildHashRoute('compare', undefined, ['BBCA.JK', 'BTC/IDR']), '#/compare?s=BBCA,BTC');
+  assert.equal(buildHashRoute('screener'), '#/screener');
+});

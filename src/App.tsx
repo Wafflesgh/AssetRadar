@@ -56,6 +56,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
 const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 
@@ -71,6 +72,9 @@ export default function App() {
     if (typeof window === 'undefined') return 'BTC/IDR';
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
   });
+  const [compareSymbols, setCompareSymbols] = useState<string[]>(() =>
+    typeof window === 'undefined' ? [] : parseHashRoute(window.location.hash).compare ?? []
+  );
   const [ticks, setTicks] = useState<Record<string, PriceTick>>({});
   const [feedMode, setFeedMode] = useState<FeedMode>('polling');
   const [connectionState, setConnectionState] =
@@ -116,13 +120,14 @@ export default function App() {
       window.history.replaceState(
         null,
         '',
-        buildHashRoute(activeTab, selectedSymbol)
+        buildHashRoute(activeTab, selectedSymbol, compareSymbols)
       );
     }
 
     const handleHashChange = () => {
       const parsed = parseHashRoute(window.location.hash);
       setActiveTab(parsed.tab);
+      if (parsed.compare) setCompareSymbols(parsed.compare);
       if (parsed.assetSymbol) {
         setSelectedSymbol(parsed.assetSymbol);
       }
@@ -212,15 +217,23 @@ export default function App() {
     (tab: NavTab) => {
       setActiveTab(tab);
       if (typeof window !== 'undefined') {
-        const nextHash = buildHashRoute(tab, selectedSymbol);
+        const nextHash = buildHashRoute(tab, selectedSymbol, compareSymbols);
         if (window.location.hash !== nextHash) {
           window.location.hash = nextHash;
         }
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [selectedSymbol]
+    [selectedSymbol, compareSymbols]
   );
+
+  /** Opens the Compare page with these assets (2–4). */
+  const handleCompare = useCallback((symbols: string[]) => {
+    setCompareSymbols(symbols);
+    setActiveTab('compare');
+    window.location.hash = buildHashRoute('compare', undefined, symbols);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleSelectAsset = useCallback((symbol: string) => {
     const found = getAssetBySymbol(symbol);
@@ -346,6 +359,8 @@ export default function App() {
               {activeTab === 'calendar' && 'IDX Corporate Calendar'}
               {activeTab === 'macro' && 'Indonesia Macro'}
               {activeTab === 'alerts' && 'Alerts'}
+              {activeTab === 'screener' && 'IDX Screener'}
+              {activeTab === 'compare' && 'Compare'}
             </span>
           </div>
         </div>
@@ -494,6 +509,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'screener' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <ScreenerView onSelectAsset={handleSelectAsset} onCompare={handleCompare} />
           </Suspense>
         )}
         {activeTab === 'alerts' && (

@@ -21,6 +21,8 @@ import {
   CalendarDays,
   Building2,
   Bell,
+  Filter,
+  GitCompare,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -28,7 +30,7 @@ import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -57,6 +59,8 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'idx', label: 'IDX Stocks', shortLabel: 'IDX', icon: Landmark, mobile: true },
   { id: 'terminal', label: 'Terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit, mobile: true },
+  { id: 'screener', label: 'IDX Screener', shortLabel: 'Screener', icon: Filter },
+  { id: 'compare', label: 'Compare', icon: GitCompare },
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'IDX Calendar', shortLabel: 'Calendar', icon: CalendarDays },
