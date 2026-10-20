@@ -181,3 +181,11 @@ Pull request tahap 3 (https://github.com/Wafflesgh/AssetRadar/pull/1) **belum di
 1. Buka https://github.com/Wafflesgh/AssetRadar/pull/2, review, lalu klik **"Merge pull request"** (dengan memperhatikan catatan konflik di atas).
 2. Perbarui aplikasi online dengan cara Anda biasanya (yang mengambil versi terbaru dari `main`). **Jangan** klik Push/Sync dari AI Studio.
 3. Opsional: isi `BPS_API_KEY`, lalu putuskan hal-hal di "Butuh keputusan pemilik".
+
+
+## Penggabungan & verifikasi live (laptop, 20 Okt 2026)
+
+- Tahap 4 (`claude/tahap4-sentiment`) di-fast-forward ke `main`, lalu tahap 3 (`claude/ecstatic-fermat-nyv2f9`) digabung di atasnya; 15 file bentrok dibereskan (rute, menu, perintah Terminal BRIEF/CMP, Settings, portofolio, catatan uji nyata server, dokumen, `.env.example`).
+- Semua halaman & teks tahap 3 diterjemahkan ke dua bahasa (Alerts, Screener, Compare, Ringkasan Pagi, Backtest, emas Antam, Sync, analitik portofolio), termasuk pesan validasi dan isi notifikasi (push dari server memakai bahasa perangkat yang terakhir mendaftar push). Ringkasan pagi kini dibuat server dalam EN + ID sekaligus, dengan angka mengikuti format masing-masing bahasa.
+- Backup sebelum merge: tag GitHub `backup-20261020-main`, `backup-20261020-tahap3`, `backup-20261020-tahap4`, plus file bundle/zip di `D:\Asset Radar\backups`.
+- Verifikasi live (sumber yang terblokir dari cloud bisa diakses dari laptop): 20 halaman tanpa crash dan tanpa scroll horizontal di 1440px (EN) dan 375px (ID); mode terang dicek di halaman tahap 3/4. Sentimen 3 horizon BBCA (Short 46 / Medium 58 / Long 63, keyakinan rendah karena belum tervalidasi), halaman Binance 100 pair dengan stream live, Compare BBCA vs BBRI, Screener memindai laporan (411/962 saat dicek), Ringkasan Pagi 20 Okt dibuat otomatis, Finnhub tersambung. lint, 237 test, dan build lulus.

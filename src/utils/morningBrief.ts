@@ -70,10 +70,15 @@ export interface MorningBrief {
   lang?: AppLang;
 }
 
-const signed = (v: number | null) => (v === null || !Number.isFinite(v) ? 'n/a' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
+/** Signed percent; Indonesian uses a decimal comma ("+2,74%"). */
+const signed = (v: number | null, lang: AppLang = 'en') => {
+  if (v === null || !Number.isFinite(v)) return 'n/a';
+  const text = `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
+  return lang === 'id' ? text.replace('.', ',') : text;
+};
 
-function quoteLine(q: BriefQuote): string {
-  return `${q.name} ${q.display} (${signed(q.changePct)})`;
+function quoteLine(q: BriefQuote, lang: AppLang = 'en'): string {
+  return `${q.name} ${q.display} (${signed(q.changePct, lang)})`;
 }
 
 function avg(list: BriefQuote[]): number | null {
@@ -146,17 +151,17 @@ export function buildBrief(input: BriefInput): MorningBrief {
   const overview: string[] = [];
   if (input.wallStreet.length) overview.push(tx('brief.ov.us', { tone: tone(us, lang) }));
   if (input.asia.length) overview.push(tx('brief.ov.asia', { tone: tone(asia, lang) }));
-  if (input.ihsg) overview.push(tx('brief.ov.ihsg', { tone: tone(ihsgChg, lang), price: input.ihsg.display, change: signed(ihsgChg) }));
+  if (input.ihsg) overview.push(tx('brief.ov.ihsg', { tone: tone(ihsgChg, lang), price: input.ihsg.display, change: signed(ihsgChg, lang) }));
   const usd = input.rates.find((q) => q.code === 'USD');
-  if (usd) overview.push(tx('brief.ov.usd', { price: usd.display, change: signed(usd.changePct) }));
+  if (usd) overview.push(tx('brief.ov.usd', { price: usd.display, change: signed(usd.changePct, lang) }));
   const geo = input.news.find((n) => n.geoAlert === 'high');
   if (geo) overview.push(tx('brief.ov.geo'));
   sections.push({ id: 'overview', title: tx('brief.sec.overview'), lines: overview.length ? [overview.join(' ')] : [tx('brief.noMarket')] });
 
   if (input.wallStreet.length || input.asia.length) {
-    sections.push({ id: 'global', title: tx('brief.sec.global'), lines: [...input.wallStreet, ...input.asia].map(quoteLine) });
+    sections.push({ id: 'global', title: tx('brief.sec.global'), lines: [...input.wallStreet, ...input.asia].map((q) => quoteLine(q, lang)) });
   }
-  if (input.ihsg) sections.push({ id: 'ihsg', title: tx('brief.sec.ihsg'), lines: [quoteLine(input.ihsg)] });
+  if (input.ihsg) sections.push({ id: 'ihsg', title: tx('brief.sec.ihsg'), lines: [quoteLine(input.ihsg, lang)] });
 
   const withChange = input.movers.filter((q) => q.changePct !== null && Number.isFinite(q.changePct));
   if (withChange.length) {
@@ -166,13 +171,13 @@ export function buildBrief(input: BriefInput): MorningBrief {
       id: 'movers',
       title: tx('brief.sec.movers'),
       lines: [
-        tx('brief.up', { list: up.map((q) => `${q.code} ${signed(q.changePct)}`).join(', ') }),
-        tx('brief.down', { list: down.map((q) => `${q.code} ${signed(q.changePct)}`).join(', ') }),
+        tx('brief.up', { list: up.map((q) => `${q.code} ${signed(q.changePct, lang)}`).join(', ') }),
+        tx('brief.down', { list: down.map((q) => `${q.code} ${signed(q.changePct, lang)}`).join(', ') }),
       ],
     });
   }
   const fx = [...input.rates, ...(input.gold ? [input.gold] : [])];
-  if (fx.length) sections.push({ id: 'fx', title: tx('brief.sec.fx'), lines: fx.map(quoteLine) });
+  if (fx.length) sections.push({ id: 'fx', title: tx('brief.sec.fx'), lines: fx.map((q) => quoteLine(q, lang)) });
 
   const prio = new Set(input.priority);
   const events = [...input.events].sort((a, b) => Number(prio.has(b.symbol)) - Number(prio.has(a.symbol)) || a.symbol.localeCompare(b.symbol));
@@ -216,7 +221,7 @@ export function buildBrief(input: BriefInput): MorningBrief {
   }
 
   const headline = input.ihsg
-    ? `IHSG ${signed(ihsgChg)} · Wall Street ${tone(us, lang)} · ${input.date}`
+    ? `IHSG ${signed(ihsgChg, lang)} · Wall Street ${tone(us, lang)} · ${input.date}`
     : tx('brief.title', { date: input.date });
   return {
     date: input.date,

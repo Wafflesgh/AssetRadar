@@ -184,7 +184,7 @@ import {
   type AlertState,
   type UserAlert,
 } from './src/utils/alerts.ts';
-import { formatAssetPrice } from './src/utils/format.ts';
+import { formatAssetPrice, getNumberLocale, setNumberLocale, type NumberLocale } from './src/utils/format.ts';
 import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefInput, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
 import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
 
@@ -3685,6 +3685,23 @@ async function generateBrief(date: string): Promise<BriefPair> {
     return asset ? briefQuote(asset, ticks[asset.symbol]) : null;
   };
   const list = (codes: string[]) => codes.map(q).filter((x): x is BriefQuote => x !== null);
+  /** The price lines, formatted in a number locale (synchronous, so the global locale is restored at once). */
+  const quotes = (locale: NumberLocale = 'en-US') => {
+    const before = getNumberLocale();
+    setNumberLocale(locale);
+    try {
+      return {
+        wallStreet: list(['SPX', 'NDX', 'DJI']),
+        asia: list(['N225', 'HSI', 'KOSPI', 'SSE', 'STI']),
+        ihsg: q('JCI'),
+        movers: ASSETS.filter((a) => a.group !== 'index' && a.group !== 'forex').map((a) => briefQuote(a, ticks[a.symbol])).filter((x): x is BriefQuote => x !== null),
+        rates: list(['USD', 'EUR', 'SGD', 'JPY', 'CNY']),
+        gold: q('GOLD'),
+      };
+    } finally {
+      setNumberLocale(before);
+    }
+  };
 
   // Watchlist + portfolio from synced data come first in the calendar
   let priority: string[] = [];
@@ -3728,12 +3745,7 @@ async function generateBrief(date: string): Promise<BriefPair> {
   const input: BriefInput = {
     date,
     generatedAt: now,
-    wallStreet: list(['SPX', 'NDX', 'DJI']),
-    asia: list(['N225', 'HSI', 'KOSPI', 'SSE', 'STI']),
-    ihsg: q('JCI'),
-    movers: ASSETS.filter((a) => a.group !== 'index' && a.group !== 'forex').map((a) => briefQuote(a, ticks[a.symbol])).filter((x): x is BriefQuote => x !== null),
-    rates: list(['USD', 'EUR', 'SGD', 'JPY', 'CNY']),
-    gold: q('GOLD'),
+    ...quotes(),
     events,
     priority,
     codeOf: (sym) => getAssetBySymbol(sym)?.code.replace(/\.JK$/, '') ?? sym,
@@ -3741,7 +3753,7 @@ async function generateBrief(date: string): Promise<BriefPair> {
     news: newsHub.items,
     forward,
   };
-  const pair: BriefPair = { en: buildBrief({ ...input, lang: 'en' }), id: buildBrief({ ...input, lang: 'id' }) };
+  const pair: BriefPair = { en: buildBrief({ ...input, lang: 'en' }), id: buildBrief({ ...input, ...quotes('id-ID'), lang: 'id' }) };
   for (const lang of ['en', 'id'] as const) await polishBrief(pair[lang] as MorningBrief, lang);
   return pair;
 }

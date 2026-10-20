@@ -20,7 +20,9 @@ const files = [];
 // A word of at least 3 letters makes it a sentence a person reads
 const WORDY = /[A-Za-z]{3,}/;
 // Names and codes that read the same in both languages
-const IGNORE = /^(AssetRadar|Radar|TradingView|IHSG|BEI|IDX|USD|IDR|WIB|EN|ID|OK|CSV|JSON|PWA|SSE|BTC|ETH|AI|BI-Rate|BI-RATE|Piotroski F-score|\W+)$/;
+// (brand names such as Antam and Pegadaian, indicator names such as RSI, "min"/"max" boxes, and
+// Terminal commands or tickers written in capitals, e.g. "CMP BBCA BBRI")
+const IGNORE = /^(AssetRadar|Radar|TradingView|IHSG|BEI|IDX|USD|IDR|WIB|EN|ID|OK|CSV|JSON|PWA|SSE|BTC|ETH|AI|BI-Rate|BI-RATE|Piotroski F-score|Antam|Pegadaian|RSI|min|max|[A-Z0-9][A-Z0-9 ./-]*|\W+)$/;
 // TypeScript generics and comparisons on one line look like text between > and <
 const CODE_LIKE = /=>|&&|\|\||\?\s|^\)|\(\s*$|\w\(|\s:\s|^[a-z]+[A-Z]\w*$/;
 let total = 0;
