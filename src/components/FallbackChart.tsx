@@ -3,6 +3,7 @@
  * /api/market/history (Indodax for crypto, Yahoo Finance otherwise). Shows WIB time,
  * follows the theme, refreshes intraday data every 60 s and handles loading/error states.
  */
+import { useT } from '../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createChart,
@@ -86,6 +87,7 @@ export function FallbackChart({
   sourceLabel = 'Yahoo Finance',
 }: FallbackChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const t = useT();
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -225,7 +227,7 @@ export function FallbackChart({
       }}
     >
       <div className="relative flex-1 min-h-0">
-        <div ref={containerRef} className="absolute inset-0" aria-label={`${symbol} candlestick chart`} />
+        <div ref={containerRef} className="absolute inset-0" aria-label={t('fallback.label', { symbol })} />
 
         {loadState !== 'ready' && (
           <div
@@ -233,13 +235,13 @@ export function FallbackChart({
             style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
             role={loadState === 'error' ? 'alert' : 'status'}
           >
-            {loadState === 'loading' && <span>Loading alternative chart...</span>}
+            {loadState === 'loading' && <span>{t('fallback.loading')}</span>}
             {loadState === 'empty' && (
-              <span>No candle data for this timeframe yet. Try another timeframe.</span>
+              <span>{t('fallback.empty')}</span>
             )}
             {loadState === 'error' && (
               <>
-                <span>Data unavailable</span>
+                <span>{t('common.dataUnavailable')}</span>
                 <button
                   type="button"
                   onClick={handleRetry}
@@ -251,7 +253,7 @@ export function FallbackChart({
                   }}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Try again
+                  {t('common.tryAgain')}
                 </button>
               </>
             )}
@@ -263,9 +265,9 @@ export function FallbackChart({
         className="text-xs py-1.5 px-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
         style={{ color: 'var(--text-secondary)' }}
       >
-        <span>Alternative chart, delayed data ({sourceLabel}).</span>
+        <span>{t('fallback.caption', { source: sourceLabel })}</span>
         <span className="font-mono-num text-[11px]">
-          {refreshFailed ? 'Refresh failed · last data' : `Interval ${interval} · WIB`}
+          {refreshFailed ? t('fallback.refreshFailed') : t('fallback.interval', { interval })}
         </span>
       </div>
     </div>

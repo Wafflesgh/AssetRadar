@@ -5,22 +5,19 @@
  * stocks. The server checks every stock slowly in the background, so the page shows how many
  * stocks have been checked and refreshes while that runs.
  */
+import { useT, type TranslationKey } from '../i18n/index.ts';
+import { assetName } from '../i18n/assetNames.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, RefreshCw } from 'lucide-react';
 import { getAssetBySymbol } from '../config/assets.ts';
 import { fetchCorporateCalendar, type CalendarResponse } from '../services/marketDataService.ts';
-import { EVENT_LABELS, addDays, type CalendarEventType } from '../utils/corporateCalendar.ts';
+import { addDays, type CalendarEventType } from '../utils/corporateCalendar.ts';
 import { formatAssetPrice } from '../utils/format.ts';
 import { getPortfolioTxs } from '../utils/storage.ts';
 import { niceDate } from './CorporateCalendarPanel.tsx';
 
 type Window = 'week' | 'month' | 'next90' | 'past30';
-const WINDOWS: Array<{ key: Window; label: string }> = [
-  { key: 'week', label: 'This week' },
-  { key: 'month', label: 'This month' },
-  { key: 'next90', label: 'Next 90 days' },
-  { key: 'past30', label: 'Last 30 days' },
-];
+const WINDOWS: Window[] = ['week', 'month', 'next90', 'past30'];
 type Scope = 'all' | 'watchlist' | 'portfolio';
 const TYPES: CalendarEventType[] = ['earnings', 'exDividend', 'dividendPayment', 'dividend', 'split'];
 
@@ -44,6 +41,7 @@ function windowRange(w: Window, today: string): [string, string] {
 
 export function IdxCalendarView({ onSelectAsset, watchlist }: { onSelectAsset: (symbol: string) => void; watchlist: string[] }) {
   const [data, setData] = useState<CalendarResponse | null>(null);
+  const tr = useT();
   const [error, setError] = useState(false);
   const [win, setWin] = useState<Window>('week');
   const [scope, setScope] = useState<Scope>('all');
@@ -95,37 +93,36 @@ export function IdxCalendarView({ onSelectAsset, watchlist }: { onSelectAsset: (
     <div className="space-y-6">
       <section className="p-5 md:p-6 rounded-xl border space-y-2" style={card}>
         <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-          <CalendarDays className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> IDX Corporate Calendar
+          <CalendarDays className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> {tr('idxcal.title')}
         </h1>
         <p className="text-sm max-w-3xl" style={{ color: 'var(--text-secondary)' }}>
-          Earnings reports, ex-dividend and payment dates and stock splits for Indonesian stocks (source: Yahoo Finance). Earnings
-          dates marked "estimated" are the source's estimate. AGM (RUPS), cum and recording dates and rights issues are not
-          available from free sources.
+          {tr('idxcal.intro')}
         </p>
         {data && (
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            {data.scanning ? 'Checking stocks… ' : ''}
-            {data.scanned} of {data.total} stocks checked{data.scanning ? ' (refreshes every 15 s)' : ''}.
+            {data.scanning ? tr('idxcal.checking') : ''}
+            {tr('idxcal.checked', { scanned: data.scanned ?? 0, total: data.total ?? 0 })}
+            {data.scanning ? tr('idxcal.refreshes') : ''}.
           </p>
         )}
       </section>
 
-      <section className="space-y-3" aria-label="Calendar filters">
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Period">
+      <section className="space-y-3" aria-label={tr('idxcal.filters')}>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={tr('idxcal.period')}>
           {WINDOWS.map((w) => (
-            <button key={w.key} type="button" role="radio" aria-checked={win === w.key} onClick={() => setWin(w.key)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={chip(win === w.key)}>
-              {w.label}
+            <button key={w} type="button" role="radio" aria-checked={win === w} onClick={() => setWin(w)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={chip(win === w)}>
+              {tr(`idxcal.win.${w}` as TranslationKey)}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Stocks">
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={tr('idxcal.stocks')}>
           {(['all', 'watchlist', 'portfolio'] as Scope[]).map((s) => (
             <button key={s} type="button" role="radio" aria-checked={scope === s} onClick={() => setScope(s)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={chip(scope === s)}>
-              {s === 'all' ? 'All IDX stocks' : s === 'watchlist' ? 'My watchlist' : 'My portfolio'}
+              {tr(`idxcal.scope.${s}` as TranslationKey)}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Event types">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={tr('idxcal.types')}>
           {TYPES.map((t) => (
             <button
               key={t}
@@ -142,7 +139,7 @@ export function IdxCalendarView({ onSelectAsset, watchlist }: { onSelectAsset: (
               className="px-2.5 py-1 rounded-md text-[11px] font-semibold border"
               style={chip(types.has(t))}
             >
-              {EVENT_LABELS[t]}
+              {tr(`event.${t}` as TranslationKey)}
             </button>
           ))}
         </div>
@@ -150,24 +147,24 @@ export function IdxCalendarView({ onSelectAsset, watchlist }: { onSelectAsset: (
 
       {error && !data ? (
         <div className="p-6 rounded-xl border text-sm space-y-3" style={card} role="alert">
-          <p>Data unavailable</p>
+          <p>{tr('common.dataUnavailable')}</p>
           <button type="button" onClick={() => setReload((r) => r + 1)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RefreshCw className="w-3.5 h-3.5" /> Try again
+            <RefreshCw className="w-3.5 h-3.5" /> {tr('common.tryAgain')}
           </button>
         </div>
       ) : !data ? (
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{tr('common.loading')}</p>
       ) : byDate.size === 0 ? (
         <p className="p-6 rounded-xl border text-sm" style={{ ...card, color: 'var(--text-secondary)' }}>
-          No events in this period{data.scanning ? ' among the stocks checked so far' : ''}.
+          {tr('idxcal.none', { suffix: data.scanning ? tr('idxcal.noneSoFar') : '' })}
         </p>
       ) : (
-        <section className="space-y-3" aria-label="Events">
+        <section className="space-y-3" aria-label={tr('idxcal.events')}>
           {[...byDate.entries()].map(([date, list]) => (
             <div key={date} className="rounded-xl border overflow-hidden" style={card}>
               <h2 className="px-4 py-2 text-sm font-bold" style={{ backgroundColor: 'var(--bg-surface-subtle)', color: date === today ? 'var(--accent-radar)' : undefined }}>
                 {niceDate(date)}
-                {date === today ? ' · today' : ''}
+                {date === today ? tr('idxcal.today') : ''}
               </h2>
               <ul>
                 {list.map((e) => {
@@ -178,13 +175,13 @@ export function IdxCalendarView({ onSelectAsset, watchlist }: { onSelectAsset: (
                         <span className="min-w-0">
                           <span className="font-mono-num font-bold text-[13px]">{asset?.shortName ?? e.symbol}</span>
                           <span className="text-[11px] ml-2 truncate" style={{ color: 'var(--text-secondary)' }}>
-                            {asset?.name}
+                            {asset ? assetName(asset) : ''}
                           </span>
                         </span>
                         <span className="text-xs text-right shrink-0">
-                          {EVENT_LABELS[e.type]}
-                          {e.estimate && <span style={{ color: 'var(--text-secondary)' }}> (estimated)</span>}
-                          {e.amount !== undefined && asset && <span className="block font-mono-num">{formatAssetPrice(e.amount, asset)}/share</span>}
+                          {tr(`event.${e.type}` as TranslationKey)}
+                          {e.estimate && <span style={{ color: 'var(--text-secondary)' }}> {tr('cal.estimated')}</span>}
+                          {e.amount !== undefined && asset && <span className="block font-mono-num">{tr('cal.perShare', { amount: formatAssetPrice(e.amount, asset) })}</span>}
                           {e.ratio && <span className="block font-mono-num">{e.ratio}</span>}
                         </span>
                       </button>

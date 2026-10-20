@@ -2608,6 +2608,51 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
+  // Headline translation (Gemini, only with GEMINI_API_KEY; cached 24 h). Without a key: 503 and
+  // the browser opens Google Translate instead.
+  const translateCache = new Map<string, CacheEntry<string>>();
+  app.get('/api/translate', async (req, res) => {
+    const text = String(req.query.text || '').trim().slice(0, 300);
+    const to = req.query.to === 'id' ? 'id' : 'en';
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!text) {
+      res.status(400).json({ error: 'text required' });
+      return;
+    }
+    if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+      res.status(503).json({ error: 'Translation needs GEMINI_API_KEY on the server' });
+      return;
+    }
+    const key = `${to}|${text}`;
+    const cached = translateCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      res.json({ translated: cached.data, cached: true });
+      return;
+    }
+    try {
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: `Translate this news headline into ${to === 'id' ? 'Indonesian' : 'English'}. Reply with the translation only.\n${text}`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+        }),
+        new Promise<null>((r) => setTimeout(() => r(null), 8000)),
+      ]);
+      const translated = response?.text?.trim().slice(0, 400);
+      if (!translated) {
+        res.status(502).json({ error: 'Translation unavailable' });
+        return;
+      }
+      if (translateCache.size > 2000) translateCache.clear();
+      translateCache.set(key, { data: translated, expiresAt: Date.now() + 24 * 3600_000 });
+      res.json({ translated });
+    } catch (err) {
+      console.warn('[Translate] failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Translation unavailable' });
+    }
+  });
+
   // 1. All market snapshot endpoint (Indodax + Yahoo JCI & USD/IDR + Gold XAU/USD)
   app.get('/api/market/snapshot', async (_req, res) => {
     const ticks: Record<string, PriceTick> = {};

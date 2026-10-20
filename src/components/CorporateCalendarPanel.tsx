@@ -4,22 +4,22 @@
  * last 5 years of dividends per share and stock splits. Dates that free sources do not publish
  * (AGM/RUPS, cum and recording dates, rights issues) are named as not available.
  */
+import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { CalendarDays, RefreshCw } from 'lucide-react';
 import type { AssetConfig } from '../config/assets.ts';
 import { fetchCorporateCalendar } from '../services/marketDataService.ts';
-import { EVENT_LABELS, type CalendarEvent } from '../utils/corporateCalendar.ts';
+import { type CalendarEvent } from '../utils/corporateCalendar.ts';
 import { formatAssetPrice } from '../utils/format.ts';
 
 const WIB_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
-const NICE_DATE = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
-
 export function niceDate(d: string): string {
-  return NICE_DATE.format(new Date(`${d}T00:00:00Z`));
+  return new Intl.DateTimeFormat(getLang() === 'id' ? 'id-ID' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`));
 }
 
 export function CorporateCalendarPanel({ asset }: { asset: AssetConfig }) {
   const [events, setEvents] = useState<CalendarEvent[] | null>(null);
+  const t = useT();
   const [error, setError] = useState(false);
   const [reload, setReload] = useState(0);
 
@@ -45,35 +45,35 @@ export function CorporateCalendarPanel({ asset }: { asset: AssetConfig }) {
     <section aria-labelledby="corp-cal-heading" className="p-5 md:p-6 rounded-xl border space-y-4" style={card}>
       <div>
         <h3 id="corp-cal-heading" className="text-base font-bold flex items-center gap-2">
-          <CalendarDays className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} /> Corporate Calendar
+          <CalendarDays className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} /> {t('cal.title')}
         </h3>
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          Source: Yahoo Finance. AGM (RUPS), cum and recording dates and rights issues are not available from free sources.
+          {t('cal.sourceNote')}
         </p>
       </div>
       {error ? (
         <div className="text-sm space-y-2">
-          <p>Data unavailable</p>
+          <p>{t('common.dataUnavailable')}</p>
           <button type="button" onClick={() => setReload((r) => r + 1)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RefreshCw className="w-3.5 h-3.5" /> Try again
+            <RefreshCw className="w-3.5 h-3.5" /> {t('common.tryAgain')}
           </button>
         </div>
       ) : !events ? (
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('common.loading')}</p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>Upcoming</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>{t('cal.upcoming')}</h4>
             {upcoming.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No upcoming date published.</p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('cal.noUpcoming')}</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {upcoming.map((e) => (
                   <li key={e.type + e.date} className="flex justify-between gap-2">
                     <span>
-                      {EVENT_LABELS[e.type]}
-                      {e.estimate && <span className="text-[11px] ml-1" style={{ color: 'var(--text-secondary)' }}>(estimated)</span>}
-                      {e.amount !== undefined && <span className="ml-1 font-mono-num">{formatAssetPrice(e.amount, asset)}/share</span>}
+                      {t(`event.${e.type}` as TranslationKey)}
+                      {e.estimate && <span className="text-[11px] ml-1" style={{ color: 'var(--text-secondary)' }}>{t('cal.estimated')}</span>}
+                      {e.amount !== undefined && <span className="ml-1 font-mono-num">{t('cal.perShare', { amount: formatAssetPrice(e.amount, asset) })}</span>}
                     </span>
                     <span className="font-mono-num whitespace-nowrap">{niceDate(e.date)}</span>
                   </li>
@@ -82,11 +82,11 @@ export function CorporateCalendarPanel({ asset }: { asset: AssetConfig }) {
             )}
             {splits.length > 0 && (
               <>
-                <h4 className="text-xs font-bold uppercase tracking-wide mt-4 mb-2" style={{ color: 'var(--text-secondary)' }}>Stock splits</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wide mt-4 mb-2" style={{ color: 'var(--text-secondary)' }}>{t('cal.splits')}</h4>
                 <ul className="space-y-1 text-sm">
                   {splits.map((e) => (
                     <li key={e.date} className="flex justify-between">
-                      <span>Split {e.ratio}</span>
+                      <span>{t('cal.split', { ratio: e.ratio ?? '' })}</span>
                       <span className="font-mono-num">{niceDate(e.date)}</span>
                     </li>
                   ))}
@@ -95,15 +95,15 @@ export function CorporateCalendarPanel({ asset }: { asset: AssetConfig }) {
             )}
           </div>
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>Dividends (last 5 years)</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>{t('cal.dividends')}</h4>
             {dividends.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No dividends recorded.</p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('cal.noDividends')}</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                    <th className="py-1 font-semibold">Ex-date</th>
-                    <th className="py-1 font-semibold text-right">Per share</th>
+                    <th className="py-1 font-semibold">{t('cal.exDate')}</th>
+                    <th className="py-1 font-semibold text-right">{t('cal.perShareHead')}</th>
                   </tr>
                 </thead>
                 <tbody>

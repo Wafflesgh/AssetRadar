@@ -5,6 +5,8 @@
  * background AI-enhanced result, and re-scores silently when breaking news arrives. Below it,
  * AssetAnalysisPanel shows the evidence behind the score (technical + fundamental analysis).
  */
+import { t, useT, type TranslationKey } from '../i18n/index.ts';
+import { TranslateButton } from './TranslateButton.tsx';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   TrendingUp,
@@ -31,6 +33,7 @@ export function AssetIntelligencePanel({
   symbol,
   assetName,
 }: AssetIntelligencePanelProps) {
+  const t = useT();
   const [data, setData] = useState<AssetIntelligence | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +56,7 @@ export function AssetIntelligencePanel({
           }, 8000);
         }
       } catch {
-        if (!silent) setError('Sentiment analysis and news could not be loaded yet.');
+        if (!silent) setError(t('intel.loadError'));
       } finally {
         if (!silent) setLoading(false);
       }
@@ -112,7 +115,7 @@ export function AssetIntelligencePanel({
   return (
     <div className="space-y-6">
     <section
-      aria-label={`${assetName} sentiment analysis and news`}
+      aria-label={t('intel.sectionLabel', { name: assetName })}
       className="grid grid-cols-1 lg:grid-cols-12 gap-6"
     >
       {/* Left Column: Market Sentiment Analysis (5 cols on lg) */}
@@ -134,16 +137,16 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Market Sentiment Analysis</span>
+                <span>{t('intel.kicker')}</span>
                 {data?.aiPowered && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span>AI-enhanced</span>
+                    <span>{t('intel.ai')}</span>
                   </>
                 )}
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                {assetName} Sentiment
+                {t('intel.title', { name: assetName })}
               </h2>
             </div>
 
@@ -151,7 +154,7 @@ export function AssetIntelligencePanel({
               type="button"
               onClick={() => loadIntelligence()}
               disabled={loading}
-              aria-label="Reload sentiment analysis and news"
+              aria-label={t('intel.reload')}
               className="p-2 rounded-lg border text-xs font-medium transition-colors"
               style={{
                 backgroundColor: 'var(--bg-surface-subtle)',
@@ -181,7 +184,7 @@ export function AssetIntelligencePanel({
           ) : error || !data ? (
             <div className="py-6 space-y-3">
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {error || 'Sentiment data unavailable'}
+                {error || t('intel.unavailable')}
               </p>
               <button
                 type="button"
@@ -193,7 +196,7 @@ export function AssetIntelligencePanel({
                   color: 'var(--text-primary)',
                 }}
               >
-                Try again
+                {t('common.tryAgain')}
               </button>
             </div>
           ) : (
@@ -216,7 +219,7 @@ export function AssetIntelligencePanel({
                       className="text-xl font-bold"
                       style={{ color: sentimentColor }}
                     >
-                      {data.sentimentLabel}
+                      {t(`sentiment.${data.sentimentLabel}` as TranslationKey)}
                     </span>
                   </div>
                   <div className="text-right">
@@ -253,16 +256,16 @@ export function AssetIntelligencePanel({
                     className="flex justify-between text-[10px] font-medium"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    <span>Bearish (0–42)</span>
-                    <span>Neutral (43–57)</span>
-                    <span>Bullish (58–100)</span>
+                    <span>{t('intel.scaleBear')}</span>
+                    <span>{t('intel.scaleNeutral')}</span>
+                    <span>{t('intel.scaleBull')}</span>
                   </div>
                 </div>
               </div>
 
               {rescoredAt && (
                 <p className="text-[11px] font-semibold" style={{ color: 'var(--accent-radar)' }}>
-                  ↻ Re-scored on breaking news {agoLabel(rescoredAt, now)}
+                  {t('intel.rescored', { ago: agoLabel(rescoredAt, now) })}
                 </p>
               )}
 
@@ -278,7 +281,7 @@ export function AssetIntelligencePanel({
                     className="text-xs font-semibold"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Key Drivers:
+                    {t('intel.drivers')}
                   </h3>
                   <ul className="space-y-1.5 text-xs">
                     {data.keyFactors.map((factor, idx) => (
@@ -308,8 +311,7 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          The sentiment indicator is computed from 24-hour price momentum and the tone of the latest
-          market headlines. Not a buy/sell recommendation.
+          {t('intel.note')}
         </p>
       </div>
 
@@ -332,25 +334,25 @@ export function AssetIntelligencePanel({
                   className="w-3.5 h-3.5"
                   style={{ color: 'var(--accent-radar)' }}
                 />
-                <span>Related Market News</span>
+                <span>{t('intel.newsKicker')}</span>
                 <span aria-hidden="true">·</span>
-                <span>original language</span>
+                <span>{t('intel.original')}</span>
                 <span aria-hidden="true">·</span>
                 <span
                   className="inline-flex items-center gap-1 font-semibold"
                   style={{ color: isLive ? 'var(--color-up)' : 'var(--text-secondary)' }}
-                  title={isLive ? 'Live stream connected' : 'Updating every 60 seconds'}
+                  title={isLive ? t('newsTape.live') : t('newsTape.polling')}
                 >
                   <span
                     aria-hidden="true"
                     className={`inline-block w-1.5 h-1.5 rounded-full ${isLive ? 'news-live-dot' : ''}`}
                     style={{ backgroundColor: 'currentColor' }}
                   />
-                  {isLive ? 'Live' : 'Every 60s'}
+                  {isLive ? t('intel.live') : t('intel.every60')}
                 </span>
               </div>
               <h2 className="text-lg font-bold mt-0.5">
-                News Moving {assetName}
+                {t('intel.newsTitle', { name: assetName })}
               </h2>
             </div>
           </div>
@@ -374,7 +376,7 @@ export function AssetIntelligencePanel({
               }}
             >
               <p className="text-sm font-medium">
-                No recent news has been indexed yet.
+                {t('intel.noNews')}
               </p>
               <button
                 type="button"
@@ -385,7 +387,7 @@ export function AssetIntelligencePanel({
                   borderColor: 'var(--border-subtle)',
                 }}
               >
-                Try again
+                {t('common.tryAgain')}
               </button>
             </div>
           ) : (
@@ -419,7 +421,7 @@ export function AssetIntelligencePanel({
                             className="px-1 rounded text-[10px] font-bold"
                             style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
                           >
-                            NEW
+                            {t('intel.new')}
                           </span>
                         )}
                         <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -429,7 +431,7 @@ export function AssetIntelligencePanel({
                         <span title={item.publishedAt}>{agoLabel(item.publishedAtMs, now)}</span>
                         <span aria-hidden="true">·</span>
                         <span className="font-semibold" style={{ color: itemColor }}>
-                          Tone: {item.sentiment}
+                          {t('intel.tone', { tone: t(`sentiment.${item.sentiment}` as TranslationKey) })}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-3">
@@ -442,6 +444,7 @@ export function AssetIntelligencePanel({
                         />
                       </div>
                     </a>
+                    <TranslateButton text={item.title} />
                   </article>
                 );
               })}
@@ -456,7 +459,7 @@ export function AssetIntelligencePanel({
             color: 'var(--text-secondary)',
           }}
         >
-          Click a headline to read the full article at its original source.
+          {t('intel.clickNote')}
         </p>
       </div>
     </section>
@@ -467,5 +470,5 @@ export function AssetIntelligencePanel({
 
 function agoLabel(atMs: number | undefined, now: number): string {
   const age = formatAge(atMs, now);
-  return age === 'now' ? 'just now' : age === '—' ? age : `${age} ago`;
+  return age === 'now' ? t('time.justNow') : age === '—' ? age : t('time.ago', { age });
 }

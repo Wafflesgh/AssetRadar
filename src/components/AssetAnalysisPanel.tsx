@@ -8,13 +8,15 @@
  *    events driving the move (classified, weighted by source and recency).
  * Refreshes every 2 minutes and when a new headline for the asset arrives.
  */
+import { t, useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+import { TranslateButton } from './TranslateButton.tsx';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { BookOpen, CheckCircle2, CircleSlash, ExternalLink, FlaskConical, LineChart, Newspaper, RefreshCw, XCircle } from 'lucide-react';
 import type { AssetAnalysis, EvidenceComponent } from '../ai/analysis.ts';
-import { DRIVER_LABELS } from '../ai/newsDrivers.ts';
 import { getAssetBySymbol } from '../config/assets.ts';
 import { fetchAssetAnalysis } from '../services/marketDataService.ts';
-import { formatAssetPrice } from '../utils/format.ts';
+import { formatAssetPrice, formatDecimal } from '../utils/format.ts';
 import { formatAge } from '../utils/marketHours.ts';
 
 interface AssetAnalysisPanelProps {
@@ -31,6 +33,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const asset = getAssetBySymbol(symbol);
+  const tr = useT();
 
   const load = useCallback(
     async (silent = false) => {
@@ -40,7 +43,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
         setData(res);
         setError(null);
       } catch {
-        if (!silent) setError('Analysis unavailable for this asset right now.');
+        if (!silent) setError(tr('analysis.unavailable'));
       } finally {
         if (!silent) setLoading(false);
       }
@@ -76,7 +79,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
     return (
       <div className={card} style={cardStyle}>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {error ?? 'Data unavailable'}
+          {error ?? tr('common.dataUnavailable')}
         </p>
         <button
           type="button"
@@ -84,7 +87,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
           style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
         >
-          <RefreshCw className="w-3.5 h-3.5" /> Try again
+          <RefreshCw className="w-3.5 h-3.5" /> {tr('common.tryAgain')}
         </button>
       </div>
     );
@@ -101,8 +104,8 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
         <Header
           id="evidence-heading"
           icon={<FlaskConical className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} />}
-          title={`Why ${data.label.toLowerCase()}? Evidence behind ${assetName}'s score`}
-          subtitle={`Score ${data.score}/100 = weighted sum of independently measured evidence (${data.historyYears} years of daily data). Updated ${formatAge(data.generatedAt)} ago.`}
+          title={tr('analysis.whyTitle', { label: tr(`sentiment.${data.label}` as TranslationKey).toLowerCase(), name: assetName })}
+          subtitle={tr('analysis.whySubtitle', { score: data.score, years: data.historyYears, age: formatAge(data.generatedAt) })}
         />
         <p className="text-sm leading-relaxed">{data.summary}</p>
         <ul className="space-y-3">
@@ -111,8 +114,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
           ))}
         </ul>
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          Bullish/Bearish describes where the measured evidence points, not a buy/sell signal. Each piece rests on published
-          research (shown under it); none guarantees future returns.
+          {tr('analysis.evidenceNote')}
         </p>
       </section>
 
@@ -122,20 +124,20 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
           <Header
             id="technical-heading"
             icon={<LineChart className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} />}
-            title="Technical Analysis"
-            subtitle="Daily closes · trend, momentum and mean-reversion rules · swing-pivot pattern detection"
+            title={tr('analysis.techTitle')}
+            subtitle={tr('analysis.techSubtitle')}
           />
           {!t ? (
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Not enough price history.</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{tr('analysis.noHistory')}</p>
           ) : (
             <>
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Chart patterns
+                  {tr('analysis.patterns')}
                 </h4>
                 {t.patterns.length === 0 ? (
                   <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    No clear classic pattern on the daily chart right now.
+                    {tr('analysis.noPattern')}
                   </p>
                 ) : (
                   <ul className="space-y-2">
@@ -148,11 +150,11 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                             className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded"
                             style={{ backgroundColor: 'var(--bg-surface-subtle)', color: 'var(--text-secondary)' }}
                           >
-                            {p.status === 'confirmed' ? 'Confirmed' : 'Forming'}
+                            {p.status === 'confirmed' ? tr('analysis.confirmed') : tr('analysis.forming')}
                           </span>
                           {p.keyLevel !== undefined && (
                             <span className="text-[11px] font-mono-num" style={{ color: 'var(--text-secondary)' }}>
-                              Key level {price(p.keyLevel)}
+                              {tr('analysis.keyLevel', { price: price(p.keyLevel) })}
                             </span>
                           )}
                         </div>
@@ -167,12 +169,12 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <caption className="sr-only">Technical indicator scorecard</caption>
+                  <caption className="sr-only">{tr('analysis.scorecard')}</caption>
                   <thead>
                     <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                      <th scope="col" className="py-1.5 pr-2 font-semibold">Method</th>
-                      <th scope="col" className="py-1.5 pr-2 font-semibold">Reading</th>
-                      <th scope="col" className="py-1.5 font-semibold text-right">Lean</th>
+                      <th scope="col" className="py-1.5 pr-2 font-semibold">{tr('analysis.method')}</th>
+                      <th scope="col" className="py-1.5 pr-2 font-semibold">{tr('analysis.reading')}</th>
+                      <th scope="col" className="py-1.5 font-semibold text-right">{tr('analysis.lean')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -195,22 +197,29 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
               </div>
 
               <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                <Level label="Support" value={price(t.indicators.support)} />
-                <Level label="Resistance" value={price(t.indicators.resistance)} />
-                <Level label="50-day avg" value={price(t.indicators.sma50)} />
-                <Level label="200-day avg" value={price(t.indicators.sma200)} />
-                <Level label="52-week low" value={price(t.indicators.low52w)} />
-                <Level label="52-week high" value={price(t.indicators.high52w)} />
+                <Level label={tr('analysis.support')} value={price(t.indicators.support)} />
+                <Level label={tr('analysis.resistance')} value={price(t.indicators.resistance)} />
+                <Level label={tr('analysis.sma50')} value={price(t.indicators.sma50)} />
+                <Level label={tr('analysis.sma200')} value={price(t.indicators.sma200)} />
+                <Level label={tr('analysis.low52')} value={price(t.indicators.low52w)} />
+                <Level label={tr('analysis.high52')} value={price(t.indicators.high52w)} />
               </dl>
 
               {t.edge && (
                 <div className="p-3 rounded-lg text-xs leading-relaxed" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
-                  <p className="font-bold mb-1">Bullish or bearish likelihood — tested on {assetName}'s own history</p>
+                  <p className="font-bold mb-1">{tr('analysis.edgeTitle', { name: assetName })}</p>
                   <p>
-                    The scorecard leans <strong>{t.edge.lean}</strong> today. On the {t.edge.samples} past days with the same lean,
-                    the price was higher {t.edge.horizonDays} trading days later <strong>{Math.round(t.edge.upRate * 100)}%</strong> of the
-                    time, versus <strong>{Math.round(t.edge.baseUpRate * 100)}%</strong> on all days (average move{' '}
-                    {(t.edge.avgReturn * 100).toFixed(1)}% vs {(t.edge.baseAvgReturn * 100).toFixed(1)}%).
+                    <Rich
+                      text={tr('analysis.edgeText', {
+                        lean: tr(`analysis.lean.${t.edge.lean}` as TranslationKey),
+                        samples: t.edge.samples,
+                        days: t.edge.horizonDays,
+                        up: Math.round(t.edge.upRate * 100),
+                        base: Math.round(t.edge.baseUpRate * 100),
+                        avg: formatDecimal(t.edge.avgReturn * 100, 1),
+                        baseAvg: formatDecimal(t.edge.baseAvgReturn * 100, 1),
+                      })}
+                    />
                   </p>
                   <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>{edgeVerdict(t.edge.lean, t.edge.upRate, t.edge.baseUpRate, t.edge.samples)}</p>
                 </div>
@@ -224,8 +233,8 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
           <Header
             id="fundamental-heading"
             icon={<BookOpen className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} />}
-            title="Fundamental Analysis"
-            subtitle={f ? `Annual reports (FY ending ${f.fiscalYearEnd}, ${f.currency}) · events and news driving the move` : 'Events and news driving the move'}
+            title={tr('analysis.fundTitle')}
+            subtitle={f ? tr('analysis.fundSubtitle', { fy: f.fiscalYearEnd, currency: f.currency }) : tr('analysis.fundSubtitleNews')}
           />
 
           {f && (
@@ -240,18 +249,18 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                 </div>
                 {f.pe !== null && <Level label="P/E" value={f.pe.toFixed(1)} />}
                 {f.pb !== null && <Level label="P/B" value={f.pb.toFixed(1)} />}
-                {f.grossProfitability !== null && <Level label="Gross profit / assets" value={`${(f.grossProfitability * 100).toFixed(1)}%`} />}
-                {f.roa !== null && <Level label="Return on assets" value={`${(f.roa * 100).toFixed(1)}%`} />}
+                {f.grossProfitability !== null && <Level label={tr('analysis.gpa')} value={`${formatDecimal(f.grossProfitability * 100, 1)}%`} />}
+                {f.roa !== null && <Level label={tr('analysis.roa')} value={`${formatDecimal(f.roa * 100, 1)}%`} />}
               </div>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                 {f.signals.map((s) => (
                   <li key={s.id} className="flex items-start gap-1.5">
                     {s.pass === null ? (
-                      <CircleSlash className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--text-secondary)' }} aria-label="Not reported" />
+                      <CircleSlash className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--text-secondary)' }} aria-label={tr('common.notReported')} />
                     ) : s.pass ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--color-up)' }} aria-label="Pass" />
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--color-up)' }} aria-label={tr('analysis.pass')} />
                     ) : (
-                      <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--color-down)' }} aria-label="Fail" />
+                      <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--color-down)' }} aria-label={tr('analysis.fail')} />
                     )}
                     <span>
                       {s.label}
@@ -261,14 +270,14 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                 ))}
               </ul>
               <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                Piotroski (2000): firms scoring 8–9 have outperformed those scoring 0–1. Signals a company does not report are skipped.
+                {tr('analysis.piotroskiNote')}
               </p>
             </div>
           )}
 
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
-              <Newspaper className="w-3.5 h-3.5" /> What is driving it
+              <Newspaper className="w-3.5 h-3.5" /> {tr('analysis.driving')}
             </h4>
             {data.news.byCategory.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-3">
@@ -281,13 +290,13 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                       color: c.net > 0.01 ? 'var(--color-up)' : c.net < -0.01 ? 'var(--color-down)' : 'var(--text-secondary)',
                     }}
                   >
-                    {c.label} {c.net > 0.01 ? '▲' : c.net < -0.01 ? '▼' : '•'} {c.count}
+                    {tr(`driver.${c.category}` as TranslationKey)} {c.net > 0.01 ? '▲' : c.net < -0.01 ? '▼' : '•'} {c.count}
                   </span>
                 ))}
               </div>
             )}
             {data.news.drivers.length === 0 ? (
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>No recent headlines found for this asset.</p>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{tr('analysis.noHeadlines')}</p>
             ) : (
               <ul className="space-y-2">
                 {data.news.drivers.slice(0, 8).map((d) => (
@@ -295,28 +304,27 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                     <a href={d.link} target="_blank" rel="noopener noreferrer" className="group block">
                       <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                         <BiasChip bias={d.direction} />
-                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{DRIVER_LABELS[d.category]}</span>
+                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{tr(`driver.${d.category}` as TranslationKey)}</span>
                         <span aria-hidden="true">·</span>
                         <span>{d.source}</span>
                         <span aria-hidden="true">·</span>
                         <span>{formatAge(d.publishedAtMs)}</span>
                         <span aria-hidden="true">·</span>
-                        <span title="Category importance × source reliability × recency (12-hour half-life)">weight {d.weight.toFixed(2)}</span>
+                        <span title={tr('analysis.weightTitle')}>{tr('analysis.weight', { w: formatDecimal(d.weight, 2) })}</span>
                       </span>
                       <span className="flex items-start gap-1.5 mt-0.5">
                         <span className="font-semibold leading-snug group-hover:underline">{d.title}</span>
                         <ExternalLink className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
                       </span>
-                      <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Read as: {d.reason}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{tr('analysis.readAs', { reason: d.reason })}</span>
                     </a>
+                    <TranslateButton text={d.title} />
                   </li>
                 ))}
               </ul>
             )}
             <p className="text-[10px] mt-3" style={{ color: 'var(--text-secondary)' }}>
-              Headlines are sorted into event types with a direction for this asset (e.g. a Fed rate cut is read as positive for
-              stocks and gold but negative for USD/IDR). Headlines that only report a price move get a low weight: they describe
-              the move rather than explain it (Tetlock 2007).
+              {tr('analysis.newsNote')}
             </p>
           </div>
         </section>
@@ -326,14 +334,15 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
 }
 
 function edgeVerdict(lean: string, upRate: number, base: number, n: number): string {
-  if (n < 30) return 'Too few comparable days to judge.';
+  if (n < 30) return t('analysis.edge.few');
   const diff = upRate - base;
-  if (lean === 'neutral') return 'A neutral reading historically carried no strong directional information.';
+  if (lean === 'neutral') return t('analysis.edge.neutral');
   const helpful = lean === 'bullish' ? diff > 0.03 : diff < -0.03;
   const contrary = lean === 'bullish' ? diff < -0.03 : diff > 0.03;
-  if (helpful) return `On this asset the ${lean} lean has had some information value (overlapping windows, so treat it as descriptive).`;
-  if (contrary) return `On this asset the ${lean} lean has tended to reverse — prices did the opposite more often than usual, a sign of mean reversion.`;
-  return `On this asset the ${lean} lean has made little difference versus the base rate.`;
+  const l = t(`analysis.lean.${lean}` as TranslationKey);
+  if (helpful) return t('analysis.edge.helpful', { lean: l });
+  if (contrary) return t('analysis.edge.contrary', { lean: l });
+  return t('analysis.edge.none', { lean: l });
 }
 
 function Header({ id, icon, title, subtitle }: { id: string; icon: ReactNode; title: string; subtitle: string }) {
@@ -360,7 +369,7 @@ function Level({ label, value }: { label: string; value: string }) {
 }
 
 function BiasChip({ bias }: { bias: number }) {
-  const label = bias > 0 ? 'Bullish' : bias < 0 ? 'Bearish' : 'Neutral';
+  const label = t(bias > 0 ? 'sentiment.Bullish' : bias < 0 ? 'sentiment.Bearish' : 'sentiment.Neutral');
   const color = bias > 0 ? 'var(--color-up)' : bias < 0 ? 'var(--color-down)' : 'var(--text-secondary)';
   const bg = bias > 0 ? 'var(--color-up-soft)' : bias < 0 ? 'var(--color-down-soft)' : 'var(--bg-surface-subtle)';
   return (
@@ -379,10 +388,10 @@ function EvidenceRow({ c }: { c: EvidenceComponent }) {
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-semibold">{c.label}</span>
         <span className="font-mono-num" style={{ color: 'var(--text-secondary)' }}>
-          weight {Math.round(c.weight * 100)}% · contribution{' '}
+          {t('analysis.contribution', { w: Math.round(c.weight * 100) })}{' '}
           <span style={{ color }}>
             {c.contribution >= 0 ? '+' : ''}
-            {(c.contribution * 50).toFixed(1)} pts
+            {t('analysis.pts', { v: formatDecimal(c.contribution * 50, 1) })}
           </span>
         </span>
       </div>

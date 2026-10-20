@@ -43,6 +43,54 @@ export function assetShortName(asset: Pick<AssetConfig, 'symbol' | 'shortName'>)
   return getLang() === 'id' ? (ID_NAMES[asset.symbol]?.short ?? asset.shortName) : asset.shortName;
 }
 
+const ID_DESCRIPTIONS: Record<string, string> = {
+  'XAU/USD': 'Harga spot emas murni dunia per troy ounce (31,1034768 gram), langsung dikonversi ke Rupiah per gram.',
+  'BTC/IDR': 'Aset kripto terbesar menurut kapitalisasi pasar, diperdagangkan langsung terhadap Rupiah di bursa Indodax.',
+  'ETH/IDR': 'Jaringan smart contract terdepan di ekosistem blockchain, dihargai dalam Rupiah.',
+  'SOL/IDR': 'Infrastruktur blockchain cepat dengan biaya rendah, dihargai dalam Rupiah.',
+  '^JKSE': 'Indeks acuan utama seluruh saham yang tercatat di Bursa Efek Indonesia (BEI). Jam perdagangan: Sen–Jum 09.00–16.00 WIB.',
+  'USD/IDR': 'Kurs Dolar AS terhadap Rupiah, acuan untuk mengonversi harga aset global.',
+};
+
+/** Description in the current language (Indonesian built from the asset's group). */
+export function assetDescription(asset: AssetConfig): string {
+  if (getLang() !== 'id') return asset.description;
+  const custom = ID_DESCRIPTIONS[asset.symbol];
+  if (custom) return custom;
+  const name = assetName(asset);
+  switch (asset.group) {
+    case 'crypto':
+      return `${name} (${asset.code}) yang diperdagangkan terhadap Rupiah di Indodax.`;
+    case 'usStock':
+      return `${name} (${asset.code}), tercatat di Amerika Serikat.`;
+    case 'idStock':
+      return asset.board
+        ? `${name} (${asset.code.replace(/\.JK$/, '')}), tercatat di Bursa Efek Indonesia (papan ${asset.board}; ${asset.sector} — ${asset.industry}). Jam perdagangan: Sen–Jum 09.00–16.00 WIB.`
+        : `${name} (${asset.code}), tercatat di Bursa Efek Indonesia. Jam perdagangan: Sen–Jum 09.00–16.00 WIB.`;
+    case 'globalStock':
+      return `${name}, salah satu perusahaan tercatat terbesar di luar AS.`;
+    case 'commodity':
+      return `Harga kontrak futures terdekat ${name.toLowerCase()}.`;
+    case 'index':
+      return `${name}, indeks acuan pasar saham.`;
+    case 'forex':
+      return `Kurs ${asset.code} terhadap Rupiah.`;
+  }
+  return asset.description;
+}
+
+/** Price unit label in the current language, e.g. "Rupiah per share" → "Rupiah per saham". */
+export function assetUnitLabel(asset: AssetConfig): string {
+  if (getLang() !== 'id') return asset.unitLabel;
+  return asset.unitLabel
+    .replace('US Dollar per share', 'Dolar AS per saham')
+    .replace('Rupiah per share', 'Rupiah per saham')
+    .replace(/ per share$/, ' per saham')
+    .replace('US cents', 'sen AS')
+    .replace('US Dollar', 'Dolar AS')
+    .replace('Index Points', 'Poin indeks');
+}
+
 export function groupTitle(group: AssetGroup): string {
   return t(`group.${group}.title` as TranslationKey);
 }

@@ -4,6 +4,9 @@
  * (TradingView or alternative) and the sentiment + news panel.
  */
 import { useState, useEffect, lazy, Suspense } from 'react';
+import { useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+import { assetDescription, assetName, assetShortName, assetUnitLabel, groupTitle } from '../i18n/assetNames.ts';
 import { ArrowLeft, Star, Info, RefreshCw } from 'lucide-react';
 import {
   ASSETS,
@@ -51,6 +54,7 @@ export function AssetDetailView({
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
   const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
+  const t = useT();
 
   // Reset fallback toggle when switching assets
   useEffect(() => {
@@ -100,14 +104,14 @@ export function AssetDetailView({
           }}
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Radar</span>
+          <span>{t('detail.back')}</span>
         </button>
 
         {/* Asset switcher: search any asset, plus the quick-chart shortcuts */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 lg:max-w-3xl w-full lg:justify-end">
           <div
             role="tablist"
-            aria-label="Quick instruments"
+            aria-label={t('detail.quick')}
             className="flex flex-wrap items-center gap-1.5"
           >
             {ASSETS.filter((item) => item.quick || item.symbol === asset.symbol).map((item) => {
@@ -126,7 +130,7 @@ export function AssetDetailView({
                     color: selected ? 'var(--accent-radar)' : 'var(--text-secondary)',
                   }}
                 >
-                  {item.shortName}
+                  {assetShortName(item)}
                 </button>
               );
             })}
@@ -134,15 +138,15 @@ export function AssetDetailView({
           <AssetSearch
             className="w-full sm:w-72 shrink-0"
             onSelect={(a) => onSelectAsset(a.symbol)}
-            label="Search another asset"
-            placeholder="Search another asset…"
+            label={t('detail.searchAnother')}
+            placeholder={t('detail.searchAnotherPh')}
           />
         </div>
       </div>
 
       {/* Asset Header & Live Price Summary Box */}
       <section
-        aria-label={`${asset.name} information`}
+        aria-label={t('detail.info', { name: assetName(asset) })}
         className="p-5 md:p-6 rounded-xl border space-y-5"
         style={{
           backgroundColor: 'var(--bg-surface)',
@@ -156,12 +160,12 @@ export function AssetDetailView({
               style={{ color: 'var(--text-secondary)' }}
             >
               <span className="uppercase font-semibold tracking-wider">
-                {asset.group}
+                {groupTitle(asset.group)}
               </span>
               <span aria-hidden="true">·</span>
               <span className="font-mono-num">{asset.symbol}</span>
               <span aria-hidden="true">·</span>
-              <span>Source: {tick?.source || asset.sourceLabel}</span>
+              <span>{t('detail.source', { source: tick?.source || asset.sourceLabel })}</span>
               {tick?.updatedAt && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -170,10 +174,10 @@ export function AssetDetailView({
               )}
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              {asset.name}
+              {assetName(asset)}
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              {asset.description}
+              {assetDescription(asset)}
             </p>
           </div>
 
@@ -197,7 +201,7 @@ export function AssetDetailView({
               fill={isWatchlisted ? 'currentColor' : 'none'}
             />
             <span>
-              {isWatchlisted ? 'Saved to Watchlist' : 'Add to Watchlist'}
+              {isWatchlisted ? t('detail.saved') : t('detail.add')}
             </span>
           </button>
         </div>
@@ -214,20 +218,20 @@ export function AssetDetailView({
                   className="text-xs block"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  World Spot Price (USD/oz)
+                  {t('detail.goldSpot')}
                 </span>
                 <span
                   data-testid="detail-price-primary"
                   className="text-2xl font-mono-num font-bold tabular-nums mt-0.5 block"
                   style={{ color: 'var(--color-gold)' }}
                 >
-                  {isLoaded && tick ? formatUsdPerOz(tick.price) : 'Loading...'}
+                  {isLoaded && tick ? formatUsdPerOz(tick.price) : t('common.loading')}
                 </span>
                 <span
                   className="text-[11px]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  1 troy oz = 31.1034768 grams
+                  {t('detail.troyOz')}
                 </span>
               </div>
               <div>
@@ -235,7 +239,7 @@ export function AssetDetailView({
                   className="text-xs block"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Converted Price (Rupiah/gram)
+                  {t('detail.goldIdr')}
                 </span>
                 <span
                   data-testid="detail-price-secondary"
@@ -243,20 +247,20 @@ export function AssetDetailView({
                 >
                   {isLoaded && tick?.priceIdrPerGram
                     ? `${formatRupiah(tick.priceIdrPerGram, 0)}/gr`
-                    : 'Loading...'}
+                    : t('common.loading')}
                 </span>
                 <span
                   className="text-[11px]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Formula: (XAU_USD / 31.1034768) × USD_IDR
+                  {t('detail.goldFormula')}
                 </span>
               </div>
               <p
                 className="sm:col-span-2 lg:col-span-4 text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Price: spot XAU. 24h change &amp; mini chart: gold futures contract (GC=F).
+                {t('detail.goldNote')}
               </p>
             </>
           ) : (
@@ -265,23 +269,23 @@ export function AssetDetailView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Latest Price ({asset.unitLabel})
+                {t('detail.latest', { unit: assetUnitLabel(asset) })}
               </span>
               <span
                 data-testid="detail-price-primary"
                 className="text-2xl md:text-3xl font-mono-num font-bold tabular-nums mt-0.5 block"
               >
-                {isLoaded && tick ? formatVal(tick.price) : 'Loading...'}
+                {isLoaded && tick ? formatVal(tick.price) : t('common.loading')}
               </span>
               <span
                 className="text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 {tick?.isMarketOpen === false
-                  ? 'Last price · Market closed'
+                  ? t('detail.lastClosed')
                   : tick?.status === 'delayed'
-                    ? 'Delayed data · Market open'
-                    : 'Latest market data'}
+                    ? t('detail.delayedOpen')
+                    : t('detail.latestData')}
               </span>
             </div>
           )}
@@ -291,7 +295,7 @@ export function AssetDetailView({
               className="text-xs block"
               style={{ color: 'var(--text-secondary)' }}
             >
-              24-Hour Change
+              {t('detail.change24')}
             </span>
             <span
               className="text-lg font-mono-num font-bold tabular-nums mt-1 block"
@@ -308,7 +312,7 @@ export function AssetDetailView({
               className="text-xs block"
               style={{ color: 'var(--text-secondary)' }}
             >
-              24-Hour Range (High / Low)
+              {t('detail.range24')}
             </span>
             <span
               className="text-xs md:text-sm font-mono-num font-semibold tabular-nums mt-1.5 block"
@@ -323,7 +327,7 @@ export function AssetDetailView({
       </section>
 
       {/* Chart Controls: Timeframe Selector & Symbol Selector */}
-      <section aria-label="Price chart" className="space-y-3">
+      <section aria-label={t('detail.chartLabel')} className="space-y-3">
         <div
           className="p-3.5 rounded-xl border flex flex-col md:flex-row md:items-center md:justify-between gap-3"
           style={{
@@ -337,11 +341,11 @@ export function AssetDetailView({
               className="text-xs font-medium mr-1.5"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Timeframe:
+              {t('detail.timeframe')}
             </span>
             <div
               role="group"
-              aria-label="Chart timeframe picker"
+              aria-label={t('detail.tfPicker')}
               className="flex flex-wrap items-center gap-1"
             >
               {TIMEFRAME_OPTIONS.map((tf) => {
@@ -352,7 +356,7 @@ export function AssetDetailView({
                     type="button"
                     onClick={() => onChangeTimeframe(tf.interval)}
                     aria-pressed={isActive}
-                    title={`Timeframe ${tf.title} (interval: ${tf.interval})`}
+                    title={t('detail.tfTitle', { title: t(`tf.${tf.interval}` as TranslationKey), interval: tf.interval })}
                     className="px-3 py-1.5 rounded-lg text-xs font-mono-num font-semibold transition-colors whitespace-nowrap"
                     style={{
                       backgroundColor: isActive
@@ -374,7 +378,7 @@ export function AssetDetailView({
               className="font-mono-num"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Widget Symbol:{' '}
+              {t('detail.widgetSymbol')}{' '}
               <strong style={{ color: 'var(--text-primary)' }}>
                 {activeTvSymbol}
               </strong>
@@ -394,8 +398,8 @@ export function AssetDetailView({
                 <RefreshCw className="w-3 h-3" />
                 <span>
                   {useFallbackSymbol
-                    ? `Use Primary (${asset.tvSymbol})`
-                    : `Use Fallback (${asset.tvFallbackSymbol})`}
+                    ? t('detail.usePrimary', { symbol: asset.tvSymbol })
+                    : t('detail.useFallback', { symbol: asset.tvFallbackSymbol })}
                 </span>
               </button>
             )}
@@ -419,12 +423,9 @@ export function AssetDetailView({
               />
               <div>
                 <strong style={{ color: 'var(--text-primary)' }}>
-                  {asset.shortName} chart note:
+                  {t('detail.chartNoteTitle', { name: assetShortName(asset) })}
                 </strong>{' '}
-                The TradingView widget (<code className="font-mono-num">{asset.tvSymbol}</code>) only
-                provides the <strong>1D (Daily)</strong> and <strong>1W (Weekly)</strong> timeframes.
-                For other timeframes, the alternative Yahoo Finance chart (delayed data) is used
-                automatically.
+                <Rich text={t('detail.chartNote', { symbol: asset.tvSymbol })} />
               </div>
             </div>
             {timeframe !== 'D' && timeframe !== 'W' && (
@@ -437,7 +438,7 @@ export function AssetDetailView({
                   color: '#0B1220',
                 }}
               >
-                Show TradingView 1D
+                {t('detail.showTv1d')}
               </button>
             )}
           </div>
@@ -463,7 +464,7 @@ export function AssetDetailView({
       {/* Sentiment Analysis & Market News Panel for Selected Asset */}
       <AssetIntelligencePanel
         symbol={asset.symbol}
-        assetName={asset.name}
+        assetName={assetName(asset)}
       />
     </div>
   );
