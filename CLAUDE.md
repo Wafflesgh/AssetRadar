@@ -81,5 +81,6 @@ Setelah setiap perubahan: `npm run lint && npm test && npm run build` harus lulu
 
 ## Deploy / GitHub
 
+- **Hosting utama: Google Cloud Run dengan continuous deployment** (`Dockerfile`, panduan klik pemilik `docs/DEPLOY_CloudRun.md`): setiap push ke `main` otomatis dibangun Cloud Build dan dipasang di URL yang sama (max instances 1, timeout 3600 dtk, kunci lewat Secret Manager). Karena itu **setiap push ke main langsung tayang** — pastikan lint/test/build lulus sebelum push. Port dari `$PORT` (8080).
 - Repo GitHub (privat): https://github.com/Wafflesgh/AssetRadar , cabang `main`. Identitas commit (konfigurasi lokal repo): Dilan <alfianclassche@gmail.com>. Setelah perubahan lulus lint/test/build: commit lalu `git push`. Bisa diimpor kembali ke Google AI Studio (Build → ⊕ → Import from GitHub) yang menjalankan `server.ts` di Cloud Run.
 - `bun.lock` lama sengaja dihapus karena `recharts` ditambahkan; `package-lock.json` adalah lockfile yang berlaku.
