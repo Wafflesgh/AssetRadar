@@ -4,6 +4,8 @@
  * lead headline in its original language, corroborating sources, how key safe-haven and
  * risk assets are moving right now, and offers desktop notifications. Dismissible per alert.
  */
+import { assetShortName } from '../i18n/assetNames.ts';
+import { useT } from '../i18n/index.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertOctagon, Bell, ExternalLink, X } from 'lucide-react';
 import { ASSETS, PriceTick } from '../config/assets.ts';
@@ -24,6 +26,7 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
   const news = useLiveNews();
   const now = useNow(15_000);
   const [dismissed, setDismissed] = useState<string[]>(() => getDismissedAlerts());
+  const t = useT();
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() =>
     notificationsSupported() ? Notification.permission : 'unsupported'
   );
@@ -41,7 +44,7 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
     notifiedIds.current.add(alert.lead.id);
     if (permission === 'granted') {
       try {
-        new Notification('⚠ AssetRadar geopolitical alert', {
+        new Notification(t('geo.notifTitle'), {
           body: `${alert.lead.title} — ${alert.lead.source}`,
           tag: alert.lead.id,
         });
@@ -53,7 +56,7 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
     let on = false;
     const timer = setInterval(() => {
       on = !on;
-      document.title = on ? '⚠ ALERT — AssetRadar' : original;
+      document.title = on ? t('geo.tabFlash') : original;
     }, 1000);
     const stop = setTimeout(() => {
       clearInterval(timer);
@@ -109,13 +112,12 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
               className="px-1.5 py-0.5 rounded"
               style={{ backgroundColor: 'var(--color-down)', color: '#FFFFFF' }}
             >
-              Geopolitical alert
+              {t('geo.badge')}
             </span>
-            {breaking && <span style={{ color: 'var(--color-down)' }}>Breaking</span>}
+            {breaking && <span style={{ color: 'var(--color-down)' }}>{t('geo.breaking')}</span>}
             <span className="font-mono-num normal-case tracking-normal" style={{ color: 'var(--text-secondary)' }}>
-              {lead.source} · {age === 'now' ? 'just now' : `${age} ago`}
-              {related.length > 0 &&
-                ` · ${related.length} more report${related.length === 1 ? '' : 's'} (${sources.length} source${sources.length === 1 ? '' : 's'})`}
+              {lead.source} · {age === 'now' ? t('geo.justNow') : t('geo.ago', { age })}
+              {related.length > 0 && ` ${t('geo.moreReports', { count: related.length, sources: sources.length })}`}
             </span>
           </div>
           <a
@@ -128,13 +130,13 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
             <ExternalLink className="w-4 h-4 mt-1 shrink-0 opacity-60 group-hover:opacity-100" />
           </a>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono-num">
-            <span style={{ color: 'var(--text-secondary)' }}>Market reaction now (24h):</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('geo.reaction')}</span>
             {REACTION_SYMBOLS.map((symbol) => {
               const asset = ASSETS.find((a) => a.symbol === symbol);
               const pct = ticks[symbol]?.changePct24h;
               return (
                 <span key={symbol} className="font-semibold">
-                  {asset?.shortName}{' '}
+                  {asset ? assetShortName(asset) : ''}{' '}
                   <span
                     style={{
                       color:
@@ -165,8 +167,7 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
             </ul>
           )}
           <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            Sudden conflicts can move markets sharply (often gold, the dollar and risk assets).
-            Automatic headline detection; verify with the source. Not investment advice.
+            {t('geo.note')}
           </p>
         </div>
         <div className="flex md:flex-col gap-2 shrink-0">
@@ -178,18 +179,18 @@ export function GeoAlertBanner({ ticks }: { ticks: Record<string, PriceTick> }) 
               style={{ borderColor: 'var(--color-down)', color: 'var(--color-down)' }}
             >
               <Bell className="w-3.5 h-3.5" />
-              Notify me
+              {t('geo.notify')}
             </button>
           )}
           <button
             type="button"
             onClick={dismiss}
-            aria-label="Dismiss this alert"
+            aria-label={t('geo.dismissLabel')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
             style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
           >
             <X className="w-3.5 h-3.5" />
-            Dismiss
+            {t('geo.dismiss')}
           </button>
         </div>
       </div>

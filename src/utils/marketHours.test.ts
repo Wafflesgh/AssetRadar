@@ -32,3 +32,14 @@ test('isExchangeOpen handles Sunday-Thursday venues and futures', () => {
   assert.equal(isExchangeOpen('FUTURES', Date.UTC(2026, 9, 21, 3, 0)), true); // Tuesday
   assert.equal(isExchangeOpen('FUTURES', Date.UTC(2026, 9, 17, 12, 0)), false); // Saturday
 });
+
+test('relative time in Indonesian', async () => {
+  const { setTimeLang, formatRelativeTime: rel } = await import('./marketHours.ts');
+  setTimeLang('id');
+  try {
+    assert.equal(rel(1_000_000, 1_000_000 + 120_000), 'diperbarui 2 menit lalu');
+  } finally {
+    setTimeLang('en');
+  }
+  assert.equal(rel(1_000_000, 1_000_000 + 120_000), 'updated 2 minutes ago');
+});

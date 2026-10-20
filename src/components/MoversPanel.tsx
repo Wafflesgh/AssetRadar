@@ -3,6 +3,8 @@
  * currency: top gainers and losers for the live 5-minute window (from the ticks this app
  * received), 1 hour, 24 hours and 7 days, filterable by market type.
  */
+import { useT, type TranslationKey } from '../i18n/index.ts';
+import { assetName } from '../i18n/assetNames.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, TrendingDown, TrendingUp } from 'lucide-react';
 import { ASSETS, AssetConfig, AssetGroup, PriceTick } from '../config/assets.ts';
@@ -17,13 +19,13 @@ import {
   rankMovers,
 } from '../utils/movers.ts';
 
-const FILTERS: Array<{ key: string; label: string; groups: AssetGroup[] | null }> = [
-  { key: 'all', label: 'All', groups: null },
-  { key: 'stocks', label: 'Stocks', groups: ['idStock', 'usStock', 'globalStock'] },
-  { key: 'index', label: 'Indices', groups: ['index'] },
-  { key: 'crypto', label: 'Crypto', groups: ['crypto'] },
-  { key: 'commodity', label: 'Commodities', groups: ['commodity'] },
-  { key: 'forex', label: 'Forex', groups: ['forex'] },
+const FILTERS: Array<{ key: string; label: TranslationKey; groups: AssetGroup[] | null }> = [
+  { key: 'all', label: 'movers.filter.all', groups: null },
+  { key: 'stocks', label: 'movers.filter.stocks', groups: ['idStock', 'usStock', 'globalStock'] },
+  { key: 'index', label: 'movers.filter.index', groups: ['index'] },
+  { key: 'crypto', label: 'movers.filter.crypto', groups: ['crypto'] },
+  { key: 'commodity', label: 'movers.filter.commodity', groups: ['commodity'] },
+  { key: 'forex', label: 'movers.filter.forex', groups: ['forex'] },
 ];
 
 interface MoversPanelProps {
@@ -33,6 +35,7 @@ interface MoversPanelProps {
 
 export function MoversPanel({ ticks, onSelect }: MoversPanelProps) {
   const [win, setWin] = useState<MoverWindow>('24h');
+  const tr = useT();
   const [filter, setFilter] = useState('all');
   const [now, setNow] = useState(() => Date.now());
 
@@ -53,7 +56,7 @@ export function MoversPanel({ ticks, onSelect }: MoversPanelProps) {
   );
 
   const coverage = liveHistory.coverageMs(now);
-  const activeHint = MOVER_WINDOWS.find((w) => w.key === win)?.hint ?? '';
+  const activeHint = tr(`movers.win.${win}.hint` as TranslationKey);
 
   return (
     <section
@@ -65,32 +68,32 @@ export function MoversPanel({ ticks, onSelect }: MoversPanelProps) {
         <div>
           <h2 id="movers-heading" className="text-base md:text-lg font-bold tracking-tight flex items-center gap-2">
             <Activity className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} />
-            Biggest Movers
+            {tr('movers.title')}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Which indices, stocks, commodities, crypto and currencies are moving the most. {activeHint}.
+            {tr('movers.note', { hint: activeHint })}
           </p>
         </div>
-        <div role="tablist" aria-label="Movers time window" className="flex flex-wrap gap-1.5">
+        <div role="tablist" aria-label={tr('movers.window')} className="flex flex-wrap gap-1.5">
           {MOVER_WINDOWS.map((w) => (
             <button
               key={w.key}
               type="button"
               role="tab"
               aria-selected={win === w.key}
-              title={w.hint}
+              title={tr(`movers.win.${w.key}.hint` as TranslationKey)}
               onClick={() => setWin(w.key)}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap"
               style={chipStyle(win === w.key)}
             >
               {w.key === 'now' && <span className="news-live-dot inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: 'var(--color-down)' }} />}
-              {w.label}
+              {tr(`movers.win.${w.key}` as TranslationKey)}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Market type">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={tr('movers.marketType')}>
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -100,21 +103,20 @@ export function MoversPanel({ ticks, onSelect }: MoversPanelProps) {
             className="px-2.5 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap"
             style={chipStyle(filter === f.key)}
           >
-            {f.label}
+            {tr(f.label)}
           </button>
         ))}
       </div>
 
       {win === 'now' && coverage < LIVE_WINDOW_MS && (
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          Collecting live ticks since this page opened ({Math.floor(coverage / 60_000)}m {Math.floor((coverage % 60_000) / 1000)}s of 5m) —
-          changes are measured over the time collected so far. Exchange-traded assets only move while their market is open.
+          {tr('movers.collecting', { min: Math.floor(coverage / 60_000), sec: Math.floor((coverage % 60_000) / 1000) })}
         </p>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MoverList title="Top gainers" icon="up" rows={gainers} ticks={ticks} onSelect={onSelect} />
-        <MoverList title="Top losers" icon="down" rows={losers} ticks={ticks} onSelect={onSelect} />
+        <MoverList title={tr('movers.gainers')} icon="up" rows={gainers} ticks={ticks} onSelect={onSelect} />
+        <MoverList title={tr('movers.losers')} icon="down" rows={losers} ticks={ticks} onSelect={onSelect} />
       </div>
     </section>
   );
@@ -141,6 +143,7 @@ function MoverList({
   ticks: Record<string, PriceTick>;
   onSelect: (symbol: string) => void;
 }) {
+  const tr = useT();
   const color = icon === 'up' ? 'var(--color-up)' : 'var(--color-down)';
   const maxAbs = Math.max(...rows.map((r) => Math.abs(r.value)), 0.0001);
   const Icon = icon === 'up' ? TrendingUp : TrendingDown;
@@ -151,7 +154,7 @@ function MoverList({
       </h3>
       {rows.length === 0 ? (
         <p className="text-xs py-4" style={{ color: 'var(--text-secondary)' }}>
-          No movement measured yet for this window.
+          {tr('movers.none')}
         </p>
       ) : (
         <ol className="space-y-1">
@@ -173,7 +176,7 @@ function MoverList({
                   <span className="relative min-w-0">
                     <span className="font-mono-num font-bold text-[13px]">{item.code}</span>
                     <span className="text-[11px] ml-2 truncate" style={{ color: 'var(--text-secondary)' }}>
-                      {item.name}
+                      {assetName(item)}
                     </span>
                   </span>
                   <span className="relative text-right shrink-0">

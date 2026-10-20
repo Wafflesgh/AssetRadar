@@ -7,6 +7,8 @@
  */
 import { useMemo, useState } from 'react';
 import { LineChart } from 'lucide-react';
+import { useT } from '../i18n/index.ts';
+import { assetName, assetShortName, groupSubtitle, groupTitle } from '../i18n/assetNames.ts';
 import { ASSETS, ASSET_GROUPS, AssetConfig, AssetGroup, PriceTick, getAssetBySymbol } from '../config/assets.ts';
 import { usePriceFlash } from '../hooks/usePriceFlash.ts';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
@@ -38,6 +40,7 @@ function byMarketCap(ticks: Record<string, PriceTick>) {
 
 export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onToggleWatchlist }: RadarViewProps) {
   const [selectedIntelSymbol, setSelectedIntelSymbol] = useState<string>('BTC/IDR');
+  const t = useT();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const flash = usePriceFlash(ticks);
 
@@ -74,25 +77,24 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
 
       {/* Summary, search and quick charts */}
       <section
-        aria-label="Market radar summary"
+        aria-label={t('radar.summaryLabel')}
         className="p-5 md:p-6 rounded-xl border"
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
       >
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <span>Live Instrument Radar</span>
+              <span>{t('radar.liveRadar')}</span>
               <span aria-hidden="true">·</span>
-              <span>{ASSETS.length} Assets Tracked</span>
+              <span>{t('radar.tracked', { count: ASSETS.length })}</span>
               <span aria-hidden="true">·</span>
-              <span>WIB (Asia/Jakarta)</span>
+              <span>{t('radar.tz')}</span>
             </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-              The world's largest assets, Indonesian stocks, crypto and markets on one radar.
+              {t('radar.title')}
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              Crypto is live from Indodax; stocks, indices, commodities and currencies come from Yahoo
-              Finance (refreshed every 10–15 seconds while markets are open, exchange quotes may be delayed).
+              {t('radar.intro')}
             </p>
           </div>
 
@@ -100,9 +102,9 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             className="grid grid-cols-3 gap-5 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l lg:pl-6 shrink-0"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
-            <SummaryStat label="Up (24h)" value={`▲ ${upCount}`} color="var(--color-up)" />
-            <SummaryStat label="Down (24h)" value={`▼ ${downCount}`} color="var(--color-down)" />
-            <SummaryStat label="Flat / Other" value={String(flatCount)} color="var(--text-primary)" />
+            <SummaryStat label={t('radar.up')} value={`▲ ${upCount}`} color="var(--color-up)" />
+            <SummaryStat label={t('radar.down')} value={`▼ ${downCount}`} color="var(--color-down)" />
+            <SummaryStat label={t('radar.flat')} value={String(flatCount)} color="var(--text-primary)" />
           </div>
         </div>
 
@@ -110,12 +112,12 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
           <AssetSearch
             ticks={ticks}
             onSelect={(a) => onSelectAsset(a.symbol)}
-            label="Search all assets and open the chart"
-            placeholder={`Search ${ASSETS.length} assets: BBCA, Nvidia, gold, crude oil, Nikkei, EUR…`}
+            label={t('radar.searchLabel')}
+            placeholder={t('radar.searchPlaceholder', { count: ASSETS.length })}
           />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium mr-1" style={{ color: 'var(--text-secondary)' }}>
-              Quick Chart &amp; Detail:
+              {t('radar.quick')}
             </span>
             {quickAssets.map((asset) => (
               <button
@@ -133,7 +135,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                   className="w-3.5 h-3.5"
                   style={{ color: asset.group === 'commodity' ? 'var(--color-gold)' : 'var(--accent-radar)' }}
                 />
-                <span>{asset.shortName}</span>
+                <span>{assetShortName(asset)}</span>
               </button>
             ))}
           </div>
@@ -148,10 +150,10 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       <section aria-labelledby="top20-heading" className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
           <h2 id="top20-heading" className="text-base md:text-lg font-bold tracking-tight">
-            Top 20 Assets by Market Cap
+            {t('radar.top20')}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Live price × shares or supply outstanding, in US Dollars (crypto from CoinGecko). Ranks update as prices move.
+            {t('radar.top20Note')}
           </p>
         </div>
         {top20.length === 0 ? (
@@ -159,11 +161,11 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             className="p-5 rounded-xl border text-sm"
             style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
           >
-            Loading market caps…
+            {t('radar.loadingCaps')}
           </p>
         ) : (
           <MarketTable
-            caption="Top 20 assets by market capitalization"
+            caption={t('radar.top20Caption')}
             assets={top20}
             ticks={ticks}
             flash={flash}
@@ -176,7 +178,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       </section>
 
       {/* Markets by type */}
-      <nav aria-label="Jump to a market" className="flex flex-wrap gap-1.5">
+      <nav aria-label={t('radar.jump')} className="flex flex-wrap gap-1.5">
         {ASSET_GROUPS.map((g) => (
           <a
             key={g.key}
@@ -189,7 +191,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             className="px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap"
             style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
           >
-            {g.title}
+            {groupTitle(g.key)}
           </a>
         ))}
       </nav>
@@ -209,17 +211,17 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
           >
             <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
               <h2 id={`group-heading-${groupMeta.key}`} className="text-base md:text-lg font-bold tracking-tight">
-                {groupMeta.title}
+                {groupTitle(groupMeta.key)}
                 <span className="ml-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {all.length}
                 </span>
               </h2>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {groupMeta.subtitle}
+                {groupSubtitle(groupMeta.key)}
               </p>
             </div>
             <MarketTable
-              caption={groupMeta.title}
+              caption={groupTitle(groupMeta.key)}
               assets={rows}
               ticks={ticks}
               flash={flash}
@@ -237,7 +239,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg border"
                 style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--accent-radar)' }}
               >
-                {isOpen ? 'Show fewer' : `Show all ${all.length} ${groupMeta.title.toLowerCase()}`}
+                {isOpen ? t('radar.showFewer') : t('radar.showAll', { count: all.length, group: groupTitle(groupMeta.key).toLowerCase() })}
               </button>
             )}
           </section>
@@ -249,10 +251,10 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h2 id="radar-sentiment-heading" className="text-base md:text-lg font-bold tracking-tight">
-              Sentiment Analysis &amp; Market-Moving News
+              {t('radar.sentimentTitle')}
             </h2>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Search any instrument to see its technical picture, sentiment evidence and the latest news behind its moves.
+              {t('radar.sentimentNote')}
             </p>
           </div>
           <AssetSearch
@@ -260,11 +262,11 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             ticks={ticks}
             selected={selectedIntelAsset}
             onSelect={pickIntel}
-            label="Choose an asset for sentiment and news"
+            label={t('radar.sentimentPick')}
           />
         </div>
 
-        <AssetIntelligencePanel symbol={selectedIntelAsset.symbol} assetName={selectedIntelAsset.name} />
+        <AssetIntelligencePanel symbol={selectedIntelAsset.symbol} assetName={assetName(selectedIntelAsset)} />
       </section>
     </div>
   );

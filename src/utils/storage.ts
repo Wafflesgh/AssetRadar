@@ -4,7 +4,7 @@
  * start-in-Terminal option, the saved risk-profile result, dismissed geopolitical alerts and
  * the AI Advisor preferences (risk profile, horizon).
  */
-import { DEFAULT_TIMEFRAME, isValidTimeframe, TimeframeInterval, PriceTick } from '../config/assets.ts';
+import { DEFAULT_TIMEFRAME, isValidTimeframe, type TimeframeInterval, type PriceTick } from '../config/assets.ts';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -23,6 +23,9 @@ const STORAGE_KEYS = {
   RECENT_SEARCHES: 'assetradar_recent_searches',
   PORTFOLIO: 'assetradar_portfolio_v1',
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
+  LANG: 'assetradar_lang_v1',
+  NUMBER_FORMAT: 'assetradar_number_format_v1',
+  VOL_TARGET: 'assetradar_vol_target_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -310,4 +313,37 @@ export function getAiPrefs(): AiPrefs {
 
 export function saveAiPrefs(prefs: AiPrefs): void {
   safeSet(STORAGE_KEYS.AI_PREFS, JSON.stringify(prefs));
+}
+
+// ---- Language and number format ---------------------------------------------------------------
+
+export type AppLang = 'en' | 'id';
+export type NumberFormatPref = 'language' | 'en-US';
+
+/** Saved language, or null when the user never chose one. */
+export function getSavedLang(): AppLang | null {
+  const v = safeGet(STORAGE_KEYS.LANG);
+  return v === 'en' || v === 'id' ? v : null;
+}
+
+export function saveLang(lang: AppLang): void {
+  safeSet(STORAGE_KEYS.LANG, lang);
+}
+
+export function getNumberFormatPref(): NumberFormatPref {
+  return safeGet(STORAGE_KEYS.NUMBER_FORMAT) === 'en-US' ? 'en-US' : 'language';
+}
+
+export function saveNumberFormatPref(pref: NumberFormatPref): void {
+  safeSet(STORAGE_KEYS.NUMBER_FORMAT, pref);
+}
+
+/** Default annual volatility target for the position-size calculator (percent). */
+export function getVolTarget(): number {
+  const v = Number(safeGet(STORAGE_KEYS.VOL_TARGET));
+  return Number.isFinite(v) && v > 0 && v <= 100 ? v : 10;
+}
+
+export function saveVolTarget(pct: number): void {
+  safeSet(STORAGE_KEYS.VOL_TARGET, String(pct));
 }

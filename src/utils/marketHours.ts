@@ -109,16 +109,25 @@ export function formatAge(atMs: number | undefined, nowMs: number = Date.now()):
   return `${Math.floor(hour / 24)}d`;
 }
 
+let timeLang: 'en' | 'id' = 'en';
+
+/** Language of the relative-time texts (set by the language setting, see i18n/index.ts). */
+export function setTimeLang(lang: 'en' | 'id'): void {
+  timeLang = lang;
+}
+
 /**
- * Formats relative time ("updated just now", "updated 5 seconds ago", "updated 2 minutes ago").
+ * Formats relative time ("updated just now", "updated 5 seconds ago", "updated 2 minutes ago";
+ * Indonesian: "diperbarui baru saja", "diperbarui 5 detik lalu"…).
  */
 export function formatRelativeTime(updatedAtMs: number, nowMs: number = Date.now()): string {
-  if (!updatedAtMs || !Number.isFinite(updatedAtMs)) return 'Not updated yet';
+  const id = timeLang === 'id';
+  if (!updatedAtMs || !Number.isFinite(updatedAtMs)) return id ? 'Belum diperbarui' : 'Not updated yet';
   const diffSec = Math.max(0, Math.floor((nowMs - updatedAtMs) / 1000));
-  if (diffSec < 3) return 'updated just now';
-  if (diffSec < 60) return `updated ${diffSec} seconds ago`;
+  if (diffSec < 3) return id ? 'diperbarui baru saja' : 'updated just now';
+  if (diffSec < 60) return id ? `diperbarui ${diffSec} detik lalu` : `updated ${diffSec} seconds ago`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `updated ${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
+  if (diffMin < 60) return id ? `diperbarui ${diffMin} menit lalu` : `updated ${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
   const diffHour = Math.floor(diffMin / 60);
-  return `updated ${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
+  return id ? `diperbarui ${diffHour} jam lalu` : `updated ${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
 }

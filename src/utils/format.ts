@@ -1,16 +1,33 @@
 /**
- * format.ts — Number formatting helpers (English / en-US separators) for prices and
- * percentages, plus the XAU/USD → Rupiah-per-gram gold conversion.
+ * format.ts — Number formatting helpers for prices and percentages, plus the XAU/USD →
+ * Rupiah-per-gram gold conversion. Separators follow the number locale set with
+ * setNumberLocale: en-US ("Rp1,234,567", "+1.25%", the default) or id-ID ("Rp1.234.567", "+1,25%").
  */
 
 export const TROY_OUNCE_IN_GRAMS = 31.1034768;
 
-const LOCALE = 'en-US';
+export type NumberLocale = 'en-US' | 'id-ID';
 
-const numberFormatterTwo = new Intl.NumberFormat(LOCALE, {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+let LOCALE: NumberLocale = 'en-US';
+let numberFormatterTwo = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Switches every formatter in this module to another locale (called by the language setting). */
+export function setNumberLocale(locale: NumberLocale): void {
+  if (locale === LOCALE) return;
+  LOCALE = locale;
+  numberFormatterTwo = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  formatterCache.clear();
+}
+
+export function getNumberLocale(): NumberLocale {
+  return LOCALE;
+}
+
+/** Decimal number with up to `max` decimals in the current locale (for free-form values). */
+export function formatDecimal(value: number, max = 2): string {
+  if (!Number.isFinite(value)) return '—';
+  return value.toLocaleString(LOCALE, { maximumFractionDigits: max });
+}
 
 /**
  * Formats a numeric value in Indonesian Rupiah: "Rp1,234,567" (or "Rp15,850.00"). Without
@@ -74,9 +91,11 @@ export function formatAssetPrice(value: number | undefined, asset: { currency: s
 export function formatIdrCompact(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   const abs = Math.abs(value);
-  if (abs >= 1e12) return `Rp${(value / 1e12).toFixed(abs >= 1e14 ? 1 : 2)}T`;
-  if (abs >= 1e9) return `Rp${(value / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `Rp${(value / 1e6).toFixed(1)}M`;
+  // Indonesian: T = triliun, M = miliar, Jt = juta
+  const id = LOCALE === 'id-ID';
+  if (abs >= 1e12) return `Rp${formatNumber(value / 1e12, abs >= 1e14 ? 1 : 2)}T`;
+  if (abs >= 1e9) return `Rp${formatNumber(value / 1e9, 1)}${id ? 'M' : 'B'}`;
+  if (abs >= 1e6) return `Rp${formatNumber(value / 1e6, 1)}${id ? 'Jt' : 'M'}`;
   return formatRupiah(value, 0);
 }
 
@@ -84,9 +103,9 @@ export function formatIdrCompact(value: number | null | undefined): string {
 export function formatUsdCompact(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   const abs = Math.abs(value);
-  if (abs >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  if (abs >= 1e12) return `$${formatNumber(value / 1e12, 2)}T`;
+  if (abs >= 1e9) return `$${formatNumber(value / 1e9, 1)}B`;
+  if (abs >= 1e6) return `$${formatNumber(value / 1e6, 1)}M`;
   return `$${formatNumber(value, 0)}`;
 }
 
@@ -116,7 +135,7 @@ export function formatPercent(value: number | undefined): string {
   const absFormatted = numberFormatterTwo.format(Math.abs(value));
   if (value > 0) return `+${absFormatted}%`;
   if (value < 0) return `-${absFormatted}%`;
-  return `0.00%`;
+  return `${numberFormatterTwo.format(0)}%`;
 }
 
 /**

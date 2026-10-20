@@ -5,14 +5,16 @@
  * outside the core price loop are priced as soon as they appear), and the header search also
  * offers the last 5 picks.
  */
+import { assetName, groupTitle } from '../i18n/assetNames.ts';
+import { useT } from '../i18n/index.ts';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Clock, Search, X } from 'lucide-react';
-import { ASSET_GROUPS, AssetConfig, PriceTick, getAssetBySymbol, searchAssets } from '../config/assets.ts';
+import { AssetConfig, PriceTick, getAssetBySymbol, searchAssets } from '../config/assets.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
 import { formatAssetPrice, formatPercent } from '../utils/format.ts';
 import { getRecentSearches, saveRecentSearch } from '../utils/storage.ts';
 
-const GROUP_LABEL: Record<string, string> = Object.fromEntries(ASSET_GROUPS.map((g) => [g.key, g.title]));
+
 
 interface AssetSearchProps {
   onSelect: (asset: AssetConfig) => void;
@@ -38,8 +40,8 @@ interface AssetSearchProps {
 export function AssetSearch({
   onSelect,
   ticks,
-  placeholder = 'Search assets: BBCA, Nvidia, gold, Nikkei, EUR…',
-  label = 'Search assets',
+  placeholder,
+  label,
   selected,
   className = '',
   limit = 12,
@@ -52,6 +54,9 @@ export function AssetSearch({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(autoFocus);
   const [recentSymbols, setRecentSymbols] = useState<string[]>(() => (recent ? getRecentSearches() : []));
+  const t = useT();
+  placeholder = placeholder ?? t('search.defaultPlaceholder');
+  label = label ?? t('search.defaultLabel');
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +135,7 @@ export function AssetSearch({
           autoComplete="off"
           spellCheck={false}
           value={query}
-          placeholder={selected ? `${selected.code} · ${selected.name} — type to change` : placeholder}
+          placeholder={selected ? `${selected.code} · ${assetName(selected)} — ${t('search.typeToChange')}` : placeholder}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
@@ -143,7 +148,7 @@ export function AssetSearch({
         {query && (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={t('search.clear')}
             onClick={() => {
               setQuery('');
               inputRef.current?.focus();
@@ -160,7 +165,7 @@ export function AssetSearch({
         <ul
           id={listId}
           role="listbox"
-          aria-label="Matching assets"
+          aria-label={t('search.matching')}
           className={
             inline
               ? 'mt-2 overflow-y-auto rounded-lg border'
@@ -170,12 +175,12 @@ export function AssetSearch({
         >
           {showingRecent && (
             <li role="presentation" className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
-              <Clock className="w-3 h-3" /> Recent
+              <Clock className="w-3 h-3" /> {t('search.recent')}
             </li>
           )}
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              No asset matches "{query.trim()}".
+              {t('search.noMatch', { query: query.trim() })}
             </li>
           ) : (
             results.map((asset, i) => {
@@ -204,11 +209,11 @@ export function AssetSearch({
                         className="text-[10px] px-1.5 py-0.5 rounded truncate"
                         style={{ backgroundColor: 'var(--bg-surface-subtle)', color: 'var(--text-secondary)' }}
                       >
-                        {asset.sector ? `${GROUP_LABEL[asset.group]} · ${asset.sector}` : GROUP_LABEL[asset.group]}
+                        {asset.sector ? `${groupTitle(asset.group)} · ${asset.sector}` : groupTitle(asset.group)}
                       </span>
                     </div>
                     <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
-                      {asset.name}
+                      {assetName(asset)}
                     </div>
                   </div>
                   {live && (

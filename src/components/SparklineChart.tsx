@@ -1,4 +1,5 @@
 /** SparklineChart.tsx — 24-hour mini area chart (lightweight-charts) shown on price cards. */
+import { useT } from '../i18n/index.ts';
 import { useEffect, useRef } from 'react';
 import {
   createChart,
@@ -22,6 +23,7 @@ export function SparklineChart({
   height = 52,
 }: SparklineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const t = useT();
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
 
@@ -142,7 +144,7 @@ export function SparklineChart({
           color: 'var(--text-secondary)',
         }}
       >
-        Loading 24h mini chart...
+        {t('sparkline.loading')}
       </div>
     );
   }
@@ -153,7 +155,7 @@ export function SparklineChart({
       data-testid="sparkline-chart"
       className="w-full overflow-hidden"
       style={{ height: `${height}px` }}
-      aria-label="24-hour price trend chart"
+      aria-label={t('sparkline.label')}
     />
   );
 }

@@ -47,6 +47,8 @@ import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
 import { HeaderSearch } from './components/HeaderSearch.tsx';
 import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
+import { useT } from './i18n/index.ts';
+import { LangToggle } from './components/LangToggle.tsx';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -57,6 +59,8 @@ const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 
 export default function App() {
+  // Re-renders the whole app when the language changes
+  const t = useT();
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     if (typeof window === 'undefined') return 'radar';
     // The "Open the app in Terminal mode" option only applies when the URL has no hash
@@ -252,13 +256,13 @@ export default function App() {
   const connLabel =
     connectionState === 'live'
       ? feedMode === 'streaming'
-        ? 'Live (streaming)'
-        : 'Live · Polling'
+        ? t('conn.streaming')
+        : t('conn.polling')
       : connectionState === 'reconnecting'
-        ? 'Reconnecting...'
+        ? t('conn.reconnecting')
         : connectionState === 'offline'
-          ? 'Offline – last data'
-          : 'Delayed';
+          ? t('conn.offline')
+          : t('conn.delayed');
 
   return (
     <div
@@ -310,17 +314,17 @@ export default function App() {
               /
             </span>
             <span className="truncate">
-              {activeTab === 'radar' && 'Market Radar'}
-              {activeTab === 'detail' && `Asset Detail · ${currentAsset.shortName}`}
-              {activeTab === 'watchlist' && 'Favorite Watchlist'}
-              {activeTab === 'risk' && 'Risk Profile Education'}
-              {activeTab === 'settings' && 'Settings & About'}
-              {activeTab === 'advisor' && 'AI Advisor'}
-              {activeTab === 'quant' && 'Quant Lab · Portfolio Simulator'}
-              {activeTab === 'idx' && 'Indonesian Stocks'}
-              {activeTab === 'portfolio' && 'My Portfolio'}
-              {activeTab === 'calendar' && 'IDX Corporate Calendar'}
-              {activeTab === 'macro' && 'Indonesia Macro'}
+              {activeTab === 'radar' && t('header.title.radar')}
+              {activeTab === 'detail' && t('header.title.detail', { name: currentAsset.shortName })}
+              {activeTab === 'watchlist' && t('header.title.watchlist')}
+              {activeTab === 'risk' && t('header.title.risk')}
+              {activeTab === 'settings' && t('header.title.settings')}
+              {activeTab === 'advisor' && t('header.title.advisor')}
+              {activeTab === 'quant' && t('header.title.quant')}
+              {activeTab === 'idx' && t('header.title.idx')}
+              {activeTab === 'portfolio' && t('header.title.portfolio')}
+              {activeTab === 'calendar' && t('header.title.calendar')}
+              {activeTab === 'macro' && t('header.title.macro')}
             </span>
           </div>
         </div>
@@ -328,6 +332,7 @@ export default function App() {
         {/* Right: search, connection status and theme switch */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <HeaderSearch ticks={ticks} onSelectAsset={handleSelectAsset} />
+          <LangToggle className="hidden md:inline-flex" />
           <div
             data-testid="connection-indicator"
             className="flex items-center gap-1.5 text-xs font-semibold"
@@ -341,11 +346,7 @@ export default function App() {
           <button
             type="button"
             onClick={handleToggleThemeQuick}
-            aria-label={
-              effectiveTheme === 'dark'
-                ? 'Switch to light theme'
-                : 'Switch to dark theme'
-            }
+            aria-label={effectiveTheme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
             className="p-2 rounded-lg border transition-colors"
             style={{
               backgroundColor: 'var(--bg-surface-subtle)',
@@ -423,7 +424,7 @@ export default function App() {
           <Suspense
             fallback={
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Loading…
+                {t('common.loading')}
               </p>
             }
           >
@@ -439,7 +440,7 @@ export default function App() {
           <Suspense
             fallback={
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Loading…
+                {t('common.loading')}
               </p>
             }
           >
@@ -451,7 +452,7 @@ export default function App() {
           <Suspense
             fallback={
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Loading…
+                {t('common.loading')}
               </p>
             }
           >
@@ -493,10 +494,10 @@ export default function App() {
       >
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="font-medium">
-            Data is for information only, not investment advice. Charts by TradingView.
+            {t('footer.disclaimer')}
           </p>
           <p className="text-[11px]">
-            AssetRadar · Personal Use (Non-Commercial)
+            {t('footer.personal')}
           </p>
         </div>
       </footer>

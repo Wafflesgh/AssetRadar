@@ -5,6 +5,7 @@
  * it from anywhere; picking a result opens the asset's detail page; the last 5 picks are
  * remembered on this device.
  */
+import { useT } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
@@ -25,6 +26,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
 
 export function HeaderSearch({ ticks, onSelectAsset }: HeaderSearchProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -53,13 +55,13 @@ export function HeaderSearch({ ticks, onSelectAsset }: HeaderSearchProps) {
         ticks={ticks}
         onSelect={pick}
         recent
-        label="Search any asset (press / or Ctrl+K)"
-        placeholder="Search assets…  ( / )"
+        label={t('search.label')}
+        placeholder={t('search.placeholder')}
       />
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        aria-label="Search assets"
+        aria-label={t('search.button')}
         className="md:hidden p-2 rounded-lg border"
         style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
       >
@@ -70,7 +72,7 @@ export function HeaderSearch({ ticks, onSelectAsset }: HeaderSearchProps) {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Search assets"
+          aria-label={t('search.button')}
           className="md:hidden fixed inset-0 z-[60] flex flex-col p-4 gap-3"
           style={{ backgroundColor: 'var(--bg-canvas)' }}
         >
@@ -83,14 +85,14 @@ export function HeaderSearch({ ticks, onSelectAsset }: HeaderSearchProps) {
               autoFocus
               inline
               onEscape={() => setMobileOpen(false)}
-              label="Search any asset"
-              placeholder="BBCA, bank, nikel, Nvidia, gold…"
+              label={t('search.labelShort')}
+              placeholder={t('search.mobilePlaceholder')}
               limit={30}
             />
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
-              aria-label="Close search"
+              aria-label={t('search.close')}
               className="p-2 rounded-lg border self-start"
               style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
             >
@@ -98,7 +100,7 @@ export function HeaderSearch({ ticks, onSelectAsset }: HeaderSearchProps) {
             </button>
           </div>
           <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            Search by code, company name, industry or sector — all IDX stocks, crypto, commodities, indices and currencies.
+            {t('search.hint')}
           </p>
         </div>,
           document.body

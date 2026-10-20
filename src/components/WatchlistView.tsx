@@ -2,6 +2,8 @@
  * WatchlistView.tsx — The Watchlist page: starred assets (saved in localStorage) with their
  * latest price and 24h change, a remove button, and an empty state pointing to the Radar.
  */
+import { useT } from '../i18n/index.ts';
+import { assetName, assetShortName } from '../i18n/assetNames.ts';
 import { Star, Trash2, ArrowUpRight, Radar } from 'lucide-react';
 import { PriceTick, getAssetBySymbol } from '../config/assets.ts';
 import {
@@ -24,6 +26,7 @@ export function WatchlistView({
   onRemoveFromWatchlist,
   onGoToRadar,
 }: WatchlistViewProps) {
+  const t = useT();
   const watchlistedAssets = watchlist
     .map((sym) => getAssetBySymbol(sym))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
@@ -35,22 +38,21 @@ export function WatchlistView({
           className="flex items-center gap-2 text-xs font-medium"
           style={{ color: 'var(--text-secondary)' }}
         >
-          <span>Personal Watchlist</span>
+          <span>{t('watch.kicker')}</span>
           <span aria-hidden="true">·</span>
-          <span>Saved on this device (localStorage)</span>
+          <span>{t('watch.saved')}</span>
         </div>
         <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-          Favorite Assets Watchlist
+          {t('watch.title')}
         </h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Assets you star on the Radar or Detail page appear here with
-          their latest prices.
+          {t('watch.intro')}
         </p>
       </header>
 
       {watchlistedAssets.length === 0 ? (
         <section
-          aria-label="Empty watchlist"
+          aria-label={t('watch.emptyLabel')}
           className="p-8 md:p-12 rounded-xl border text-center space-y-4"
           style={{
             backgroundColor: 'var(--bg-surface)',
@@ -68,10 +70,9 @@ export function WatchlistView({
             <Star className="w-6 h-6" />
           </div>
           <div className="space-y-1.5 max-w-md mx-auto">
-            <h2 className="text-base font-bold">Your Watchlist is empty</h2>
+            <h2 className="text-base font-bold">{t('watch.emptyTitle')}</h2>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              Add favorite instruments such as Bitcoin, Spot Gold, or the JCI from the Radar page
-              to track them faster.
+              {t('watch.emptyText')}
             </p>
           </div>
           <button
@@ -84,7 +85,7 @@ export function WatchlistView({
             }}
           >
             <Radar className="w-4 h-4" />
-            <span>Browse Assets on Radar</span>
+            <span>{t('watch.browse')}</span>
           </button>
         </section>
       ) : (
@@ -93,7 +94,7 @@ export function WatchlistView({
             const tick = ticks[asset.symbol];
             const isLoaded = tick && tick.status !== 'error' && Number.isFinite(tick.price);
             const priceDisplay = !isLoaded
-              ? 'Loading...'
+              ? t('common.loading')
               : formatAssetPrice(tick.price, asset);
 
             const pct = tick?.changePct24h;
@@ -123,7 +124,7 @@ export function WatchlistView({
                       <span aria-hidden="true">·</span>
                       <span>{tick?.source || asset.sourceLabel}</span>
                     </div>
-                    <h2 className="text-base font-bold mt-0.5">{asset.name}</h2>
+                    <h2 className="text-base font-bold mt-0.5">{assetName(asset)}</h2>
                     <div className="mt-2 flex items-baseline gap-2">
                       <span className="text-lg font-mono-num font-bold tabular-nums">
                         {priceDisplay}
@@ -142,7 +143,7 @@ export function WatchlistView({
                   <button
                     type="button"
                     onClick={() => onRemoveFromWatchlist(asset.symbol)}
-                    aria-label={`Remove ${asset.name} from Watchlist`}
+                    aria-label={t('table.removeWatch', { name: assetName(asset) })}
                     className="p-2 rounded-lg border transition-colors"
                     style={{
                       backgroundColor: 'var(--bg-surface-subtle)',
@@ -164,7 +165,7 @@ export function WatchlistView({
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <span>Open {asset.shortName} Chart &amp; Sentiment</span>
+                  <span>{t('watch.open', { name: assetShortName(asset) })}</span>
                   <ArrowUpRight
                     className="w-3.5 h-3.5"
                     style={{ color: 'var(--accent-radar)' }}

@@ -3,6 +3,8 @@
  * live price (flashes on change), 1h / 24h / 7d change, market cap, a 24h mini chart and the
  * watchlist star. Columns collapse on small screens (375px shows asset, price, 24h, star).
  */
+import { useT } from '../i18n/index.ts';
+import { assetName } from '../i18n/assetNames.ts';
 import { RefreshCw, Star } from 'lucide-react';
 import type { AssetConfig, PriceTick, SparklinePoint } from '../config/assets.ts';
 import { formatAssetPrice, formatPercent, formatRupiah, formatUsdCompact } from '../utils/format.ts';
@@ -34,6 +36,7 @@ export function MarketTable({
   showMarketCap = true,
   caption,
 }: MarketTableProps) {
+  const t = useT();
   return (
     <div
       className="rounded-xl border overflow-hidden"
@@ -47,17 +50,17 @@ export function MarketTable({
             style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-subtle)' }}
           >
             <th scope="col" className="px-3 py-2 font-semibold w-10 hidden sm:table-cell">#</th>
-            <th scope="col" className="px-2 sm:px-3 py-2 font-semibold">Asset</th>
-            <th scope="col" className="px-2 sm:px-3 py-2 font-semibold text-right w-[46%] sm:w-auto">Price</th>
+            <th scope="col" className="px-2 sm:px-3 py-2 font-semibold">{t('table.asset')}</th>
+            <th scope="col" className="px-2 sm:px-3 py-2 font-semibold text-right w-[46%] sm:w-auto">{t('table.price')}</th>
             <th scope="col" className="px-3 py-2 font-semibold text-right hidden md:table-cell">1H</th>
             <th scope="col" className="px-2 sm:px-3 py-2 font-semibold text-right w-[20%] sm:w-auto">24H</th>
             <th scope="col" className="px-3 py-2 font-semibold text-right hidden sm:table-cell">7D</th>
             {showMarketCap && (
-              <th scope="col" className="px-3 py-2 font-semibold text-right hidden lg:table-cell">Market cap</th>
+              <th scope="col" className="px-3 py-2 font-semibold text-right hidden lg:table-cell">{t('table.marketCap')}</th>
             )}
-            <th scope="col" className="px-3 py-2 font-semibold hidden md:table-cell">24H chart</th>
+            <th scope="col" className="px-3 py-2 font-semibold hidden md:table-cell">{t('table.chart24h')}</th>
             <th scope="col" className="px-1 py-2 w-9">
-              <span className="sr-only">Watchlist</span>
+              <span className="sr-only">{t('table.watchlist')}</span>
             </th>
           </tr>
         </thead>
@@ -82,8 +85,8 @@ export function MarketTable({
                     <StatusDot tick={tick} />
                     <span className="font-bold font-mono-num text-[13px] truncate">{asset.code}</span>
                   </div>
-                  <div className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }} title={asset.name}>
-                    {asset.name}
+                  <div className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }} title={assetName(asset)}>
+                    {assetName(asset)}
                   </div>
                 </td>
                 {usable ? (
@@ -98,7 +101,7 @@ export function MarketTable({
                       </span>
                       {asset.unit ? (
                         <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>
-                          per {asset.unit.replace('/', '')}
+                          {t('table.per', { unit: asset.unit.replace('/', '') })}
                         </span>
                       ) : null}
                       {asset.symbol === 'XAU/USD' && tick.priceIdrPerGram ? (
@@ -129,7 +132,7 @@ export function MarketTable({
                   <td colSpan={showMarketCap ? 6 : 5} className="px-3 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {tick?.status === 'error' ? (
                       <span className="inline-flex flex-wrap items-center gap-2">
-                        <span style={{ color: 'var(--color-down)' }}>Data unavailable</span>
+                        <span style={{ color: 'var(--color-down)' }}>{t('common.dataUnavailable')}</span>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -139,11 +142,11 @@ export function MarketTable({
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold"
                           style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
                         >
-                          <RefreshCw className="w-3 h-3" /> Try again
+                          <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
                         </button>
                       </span>
                     ) : (
-                      'Loading…'
+                      t('common.loading')
                     )}
                   </td>
                 )}
@@ -154,7 +157,7 @@ export function MarketTable({
                       e.stopPropagation();
                       onToggleWatchlist(asset.symbol);
                     }}
-                    aria-label={starred ? `Remove ${asset.name} from Watchlist` : `Add ${asset.name} to Watchlist`}
+                    aria-label={starred ? t('table.removeWatch', { name: assetName(asset) }) : t('table.addWatch', { name: assetName(asset) })}
                     aria-pressed={starred}
                     className="p-1 rounded"
                     style={{ color: starred ? 'var(--color-gold)' : 'var(--text-secondary)' }}
@@ -173,17 +176,18 @@ export function MarketTable({
 
 /** Live (green), delayed/closed (grey) or saved offline data (amber). */
 function StatusDot({ tick }: { tick?: PriceTick }) {
+  const t = useT();
   const state = !tick
-    ? { color: 'var(--border-subtle)', label: 'Loading' }
+    ? { color: 'var(--border-subtle)', label: t('status.loading') }
     : tick.fromSnapshot
-      ? { color: 'var(--color-gold)', label: 'Offline – last data' }
+      ? { color: 'var(--color-gold)', label: t('status.offline') }
       : tick.status === 'error'
-        ? { color: 'var(--color-down)', label: 'Data unavailable' }
+        ? { color: 'var(--color-down)', label: t('status.unavailable') }
         : tick.isMarketOpen === false
-          ? { color: 'var(--text-secondary)', label: 'Market closed · last price' }
+          ? { color: 'var(--text-secondary)', label: t('status.closed') }
           : tick.status === 'live'
-            ? { color: 'var(--accent-radar)', label: 'Live' }
-            : { color: 'var(--text-secondary)', label: 'Delayed' };
+            ? { color: 'var(--accent-radar)', label: t('status.live') }
+            : { color: 'var(--text-secondary)', label: t('status.delayed') };
   return (
     <span
       className="inline-block w-1.5 h-1.5 rounded-full shrink-0"

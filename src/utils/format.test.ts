@@ -64,3 +64,19 @@ test('formatIdrCompact uses T/B/M', () => {
   assert.equal(formatIdrCompact(845.3e9), 'Rp845.3B');
   assert.equal(formatIdrCompact(null), '—');
 });
+
+test('Indonesian number locale: dot thousands, comma decimals; back to en-US', async () => {
+  const { setNumberLocale } = await import('./format.ts');
+  setNumberLocale('id-ID');
+  try {
+    assert.equal(formatRupiah(1234567), 'Rp1.234.567');
+    assert.equal(formatPercent(1.25), '+1,25%');
+    assert.equal(formatPercent(0), '0,00%');
+    assert.equal(formatIdrCompact(845.3e9), 'Rp845,3M');
+    assert.equal(formatIdrCompact(12.1e6), 'Rp12,1Jt');
+    assert.equal(formatPrice(2750.5, 'USD', '/oz'), 'US$2.750,50/oz');
+  } finally {
+    setNumberLocale('en-US');
+  }
+  assert.equal(formatRupiah(1234567), 'Rp1,234,567');
+});

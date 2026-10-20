@@ -2,6 +2,7 @@
  * PriceChart.tsx — Chooses and renders the chart source for an asset: the official
  * TradingView widget or the alternative lightweight-charts candles, with a manual toggle.
  */
+import { useT } from '../i18n/index.ts';
 import { useState } from 'react';
 import { BarChart3, LineChart } from 'lucide-react';
 import { AssetConfig, TimeframeInterval } from '../config/assets.ts';
@@ -40,6 +41,7 @@ export function getDefaultTvSymbol(asset: AssetConfig): string {
 export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceChartProps) {
   // A manual choice only applies to the asset it was made for (resets when switching assets)
   const [override, setOverride] = useState<{ symbol: string; source: ChartSource } | null>(null);
+  const t = useT();
 
   const autoSource = getAutoChartSource(asset, interval);
   const source = override?.symbol === asset.symbol ? override.source : autoSource;
@@ -62,18 +64,18 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
           style={{ color: 'var(--text-secondary)' }}
         >
           <span>
-            Chart source:{' '}
+            {t('chart.source')}{' '}
             <strong style={{ color: 'var(--text-primary)' }}>
-              {showAlternative ? `Alternative (${altSourceLabel})` : `TradingView (${activeTvSymbol})`}
+              {showAlternative ? t('chart.alternative', { source: altSourceLabel }) : `TradingView (${activeTvSymbol})`}
             </strong>
             {showAlternative && autoSource === 'alternative' && override?.symbol !== asset.symbol && (
               <>
                 {' '}
-                · chosen automatically
-                {asset.tvWidgetUnsupported ? ' (not available in the TradingView widget)' : ' for this timeframe'}
+                {t('chart.auto')}
+                {asset.tvWidgetUnsupported ? ` ${t('chart.notInWidget')}` : ` ${t('chart.forTimeframe')}`}
               </>
             )}
-            {!showAlternative && activeTvSymbol.endsWith('USDT') && <> · prices in USDT</>}
+            {!showAlternative && activeTvSymbol.endsWith('USDT') && <> {t('chart.usdt')}</>}
           </span>
           {tradingViewAvailable && (
           <button
@@ -91,7 +93,7 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
             ) : (
               <BarChart3 className="w-3 h-3" />
             )}
-            <span>{showAlternative ? 'Try TradingView chart' : 'Use alternative chart'}</span>
+            <span>{showAlternative ? t('chart.tryTv') : t('chart.useAlt')}</span>
           </button>
           )}
         </div>
