@@ -7,6 +7,7 @@
  */
 import type { TextPart } from '../i18n/textParts.ts';
 import idxStocks from './idxStocks.json' with { type: 'json' };
+import cryptoUniverse from './cryptoUniverse.json' with { type: 'json' };
 
 export type AssetGroup = 'commodity' | 'crypto' | 'idStock' | 'usStock' | 'globalStock' | 'index' | 'forex';
 
@@ -45,6 +46,10 @@ export type PriceTick = {
   changePct1h?: number;
   changePct7d?: number;
   changePct30d?: number;
+  /** Price in USDT when the asset is priced on Binance; `price` is then converted to Rupiah. */
+  priceUsdt?: number;
+  /** True when `price` was converted from another currency (USDT/USD → IDR). */
+  converted?: boolean;
 };
 
 export type SentimentLabel = 'Bullish' | 'Neutral' | 'Bearish';
@@ -182,6 +187,15 @@ export interface AssetConfig {
   industry?: string;
   /** IDX listing board: Main, Development, Acceleration, New Economy, Watchlist. */
   board?: string;
+  /** Binance USDT spot pair and USDⓈ-M perpetual (crypto), e.g. "BTCUSDT" / "1000PEPEUSDT". */
+  binanceSpot?: string;
+  binanceFutures?: string;
+  /** Futures contracts quoted per N coins (1000PEPEUSDT → 1000). */
+  futuresMultiplier?: number;
+  /** Where the live crypto price comes from (one source per asset). */
+  priceSource?: CryptoPriceSource;
+  /** Rank by market cap in src/config/cryptoUniverse.json (crypto). */
+  cryptoRank?: number;
   /**
    * Part of the full IDX universe only: not in the core price loop, Terminal or AI Advisor;
    * priced on demand when on screen, in the watchlist or in the portfolio.
@@ -673,6 +687,108 @@ export const ASSETS: AssetConfig[] = [
   rupiahPair('myr', 'MYR', 'Malaysian Ringgit', ['ringgit']),
   rupiahPair('sar', 'SAR', 'Saudi Riyal', ['riyal']),
 ];
+
+// ---------------------------------------------------------------------------------------
+// Top-50 crypto universe (src/config/cryptoUniverse.json, scripts/update-crypto-universe.mjs)
+// ---------------------------------------------------------------------------------------
+
+export type CryptoPriceSource = 'indodax' | 'binance-spot' | 'binance-futures' | 'coingecko';
+
+export interface CryptoUniverseEntry {
+  rank: number;
+  code: string;
+  name: string;
+  coingeckoId: string;
+  binanceSpot: string | null;
+  binanceFutures: string | null;
+  futuresMultiplier?: number;
+  indodaxPair: string | null;
+  priceSource: CryptoPriceSource;
+  circulatingSupply: number | null;
+}
+
+export const CRYPTO_UNIVERSE: CryptoUniverseEntry[] = (cryptoUniverse as unknown as { assets: CryptoUniverseEntry[] }).assets;
+export const CRYPTO_UNIVERSE_UPDATED: string = (cryptoUniverse as { generatedAt: string }).generatedAt;
+
+/** Universe codes that belong to an existing asset under another code (Toncoin is now GRAM). */
+const UNIVERSE_ALIASES: Record<string, string> = { GRAM: 'TON' };
+
+/** Names that are common words: they would tag unrelated headlines, so they get no keyword. */
+const COMMON_WORD_NAMES = new Set(['rain', 'sky', 'aster', 'mantle', 'canton', 'quant', 'pump.fun', 'gram', 'm', 'leo token', 'okb']);
+
+/** A coin from the universe file that is not one of the original 20 Indodax assets. */
+export function universeCryptoAsset(e: CryptoUniverseEntry): AssetConfig {
+  const code = e.code.toUpperCase();
+  const name = e.name;
+  const keywords = COMMON_WORD_NAMES.has(name.toLowerCase()) ? [`${name.toLowerCase()} crypto`, `${name.toLowerCase()} token`] : [name.toLowerCase()];
+  const futuresTv = e.binanceFutures ? `BINANCE:${e.binanceFutures}.P` : undefined;
+  const binanceTv = e.binanceSpot ? `BINANCE:${e.binanceSpot}` : futuresTv;
+  const common = {
+    cryptoRank: e.rank,
+    binanceSpot: e.binanceSpot ?? undefined,
+    binanceFutures: e.binanceFutures ?? undefined,
+    futuresMultiplier: e.futuresMultiplier,
+    priceSource: e.priceSource,
+    supply: e.circulatingSupply ?? undefined,
+  };
+  if (e.indodaxPair) {
+    return crypto(code.toLowerCase(), name, e.coingeckoId, keywords, {
+      indodaxPair: e.indodaxPair,
+      tvFallbackSymbol: binanceTv,
+      ...common,
+    });
+  }
+  const source = e.priceSource === 'coingecko' ? 'CoinGecko' : e.priceSource === 'binance-futures' ? 'Binance Futures' : 'Binance';
+  return {
+    id: code.toLowerCase(),
+    code,
+    exchange: 'CRYPTO',
+    symbol: `${code}/IDR`,
+    shortName: code,
+    name,
+    group: 'crypto',
+    currency: 'IDR',
+    tvSymbol: binanceTv ?? `CRYPTO:${code}USD`,
+    tvWidgetUnsupported: !binanceTv,
+    sourceLabel: `${source} (USDT → IDR)`,
+    unitLabel: 'Rupiah (IDR), converted from USDT',
+    description: `${name} (${code}). Not traded on Indodax: priced in USDT on ${source} and converted to Rupiah at the live USD/IDR rate.`,
+    keywords,
+    coingeckoId: e.coingeckoId,
+    ...common,
+  };
+}
+
+/**
+ * Adds the universe coins to ASSETS right after the original crypto list (ids and codes of the
+ * original 20 stay unchanged), and gives the original ones their Binance pairs.
+ */
+function mergeCryptoUniverse(list: AssetConfig[]): void {
+  const existing = new Map(list.filter((a) => a.group === 'crypto').map((a) => [a.code, a]));
+  const added: AssetConfig[] = [];
+  for (const e of [...CRYPTO_UNIVERSE].sort((a, b) => a.rank - b.rank)) {
+    const own = existing.get(UNIVERSE_ALIASES[e.code] ?? e.code);
+    if (own) {
+      own.binanceSpot = e.binanceSpot ?? undefined;
+      own.binanceFutures = e.binanceFutures ?? undefined;
+      own.futuresMultiplier = e.futuresMultiplier;
+      own.priceSource = e.indodaxPair ? 'indodax' : e.priceSource;
+      own.cryptoRank = e.rank;
+      if (UNIVERSE_ALIASES[e.code]) {
+        own.aliases = [...new Set([...(own.aliases ?? []), e.code])];
+        own.name = `${own.name} (${e.code})`;
+      }
+      continue;
+    }
+    added.push(universeCryptoAsset(e));
+  }
+  let last = -1;
+  list.forEach((a, i) => {
+    if (a.group === 'crypto') last = i;
+  });
+  list.splice(last + 1, 0, ...added);
+}
+mergeCryptoUniverse(ASSETS);
 
 export interface AssetGroupMeta {
   key: AssetGroup;

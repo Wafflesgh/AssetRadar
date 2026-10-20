@@ -52,6 +52,21 @@ import {
   type RiskProfile,
 } from './src/ai/outlook.ts';
 import { parseLang, translate, type AppLang, type TranslationKey } from './src/i18n/core.ts';
+import { APP_TO_BINANCE_INTERVAL, closedKlines, futuresMultiplierOf, windowChanges, type KlineInterval } from './src/crypto/binance.ts';
+import { convertedTick, pickUsdQuote, type UsdQuote } from './src/crypto/cryptoPricing.ts';
+import {
+  binanceStatus,
+  binanceUniverse,
+  cachedClosedKlines,
+  fundingFor,
+  futuresQuotes,
+  getBinanceKlines,
+  getDerivatives,
+  isKnownSpotPair,
+  noteBinanceDemand,
+  spotQuotes,
+  warmBinance,
+} from './server/binanceFeed.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -407,6 +422,11 @@ async function getHistoryCandles(
 
   if (asset.indodaxPair) {
     const candles = await fetchIndodaxCandles(asset.indodaxPair, interval);
+    historyCache.set(key, { data: candles, expiresAt: now + cfg.cacheMs });
+    return candles;
+  }
+  if (asset.group === 'crypto') {
+    const candles = await binanceCandlesIdr(asset, APP_TO_BINANCE_INTERVAL[interval] ?? '1d');
     historyCache.set(key, { data: candles, expiresAt: now + cfg.cacheMs });
     return candles;
   }
@@ -909,6 +929,7 @@ async function buildStreamTicks(): Promise<Record<string, PriceTick>> {
   } catch {
     // Gold keeps its last pushed price on the client
   }
+  Object.assign(ticks, await getNonIndodaxCryptoTicks(usd ?? 0).catch(() => ({})));
   await addMarketCaps(ticks).catch(() => {});
   return ticks;
 }
@@ -1081,6 +1102,11 @@ setInterval(() => {
 
 interface CoinStats {
   marketCapUsd?: number;
+  priceUsd?: number;
+  ch24h?: number;
+  high24h?: number;
+  low24h?: number;
+  volumeUsd?: number;
   ch1h?: number;
   ch7d?: number;
   ch30d?: number;
@@ -1100,6 +1126,11 @@ async function getCoinStats(): Promise<Map<string, CoinStats>> {
     for (const r of Array.isArray(rows) ? rows : []) {
       out.set(r.id, {
         marketCapUsd: Number(r.market_cap) || undefined,
+        priceUsd: Number(r.current_price) || undefined,
+        ch24h: Number.isFinite(r.price_change_percentage_24h) ? r.price_change_percentage_24h : undefined,
+        high24h: Number(r.high_24h) || undefined,
+        low24h: Number(r.low_24h) || undefined,
+        volumeUsd: Number(r.total_volume) || undefined,
         ch1h: Number.isFinite(r.price_change_percentage_1h_in_currency) ? r.price_change_percentage_1h_in_currency : undefined,
         ch7d: Number.isFinite(r.price_change_percentage_7d_in_currency) ? r.price_change_percentage_7d_in_currency : undefined,
         ch30d: Number.isFinite(r.price_change_percentage_30d_in_currency) ? r.price_change_percentage_30d_in_currency : undefined,
@@ -1172,6 +1203,75 @@ async function addMarketCaps(ticks: Record<string, PriceTick>): Promise<void> {
       if (rate) t.marketCapUsd = t.price * rate * a.supply;
     }
   }
+}
+
+
+// ---- Crypto without an Indodax pair (Binance USDT / CoinGecko USD → Rupiah) --------------------
+
+const NON_INDODAX_CRYPTO = ASSETS.filter((a) => a.group === 'crypto' && !a.indodaxPair);
+
+function coingeckoQuotes(coins: Map<string, CoinStats>): Map<string, UsdQuote> {
+  const out = new Map<string, UsdQuote>();
+  const at = coinCache.entry ? coinCache.entry.expiresAt - 120_000 : Date.now();
+  for (const [id, c] of coins) {
+    if (c.priceUsd === undefined) continue;
+    out.set(id, { price: c.priceUsd, changePct24h: c.ch24h, high24h: c.high24h, low24h: c.low24h, quoteVolume: c.volumeUsd, updatedAt: at, source: 'CoinGecko' });
+  }
+  return out;
+}
+
+/** Rupiah ticks for crypto priced on Binance (or CoinGecko), converted at the live USD/IDR rate. */
+async function getNonIndodaxCryptoTicks(usdIdr: number): Promise<Record<string, PriceTick>> {
+  if (!NON_INDODAX_CRYPTO.length) return {};
+  noteBinanceDemand();
+  const rate = usdIdr > 0 ? usdIdr : (yahooCache.get('USD/IDR')?.data.price ?? 0);
+  const sources = { spot: spotQuotes(), futures: futuresQuotes(), coingecko: coingeckoQuotes(await getCoinStats()) };
+  const now = Date.now();
+  const out: Record<string, PriceTick> = {};
+  for (const a of NON_INDODAX_CRYPTO) out[a.symbol] = convertedTick(a, pickUsdQuote(a, sources), rate, now);
+  return out;
+}
+
+const coingeckoHistoryCache = new Map<string, CacheEntry<OhlcCandle[]>>();
+
+/** Daily Rupiah closes for one year from CoinGecko (open = high = low = close; cache 6 h). */
+async function coingeckoDailyIdr(asset: Asset): Promise<OhlcCandle[]> {
+  const id = asset.coingeckoId;
+  if (!id) throw new Error(`No chart source for ${asset.symbol}`);
+  const cached = coingeckoHistoryCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const res = await fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=idr&days=365&interval=daily`, {}, 10_000);
+  if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+  const body = (await res.json()) as { prices?: Array<[number, number]> };
+  const byDay = new Map<number, number>();
+  for (const [t, p] of body.prices ?? []) if (Number.isFinite(t) && Number.isFinite(p) && p > 0) byDay.set(Math.floor(t / 86_400_000) * 86_400, p);
+  const data = [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([time, c]) => ({ time, open: c, high: c, low: c, close: c }));
+  coingeckoHistoryCache.set(id, { data, expiresAt: Date.now() + 6 * 3600_000 });
+  return data;
+}
+
+/** Binance candles (spot, else futures per coin) converted to Rupiah at today's USD/IDR rate. */
+async function binanceCandlesIdr(asset: Asset, interval: KlineInterval, limit = 500): Promise<OhlcCandle[]> {
+  const market = asset.binanceSpot ? 'spot' : asset.binanceFutures ? 'futures' : null;
+  if (!market) {
+    // CoinGecko-only coins: daily closes in Rupiah (no intraday candles on the free API)
+    if (interval !== '1d' && interval !== '1w') throw new Error('Only daily data is available for this coin (CoinGecko)');
+    return coingeckoDailyIdr(asset);
+  }
+  const rate = yahooCache.get('USD/IDR')?.data.price ?? 0;
+  if (!(rate > 0)) throw new Error('USD/IDR rate unavailable for conversion');
+  const pair = (market === 'spot' ? asset.binanceSpot : asset.binanceFutures) as string;
+  const div = market === 'futures' ? asset.futuresMultiplier || 1 : 1;
+  const k = await getBinanceKlines(pair, interval, limit, market);
+  const f = rate / div;
+  return k.map((c) => ({
+    time: Math.floor(c.openTime / 1000),
+    open: c.open * f,
+    high: c.high * f,
+    low: c.low * f,
+    close: c.close * f,
+    volume: c.volume * div,
+  }));
 }
 
 async function getYahooQuote(
@@ -1660,6 +1760,9 @@ const STOCK_GROUPS: AssetGroup[] = ['idStock', 'usStock', 'globalStock'];
 /** About 5 years of daily bars (without today's live bar). */
 async function dailyHistoryFor(asset: Asset): Promise<DailyBar[]> {
   if (asset.indodaxPair) return fetchIndodaxDaily(asset.indodaxPair);
+  if (asset.group === 'crypto') {
+    return (await binanceCandlesIdr(asset, '1d', 1000)).map((c) => ({ date: localDate(c.time * 1000, 'CRYPTO'), close: c.close }));
+  }
   // Spot gold uses the GC=F futures history
   if (asset.symbol === 'XAU/USD') return fetchYahooDaily('GC=F');
   // SAR is pegged at 3.75 per USD, so its Rupiah history is USD/IDR ÷ 3.75
@@ -2688,6 +2791,7 @@ async function startServer() {
 
     const usdIdrPrice = ticks['USD/IDR']?.price;
     const usdIdrRate = Number.isFinite(usdIdrPrice) ? usdIdrPrice : 0;
+    Object.assign(ticks, await getNonIndodaxCryptoTicks(usdIdrRate).catch(() => ({})));
 
     try {
       const goldTick = await getGoldTick(usdIdrRate);
@@ -2730,6 +2834,7 @@ async function startServer() {
   app.get('/api/market/yahoo', async (_req, res) => {
     const now = Date.now();
     const all = await getYahooTicks();
+    Object.assign(all, await getNonIndodaxCryptoTicks(all['USD/IDR']?.price ?? 0).catch(() => ({})));
     // Failed quotes are left out so the client keeps its last good price
     const ticks = Object.fromEntries(Object.entries(all).filter(([, t]) => t.status !== 'error'));
     await addMarketCaps(ticks);
@@ -2951,7 +3056,7 @@ async function startServer() {
     const symbol = String(req.query.symbol || '');
     const interval = String(req.query.interval || '15');
     const asset = getAssetBySymbol(symbol);
-    if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {
+    if (!asset || (!asset.yahooSymbol && !asset.indodaxPair && asset.group !== 'crypto')) {
       res.status(400).json({ error: 'Unsupported symbol' });
       return;
     }
@@ -2963,7 +3068,7 @@ async function startServer() {
       const candles = await getHistoryCandles(asset, interval);
       res.json({
         symbol: asset.symbol,
-        source: asset.indodaxPair ? 'Indodax' : 'Yahoo Finance',
+        source: asset.indodaxPair ? 'Indodax' : asset.group === 'crypto' ? 'Binance (USDT → IDR at today\'s USD/IDR)' : 'Yahoo Finance',
         interval,
         candles,
       });
@@ -2994,6 +3099,74 @@ async function startServer() {
       res.status(502).json({
         error: err instanceof Error ? err.message : 'Failed to load the news feed',
       });
+    }
+  });
+
+
+  // ---- Binance (public market data only; no API key) ----------------------------------------
+  // Top-100 USDT pairs with live price, 1h/4h/24h/7d change, volume and funding
+  app.get('/api/crypto/binance', async (_req, res) => {
+    await warmBinance();
+    const byPair = new Map(ASSETS.filter((a) => a.binanceSpot).map((a) => [a.binanceSpot as string, a]));
+    const quotes = spotQuotes();
+    const fundingOf = (base: string) => fundingFor(`${base}USDT`) ?? fundingFor(`1000${base}USDT`);
+    const rows = binanceUniverse().map((p) => {
+      const q = quotes.get(p.symbol);
+      const w = windowChanges(cachedClosedKlines(p.symbol, '1h').concat(), q?.price ?? NaN);
+      const f = fundingOf(p.baseAsset);
+      const asset = byPair.get(p.symbol);
+      return {
+        rank: p.rank,
+        symbol: p.symbol,
+        base: p.baseAsset,
+        price: q?.price ?? null,
+        change1h: w.h1 ?? null,
+        change4h: w.h4 ?? null,
+        change24h: q?.changePct24h ?? null,
+        change7d: w.d7 ?? null,
+        quoteVolume: q?.quoteVolume ?? p.quoteVolume,
+        fundingRate: f && Number.isFinite(f.lastFundingRate) ? f.lastFundingRate : null,
+        futures: f ? f.symbol : null,
+        futuresMultiplier: f ? futuresMultiplierOf(f.symbol) : null,
+        assetId: asset?.id ?? null,
+        updatedAt: q?.updatedAt ?? null,
+      };
+    });
+    res.json({ status: binanceStatus(), rows, serverTime: Date.now() });
+  });
+
+  // Candles of one pair (1h / 4h / 1d / 1w); the last candle is marked open
+  app.get('/api/crypto/binance/klines', async (req, res) => {
+    const symbol = String(req.query.symbol || '');
+    const interval = String(req.query.interval || '1d') as KlineInterval;
+    if (!['1h', '4h', '1d', '1w'].includes(interval)) {
+      res.status(400).json({ error: 'interval must be 1h, 4h, 1d or 1w' });
+      return;
+    }
+    await warmBinance(2000);
+    if (!isKnownSpotPair(symbol)) {
+      res.status(404).json({ error: 'Unknown Binance pair', status: binanceStatus() });
+      return;
+    }
+    try {
+      const klines = await getBinanceKlines(symbol, interval, 500);
+      res.json({ symbol, interval, klines, closed: closedKlines(klines).length, status: binanceStatus() });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Binance unavailable', status: binanceStatus() });
+    }
+  });
+
+  // Futures statistics of one perpetual (open interest change, long/short, taker ratio, basis)
+  app.get('/api/crypto/binance/derivatives', async (req, res) => {
+    const contract = String(req.query.contract || '');
+    if (!/^[^\s]{2,40}USDT$/u.test(contract)) {
+      res.status(400).json({ error: 'contract required, e.g. BTCUSDT' });
+      return;
+    }
+    try {
+      res.json({ ...(await getDerivatives(contract)), funding: fundingFor(contract) ?? null });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Binance futures unavailable', status: binanceStatus() });
     }
   });
 
