@@ -6,30 +6,14 @@
  * format (follow the language, or always en-US) applied to utils/format.ts.
  */
 import { useSyncExternalStore } from 'react';
-import { en, type TranslationKey } from './en.ts';
-import { id } from './id.ts';
+import { translate, type AppLang, type TParams } from './core.ts';
 import { setNumberLocale } from '../utils/format.ts';
 import { setTimeLang } from '../utils/marketHours.ts';
-import { getNumberFormatPref, getSavedLang, saveLang, saveNumberFormatPref, type AppLang, type NumberFormatPref } from '../utils/storage.ts';
+import { getNumberFormatPref, getSavedLang, saveLang, saveNumberFormatPref, type NumberFormatPref } from '../utils/storage.ts';
 
-export type { TranslationKey } from './en.ts';
-export type { AppLang } from '../utils/storage.ts';
-
-const DICTS: Record<AppLang, Partial<Record<TranslationKey, string>>> = { en, id };
-
-export type TParams = Record<string, string | number>;
-
-/** Replaces {name} placeholders. */
-export function interpolate(text: string, params?: TParams): string {
-  if (!params) return text;
-  return text.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m));
-}
-
-/** Translation in a given language, falling back to English, then to the key itself. */
-export function translate(lang: AppLang, key: TranslationKey, params?: TParams): string {
-  const text = DICTS[lang][key] ?? en[key] ?? key;
-  return interpolate(text, params);
-}
+export type { TranslationKey, AppLang, TParams } from './core.ts';
+export { interpolate, translate, parseLang } from './core.ts';
+import type { TranslationKey } from './core.ts';
 
 function detectLang(): AppLang {
   const saved = getSavedLang();

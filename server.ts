@@ -51,6 +51,7 @@ import {
   type AssetOutlook,
   type RiskProfile,
 } from './src/ai/outlook.ts';
+import { parseLang, translate, type AppLang, type TranslationKey } from './src/i18n/core.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -2518,52 +2519,47 @@ async function getAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   return refresh();
 }
 
-/** Rule-based English summary of the ranked outlook (used when Gemini is not configured). */
-function ruleBasedSummary(payload: AiOutlookPayload, profile: RiskProfile): string {
-  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
+/** Rule-based summary of the ranked outlook in the chosen language (used when Gemini is not configured). */
+function ruleBasedSummary(payload: AiOutlookPayload, profile: RiskProfile, lang: AppLang = 'en'): string {
+  const tr = (key: TranslationKey, params?: Record<string, string | number>) => translate(lang, key, params);
+  const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive, lang });
   const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(0)}%`);
   const favorable = ranked.filter((o) => o.verdict === 'favorable');
   const watch = ranked.filter((o) => o.verdict === 'watch');
   const weak = ranked.filter((o) => o.verdict === 'unfavorable');
-  const horizon = payload.horizonDays === 20 ? 'about 1 month' : 'about 3 months';
+  const horizon = tr(payload.horizonDays === 20 ? 'srv.ai.horizon20' : 'srv.ai.horizon60');
+  const profileLabel = tr(`risk.profile.${profile}` as TranslationKey).toLowerCase();
   const parts: string[] = [];
   if (favorable.length) {
-    parts.push(
-      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, the strongest statistical setups now are ${favorable
-        .slice(0, 3)
-        .map((o) => {
-          const sc = o.evidence?.scorecard;
-          const proof =
-            o.reliability > 0 && o.signal === 'bullish'
-              ? `in backtests its favorable signals were right ${pct(o.backtest?.signalHitRate)} of the time vs a ${pct(o.backtest?.baseRate)} base rate`
-              : sc
-                ? `after past days with the same bullish scorecard it rose ${pct(sc.upRate)} of the time vs ${pct(sc.baseUpRate)} on all days`
-                : 'proven edge';
-          return `${o.name} (${pct(o.adjustedProbability)} chance of a gain; ${proof})`;
-        })
-        .join(', ')}.`
-    );
+    const items = favorable
+      .slice(0, 3)
+      .map((o) => {
+        const sc = o.evidence?.scorecard;
+        const proof =
+          o.reliability > 0 && o.signal === 'bullish'
+            ? tr('srv.ai.proofBacktest', { hit: pct(o.backtest?.signalHitRate), base: pct(o.backtest?.baseRate) })
+            : sc
+              ? tr('srv.ai.proofScorecard', { up: pct(sc.upRate), base: pct(sc.baseUpRate) })
+              : tr('srv.ai.proofEdge');
+        return tr('srv.ai.item', { name: o.name, chance: pct(o.adjustedProbability), proof });
+      })
+      .join(', ');
+    parts.push(tr('srv.ai.favorable', { profile: profileLabel, horizon, items }));
   } else {
-    parts.push(
-      `For a ${RISK_PROFILES[profile].label.toLowerCase()} profile over ${horizon}, no instrument currently has a bullish setup from a test with a proven edge (backtested strategy or technical scorecard) that the evidence score does not contradict — waiting is a valid choice. The watch list below shows where such a setup is most likely to appear.`
-    );
+    parts.push(tr('srv.ai.none', { profile: profileLabel, horizon }));
   }
-  if (watch.length) parts.push(`Watch list (a proven test exists, but no active setup, the tests disagree, or the evidence contradicts): ${watch.slice(0, 4).map((o) => o.name).join(", ")}.`);
-  if (weak.length) parts.push(`Active bearish setups (better avoided for now): ${weak.slice(0, 4).map((o) => o.name).join(", ")}.`);
-  if (payload.nextFomc) {
-    parts.push(
-      `The next Fed decision is on ${payload.nextFomc.date} (${payload.nextFomc.daysUntil} days); rate decisions often move indices, gold and currencies, so expect volatility around it.`
-    );
-  }
-  if (payload.geoAlertActive) parts.push('A geopolitical alert is active, which raises short-term risk.');
+  if (watch.length) parts.push(tr('srv.ai.watch', { names: watch.slice(0, 4).map((o) => o.name).join(', ') }));
+  if (weak.length) parts.push(tr('srv.ai.weak', { names: weak.slice(0, 4).map((o) => o.name).join(', ') }));
+  if (payload.nextFomc) parts.push(tr('srv.ai.fomc', { date: payload.nextFomc.date, days: payload.nextFomc.daysUntil }));
+  if (payload.geoAlertActive) parts.push(tr('srv.ai.geo'));
   return parts.join(' ');
 }
 
-async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile) {
-  const key = `${payload.generatedAt}|${payload.horizonDays}|${profile}`;
+async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile, lang: AppLang = 'en') {
+  const key = `${payload.generatedAt}|${payload.horizonDays}|${profile}|${lang}`;
   const cached = aiSummaryCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const fallback = { text: ruleBasedSummary(payload, profile), aiPowered: false };
+  const fallback = { text: ruleBasedSummary(payload, profile, lang), aiPowered: false };
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     aiSummaryCache.set(key, { data: fallback, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
@@ -2582,7 +2578,7 @@ async function getAiSummary(payload: AiOutlookPayload, profile: RiskProfile) {
     evidenceScore: o.evidence?.score,
     checks: o.checks.map((c) => `${c.label}: ${c.pass === null ? 'n/a' : c.pass ? 'pass' : 'fail'} (${c.detail})`),
   }));
-  const prompt = `You are a quantitative market analyst. Using ONLY the data below (for each instrument: its verdict and the checks behind it — a walk-forward backtested strategy judged on a holdout, a technical scorecard tested on the asset's own history, and an evidence score from technicals, momentum, value, quality and news — for the next ${payload.horizonDays} trading days), write 4-6 plain-English sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the chance of a gain and the hit rate vs base rate from the passing check), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "This is a statistical screen, not personal financial advice."
+  const prompt = `You are a quantitative market analyst. Using ONLY the data below (for each instrument: its verdict and the checks behind it — a walk-forward backtested strategy judged on a holdout, a technical scorecard tested on the asset's own history, and an evidence score from technicals, momentum, value, quality and news — for the next ${payload.horizonDays} trading days), write 4-6 plain ${lang === 'id' ? 'Indonesian (Bahasa Indonesia)' : 'English'} sentences for a ${RISK_PROFILES[profile].label} investor: which instruments currently look statistically favorable and why (cite the chance of a gain and the hit rate vs base rate from the passing check), what looks weak, the main macro context (next Fed decision: ${payload.nextFomc?.date ?? 'unknown'}; recent decisions: ${JSON.stringify(payload.recentFedDecisions)}; geopolitical alert: ${payload.geoAlertActive}), and one risk caveat. Never promise returns. End with: "${lang === 'id' ? 'Ini adalah penyaringan statistik, bukan nasihat keuangan pribadi.' : 'This is a statistical screen, not personal financial advice.'}"
 DATA: ${JSON.stringify(facts)}`;
   try {
     const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
@@ -2999,7 +2995,7 @@ async function startServer() {
     const profile: RiskProfile = profileParam in RISK_PROFILES ? (profileParam as RiskProfile) : 'moderate';
     try {
       const payload = await getAiOutlook(horizon);
-      const summary = await getAiSummary(payload, profile);
+      const summary = await getAiSummary(payload, profile, parseLang(req.query.lang));
       res.json({ ...payload, profile, summary });
     } catch (err) {
       res.status(502).json({

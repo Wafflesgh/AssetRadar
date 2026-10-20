@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, FlaskConical, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
-  QUANT_UNIVERSE_LABELS,
   blend,
   correlation,
   equityCurve,
@@ -22,6 +21,8 @@ import {
   type QuantUniverse,
 } from '../ai/factorPortfolio.ts';
 import { fetchQuantFactors } from '../services/marketDataService.ts';
+import { useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
 
 type Mode = 'longShort' | 'longOnly';
 type Period = 'all' | '10y' | '5y' | '3y';
@@ -32,7 +33,10 @@ const STOCK_UNIVERSES: QuantUniverse[] = ['usStock', 'idStock'];
 const pct = (v: number | null | undefined, digits = 1) =>
   v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v >= 0 ? '' : '−'}${Math.abs(v * 100).toFixed(digits)}%`;
 
+const UNIVERSES: QuantUniverse[] = ['usStock', 'idStock', 'index', 'forex', 'commodity', 'everywhere'];
+
 export function QuantSimView() {
+  const t = useT();
   const [universe, setUniverse] = useState<QuantUniverse>('everywhere');
   const [mode, setMode] = useState<Mode>('longShort');
   const [valueWeight, setValueWeight] = useState(50);
@@ -106,25 +110,22 @@ export function QuantSimView() {
       <section className="p-5 md:p-6 rounded-xl border space-y-2" style={card}>
         <div className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
           <FlaskConical className="w-3.5 h-3.5" style={{ color: 'var(--accent-radar)' }} />
-          <span>Quant Lab · historical simulation with real monthly prices</span>
+          <span>{t('quant.kicker')}</span>
         </div>
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Quantitative Portfolio Allocation Simulator</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">{t('quant.title')}</h1>
         <p className="text-sm max-w-3xl" style={{ color: 'var(--text-secondary)' }}>
-          Blend a <strong>value</strong> portfolio (assets cheap versus their price 4.5–5.5 years ago) with a{' '}
-          <strong>momentum</strong> portfolio (assets that rose most from 12 to 1 month ago). Asness, Moskowitz &amp; Pedersen
-          (2013) found the two are negatively correlated in every market, so a mix can be smoother than either alone. Slide
-          the weight and compare.
+          <Rich text={t('quant.intro')} />
         </p>
       </section>
 
       {/* Controls */}
-      <section className="p-5 rounded-xl border space-y-4" style={card} aria-label="Simulation settings">
+      <section className="p-5 rounded-xl border space-y-4" style={card} aria-label={t('quant.settings')}>
         <div className="space-y-2">
-          <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Universe</span>
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Universe">
-            {(Object.keys(QUANT_UNIVERSE_LABELS) as QuantUniverse[]).map((u) => (
+          <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('quant.universe')}</span>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('quant.universe')}>
+            {UNIVERSES.map((u) => (
               <Chip key={u} active={universe === u} onClick={() => setUniverse(u)} role="radio">
-                {QUANT_UNIVERSE_LABELS[u]}
+                {t(`quant.u.${u}` as TranslationKey)}
               </Chip>
             ))}
           </div>
@@ -132,28 +133,28 @@ export function QuantSimView() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Portfolio type</span>
-            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Portfolio type">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('quant.type')}</span>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('quant.type')}>
               <Chip active={mode === 'longShort'} onClick={() => setMode('longShort')} role="radio">
-                Long-short (academic)
+                {t('quant.longShort')}
               </Chip>
               <Chip active={mode === 'longOnly'} onClick={() => setMode('longOnly')} role="radio">
-                Long-only (top third)
+                {t('quant.longOnly')}
               </Chip>
             </div>
           </div>
           <div className="space-y-2">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Period</span>
-            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Period">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('quant.period')}</span>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('quant.period')}>
               {(['all', '10y', '5y', '3y'] as Period[]).map((p) => (
                 <Chip key={p} active={period === p} onClick={() => setPeriod(p)} role="radio">
-                  {p === 'all' ? 'All history' : p.toUpperCase()}
+                  {p === 'all' ? t('quant.allHistory') : p.toUpperCase()}
                 </Chip>
               ))}
             </div>
           </div>
           <div className="space-y-2">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Quality filter</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('quant.qualityFilter')}</span>
             <label
               className="flex items-start gap-2 text-xs"
               style={{ opacity: STOCK_UNIVERSES.includes(universe) && mode === 'longOnly' ? 1 : 0.5 }}
@@ -166,9 +167,9 @@ export function QuantSimView() {
                 className="mt-0.5"
               />
               <span>
-                Hold only stocks with a Piotroski F-score ≥ 8
+                {t('quant.qualityLabel')}
                 <span className="block text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  Stocks, long-only. Uses each year's published score (4-month lag), so it covers only the last ~3 years.
+                  {t('quant.qualityNote')}
                 </span>
               </span>
             </label>
@@ -178,8 +179,8 @@ export function QuantSimView() {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="value-weight" className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              Allocation: <span style={{ color: 'var(--color-gold)' }}>Value {valueWeight}%</span> ·{' '}
-              <span style={{ color: 'var(--accent-radar)' }}>Momentum {100 - valueWeight}%</span>
+              {t('quant.allocation')} <span style={{ color: 'var(--color-gold)' }}>{t('quant.valuePct', { n: valueWeight })}</span> ·{' '}
+              <span style={{ color: 'var(--accent-radar)' }}>{t('quant.momPct', { n: 100 - valueWeight })}</span>
             </label>
             <div className="flex gap-1.5">
               {[0, 20, 50, 80, 100].map((w) => (
@@ -198,45 +199,45 @@ export function QuantSimView() {
             value={valueWeight}
             onChange={(e) => setValueWeight(Number(e.target.value))}
             className="w-full accent-[var(--accent-radar)]"
-            aria-valuetext={`Value ${valueWeight} percent, momentum ${100 - valueWeight} percent`}
+            aria-valuetext={t('quant.sliderText', { v: valueWeight, m: 100 - valueWeight })}
           />
         </div>
       </section>
 
       {state === 'loading' && !data ? (
         <div className="p-8 rounded-xl border text-sm" style={{ ...card, color: 'var(--text-secondary)' }} aria-busy="true">
-          Loading up to 20+ years of monthly prices…
+          {t('quant.loading')}
         </div>
       ) : state === 'error' && !data ? (
         <div className="p-8 rounded-xl border text-sm space-y-3" style={card} role="alert">
-          <p>Data unavailable</p>
+          <p>{t('common.dataUnavailable')}</p>
           <button
             type="button"
             onClick={() => setReload((r) => r + 1)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Try again
+            <RefreshCw className="w-3.5 h-3.5" /> {t('common.tryAgain')}
           </button>
         </div>
       ) : data && view ? (
         <>
-          <section className="grid grid-cols-2 lg:grid-cols-5 gap-3" aria-label="Combined portfolio results">
-            <Stat label="Annual return" value={pct(view.stats.combo?.annualReturn)} color={(view.stats.combo?.annualReturn ?? 0) >= 0 ? 'var(--color-up)' : 'var(--color-down)'} />
-            <Stat label="Volatility / yr" value={pct(view.stats.combo?.volatility)} />
-            <Stat label="Sharpe ratio" value={view.stats.combo?.sharpe?.toFixed(2) ?? '—'} sub={mode === 'longShort' ? 'mean ÷ volatility' : 'excess over US T-bills'} />
-            <Stat label="Max drawdown" value={pct(view.stats.combo?.maxDrawdown)} color="var(--color-down)" />
-            <Stat label="Correlation ρ (value, momentum)" value={view.rho === null ? '—' : view.rho.toFixed(2)} sub={view.rho !== null && view.rho < 0 ? 'negative → diversifies' : 'not negative here'} />
+          <section className="grid grid-cols-2 lg:grid-cols-5 gap-3" aria-label={t('quant.results')}>
+            <Stat label={t('quant.annualReturn')} value={pct(view.stats.combo?.annualReturn)} color={(view.stats.combo?.annualReturn ?? 0) >= 0 ? 'var(--color-up)' : 'var(--color-down)'} />
+            <Stat label={t('quant.volYr')} value={pct(view.stats.combo?.volatility)} />
+            <Stat label={t('quant.sharpe')} value={view.stats.combo?.sharpe?.toFixed(2) ?? '—'} sub={mode === 'longShort' ? t('quant.sharpeLS') : t('quant.sharpeLO')} />
+            <Stat label={t('quant.maxDd')} value={pct(view.stats.combo?.maxDrawdown)} color="var(--color-down)" />
+            <Stat label={t('quant.rho')} value={view.rho === null ? '—' : view.rho.toFixed(2)} sub={view.rho !== null && view.rho < 0 ? t('quant.rhoNeg') : t('quant.rhoNotNeg')} />
           </section>
 
           <section className="p-4 md:p-5 rounded-xl border space-y-3" style={card} aria-labelledby="quant-chart-heading">
             <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
               <h2 id="quant-chart-heading" className="text-base font-bold">
-                Growth of 1 · {data.label}
+                {t('quant.growth', { label: t(`quant.u.${universe}` as TranslationKey) })}
               </h2>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {view.from} → {view.to} · {view.stats.combo?.months ?? 0} months · {data.members.length} assets
-                {qualityOn ? ' · F-score ≥ 8 only' : ''}
+                {t('quant.range', { from: view.from, to: view.to, months: view.stats.combo?.months ?? 0, assets: data.members.length })}
+                {qualityOn ? ` ${t('quant.fOnly')}` : ''}
               </p>
             </div>
             <div className="h-72 md:h-96">
@@ -251,31 +252,31 @@ export function QuantSimView() {
                     formatter={(v) => (typeof v === 'number' ? v.toFixed(2) : String(v))}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="Combined" stroke="var(--text-primary)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="Value" stroke="var(--color-gold)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="Momentum" stroke="var(--accent-radar)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="Benchmark" stroke="var(--text-secondary)" strokeDasharray="5 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="Combined" name={t('quant.line.combined')} stroke="var(--text-primary)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="Value" name={t('quant.line.value')} stroke="var(--color-gold)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="Momentum" name={t('quant.line.momentum')} stroke="var(--accent-radar)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="Benchmark" name={t('quant.line.benchmark')} stroke="var(--text-secondary)" strokeDasharray="5 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <caption className="sr-only">Performance comparison</caption>
+                <caption className="sr-only">{t('quant.caption')}</caption>
                 <thead>
                   <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                    <th scope="col" className="py-1.5 pr-2 font-semibold">Portfolio</th>
-                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">Return / yr</th>
-                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">Volatility</th>
-                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">Sharpe</th>
-                    <th scope="col" className="py-1.5 font-semibold text-right">Max drawdown</th>
+                    <th scope="col" className="py-1.5 pr-2 font-semibold">{t('quant.th.portfolio')}</th>
+                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">{t('quant.th.return')}</th>
+                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">{t('quant.th.vol')}</th>
+                    <th scope="col" className="py-1.5 pr-2 font-semibold text-right">{t('quant.th.sharpe')}</th>
+                    <th scope="col" className="py-1.5 font-semibold text-right">{t('quant.maxDd')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <Row name={`Combined (${valueWeight}% value / ${100 - valueWeight}% momentum)`} s={view.stats.combo} bold />
-                  <Row name="Pure value" s={view.stats.value} />
-                  <Row name="Pure momentum" s={view.stats.momentum} />
-                  <Row name="Benchmark (equal weight, long-only)" s={view.stats.benchmark} />
+                  <Row name={t('quant.row.combined', { v: valueWeight, m: 100 - valueWeight })} s={view.stats.combo} bold />
+                  <Row name={t('quant.row.value')} s={view.stats.value} />
+                  <Row name={t('quant.row.momentum')} s={view.stats.momentum} />
+                  <Row name={t('quant.row.benchmark')} s={view.stats.benchmark} />
                 </tbody>
               </table>
             </div>
@@ -283,30 +284,20 @@ export function QuantSimView() {
 
           <section className="p-4 rounded-xl border text-xs space-y-1.5 leading-relaxed" style={{ ...card, color: 'var(--text-secondary)' }}>
             <p className="flex items-center gap-1.5 font-bold" style={{ color: 'var(--text-primary)' }}>
-              <AlertTriangle className="w-4 h-4" style={{ color: 'var(--color-gold)' }} /> How to read this
+              <AlertTriangle className="w-4 h-4" style={{ color: 'var(--color-gold)' }} /> {t('quant.howTo')}
             </p>
             <p>
-              <strong style={{ color: 'var(--text-primary)' }}>Method.</strong> Every month, assets are ranked on each signal.
-              Long-short: weights proportional to rank, $1 long the top and $1 short the bottom (AMP 2013). Long-only: equal
-              weights in the top third. Returns are those of the following month, so no future data is used. Value uses the
-              5-year price reversal because free historical book values do not exist; momentum skips the latest month.
+              <Rich text={t('quant.method')} strongStyle={{ color: 'var(--text-primary)' }} />
             </p>
             <p>
-              <strong style={{ color: 'var(--text-primary)' }}>Biases.</strong> Stock universes are <em>today's</em> largest
-              companies, so the past looks better than it was for an investor who could not know the winners (survivorship
-              bias). Commodity prices are front-month futures without roll returns. Fees, taxes, slippage, short-selling costs
-              and currency conversion are not included. Long-only Sharpe uses US T-bills; Rupiah investors face higher local
-              rates, so their real Sharpe would be lower.
+              <Rich text={t('quant.biases')} strongStyle={{ color: 'var(--text-primary)' }} />
             </p>
-            <p>
-              Members: {data.members.join(', ')}. Past results do not predict future results. This is an educational simulation,
-              not personal financial advice.
-            </p>
+            <p>{t('quant.members', { list: data.members.join(', ') })}</p>
           </section>
         </>
       ) : (
         <div className="p-8 rounded-xl border text-sm" style={{ ...card, color: 'var(--text-secondary)' }}>
-          Not enough history for this combination of settings.
+          {t('quant.notEnough')}
         </div>
       )}
     </div>

@@ -173,6 +173,11 @@ test('rankOutlooks: a proven scorecard lean can decide, and checks explain the v
   assert.equal(v.DAX.checks.length, 4);
   assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Backtested'))?.pass, false);
   assert.equal(v.DAX.checks.find((c) => c.label.startsWith('Scorecard'))?.pass, true);
+  // Same verdicts in Indonesian; only the wording changes
+  const vId = Object.fromEntries(rankOutlooks(list, 'moderate', { lang: 'id' }).map((o) => [o.code, o]));
+  assert.equal(vId.DAX.verdict, 'favorable');
+  assert.equal(vId.DAX.checks[0].label, 'Sesuai profil risiko Anda');
+  assert.match(vId.HSI.reasons[0], /Scorecard condong bearish/);
 });
 
 test('compareIdMacro keeps the Indonesian features only when validation improved', () => {

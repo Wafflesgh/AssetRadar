@@ -27,6 +27,7 @@ import type { MacroPoint, MacroSeries } from '../utils/macro.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 import { isStreamStalled, reconnectDelayMs } from '../utils/priceStream.ts';
+import { langParam } from '../i18n/index.ts';
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
 /** How non-crypto prices arrive: pushed by the server stream, or REST polling as the fallback. */
@@ -710,7 +711,7 @@ export interface AiOutlookResponse {
 }
 
 export async function fetchAiOutlook(horizon: number, profile: string): Promise<AiOutlookResponse> {
-  const res = await fetch(`/api/ai/outlook?horizon=${horizon}&profile=${encodeURIComponent(profile)}`);
+  const res = await fetch(`/api/ai/outlook?horizon=${horizon}&profile=${encodeURIComponent(profile)}&${langParam()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

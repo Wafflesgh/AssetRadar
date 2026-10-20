@@ -22,14 +22,10 @@ import {
 import type { PriceTick } from '../config/assets.ts';
 import { fetchHistory } from '../services/marketDataService.ts';
 import { getForwardLogRaw, saveForwardLogRaw } from '../utils/storage.ts';
+import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
 
-const VERDICT_LABEL: Record<string, string> = {
-  favorable: 'Favorable now',
-  watch: 'Watch list',
-  unfavorable: 'Unfavorable now',
-  'no-signal': 'No proven edge',
-  'not-suitable': 'Not suitable',
-};
+const verdictLabel = (v: string) => tr(`verdict.${v}` as TranslationKey);
 
 const WIB_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const pct = (v: number | null, d = 0) => (v === null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -46,13 +42,14 @@ interface LiveTrackRecordProps {
 }
 
 export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTrackRecordProps) {
+  const t = useT();
   const [log, setLog] = useState<ForwardLog>(() => loadLog());
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const save = (next: ForwardLog) => {
     setLog(next);
-    if (!saveForwardLogRaw(next)) setNotice('This browser did not allow saving the log (private mode or storage full).');
+    if (!saveForwardLogRaw(next)) setNotice(tr('ltr.saveBlocked'));
   };
 
   // 1. Save today's verdicts (once per day, horizon and profile; never back-filled)
@@ -124,12 +121,12 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
   const doImport = async (file: File) => {
     try {
       const parsed = parseForwardLog(JSON.parse(await file.text()));
-      if (!parsed) throw new Error('Not an AssetRadar track-record file.');
-      if (log.snapshots.length && !window.confirm(`Replace the ${log.snapshots.length} saved verdicts with the ${parsed.snapshots.length} in this file?`)) return;
+      if (!parsed) throw new Error(tr('ltr.notFile'));
+      if (log.snapshots.length && !window.confirm(tr('ltr.replaceConfirm', { old: log.snapshots.length, new: parsed.snapshots.length }))) return;
       save(parsed);
-      setNotice(`Imported ${parsed.snapshots.length} saved verdicts.`);
+      setNotice(tr('ltr.imported', { n: parsed.snapshots.length }));
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Import failed.');
+      setNotice(err instanceof Error ? err.message : tr('ltr.importFailed'));
     }
   };
 
@@ -142,19 +139,18 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
         <div>
           <h2 id="track-record-heading" className="text-sm md:text-base font-bold flex items-center gap-2">
-            <History className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} /> Live track record (forward test)
+            <History className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} /> {t('ltr.title')}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Each day you open the AI Advisor, today's verdicts for this horizon and profile are saved on this device. After{' '}
-            {horizonDays} trading days the real closing prices show whether they were right. Days the app was not opened stay empty.
+            {t('ltr.intro', { days: horizonDays })}
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button type="button" onClick={doExport} disabled={!log.snapshots.length} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
-            <Download className="w-3.5 h-3.5" /> Export
+            <Download className="w-3.5 h-3.5" /> {t('ltr.export')}
           </button>
           <label className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer" style={{ borderColor: 'var(--border-subtle)' }}>
-            <Upload className="w-3.5 h-3.5" /> Import
+            <Upload className="w-3.5 h-3.5" /> {t('ltr.import')}
             <input
               type="file"
               accept="application/json,.json"
@@ -170,25 +166,24 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
       </div>
 
       <p className="text-xs">
-        Recording since <strong>{record.startedAt ?? today}</strong> · {record.saved} verdicts saved · {record.evaluated} with a result
-        {checking ? ' · checking prices…' : ''}
+        <Rich text={t('ltr.status', { start: record.startedAt ?? today, saved: record.saved, evaluated: record.evaluated })} />
+        {checking ? ` ${t('ltr.checking')}` : ''}
       </p>
 
       {record.evaluated < MIN_RESULTS ? (
         <p className="text-sm p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
-          Too few results to judge yet ({record.evaluated} of at least {MIN_RESULTS}). The first results arrive about {horizonDays} trading
-          days after the first saved day.
+          {t('ltr.tooFew', { n: record.evaluated, min: MIN_RESULTS, days: horizonDays })}
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <caption className="sr-only">Forward-test results by verdict</caption>
+            <caption className="sr-only">{t('ltr.caption')}</caption>
             <thead>
               <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                <th className="py-1.5 pr-2 font-semibold">Verdict</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">Results</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">Price rose</th>
-                <th className="py-1.5 font-semibold text-right">Avg move</th>
+                <th className="py-1.5 pr-2 font-semibold">{t('ltr.verdict')}</th>
+                <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.results')}</th>
+                <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.rose')}</th>
+                <th className="py-1.5 font-semibold text-right">{t('ltr.avgMove')}</th>
               </tr>
             </thead>
             <tbody>
@@ -196,16 +191,16 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
                 .filter((r) => r.samples > 0)
                 .map((r) => (
                   <tr key={r.verdict} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="py-1.5 pr-2 font-semibold">{VERDICT_LABEL[r.verdict]}</td>
+                    <td className="py-1.5 pr-2 font-semibold">{verdictLabel(r.verdict)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono-num">{r.samples}</td>
                     <td className="py-1.5 pr-2 text-right font-mono-num">
-                      {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>(few)</span>}
+                      {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>{t('ltr.few')}</span>}
                     </td>
                     <td className="py-1.5 text-right font-mono-num">{pct(r.avgReturn, 1)}</td>
                   </tr>
                 ))}
               <tr className="border-t font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-                <td className="py-1.5 pr-2">Base rate (all saved verdicts)</td>
+                <td className="py-1.5 pr-2">{t('ltr.baseRate')}</td>
                 <td className="py-1.5 pr-2 text-right font-mono-num">{record.evaluated}</td>
                 <td className="py-1.5 pr-2 text-right font-mono-num">{pct(record.baseUpRate)}</td>
                 <td className="py-1.5 text-right" />
@@ -213,8 +208,7 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
             </tbody>
           </table>
           <p className="text-[11px] mt-2" style={{ color: 'var(--text-secondary)' }}>
-            "Favorable" works if it rose more often than the base rate; "Unfavorable" works if it rose less often. Results from the same
-            day move together, so treat small differences as noise.
+            {t('ltr.note')}
           </p>
         </div>
       )}
