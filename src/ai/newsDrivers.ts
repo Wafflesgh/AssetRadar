@@ -129,6 +129,11 @@ const PRICE_REPORT = w(
 /** Reliable newswires and financial outlets get full weight; unknown blogs 0.6. */
 const TIER1 = /reuters|bloomberg|cnbc|financial times|ft\.com|wall street journal|wsj|associated press|ap news|nikkei|kontan|bisnis|antara|kompas|tempo|katadata|investing\.com|marketwatch|barron|coindesk|the block|cointelegraph|fxstreet|yahoo finance|bbc|al jazeera|idx channel|detik/i;
 
+/** Source reliability weight: reliable newswires and outlets 1, others 0.6. */
+export function sourceWeight(source: string, link: string): number {
+  return TIER1.test(`${source} ${link}`) ? 1 : 0.6;
+}
+
 export interface NewsDriver {
   title: string;
   link: string;
@@ -239,7 +244,7 @@ export function analyzeNewsDrivers(
     const c = classifyDriver(item, group, symbol);
     const ageH = item.publishedAtMs ? Math.max(0, (now - item.publishedAtMs) / 3_600_000) : 24;
     const recency = Math.pow(0.5, ageH / 12);
-    const source = TIER1.test(`${item.source} ${item.link}`) ? 1 : 0.6;
+    const source = sourceWeight(item.source, item.link);
     drivers.push({
       title: item.title,
       link: item.link,

@@ -36,7 +36,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 0. Cek sumber (di atas)
 - [x] 1. Dua bahasa (English / Bahasa Indonesia)
 - [x] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
-- [ ] 3. Pilar & horizon sentimen
+- [x] 3. Pilar & horizon sentimen
 - [ ] 4. Proyeksi teknikal & kalkulator posisi
 - [ ] 5. Validasi & cadence
 - [ ] 6. Tampilan
@@ -65,6 +65,19 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - **Cross-section** (`server/crossSection.ts`): antrean pelan per pasar (BEI ±960 saham, AS 29 saham): harga bulanan 10 tahun (spark 20 simbol/permintaan, jeda 1,5 dtk), laporan keuangan (1,2 dtk), estimasi analis (2 dtk); cache 24/12/12 jam; berjalan selama ada permintaan ≤ 30 menit; progres & umur data di `GET /api/sentiment/scan-status`. Industri: IDX-IC dari `idxStocks.json`; AS dari profil Yahoo.
 - Keterbatasan: daftar konstituen S&P 500 untuk peringkat saham AS tidak bisa diunduh dari cloud → peringkat AS memakai 29 saham inti dengan peringatan "small peer group" (lihat Butuh keputusan pemilik).
 - Test baru: parser & universe Binance (fixture), governor (20%, header, 429/418/451, Retry-After), klien (pindah alamat, berhenti saat 429, deteksi wilayah), jadwal weight, perubahan 1h/4h/7d, snapshot derivatif, pemilihan sumber harga crypto & konversi USDT→IDR, parser analis, antrean cross-section.
+
+## Fase 3 — Pilar & horizon sentimen
+
+Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
+- `crossSection.ts`: peringkat rata-rata (ties), percentile `rank/(n−1)`, skor AMP `rank − rata-rata(rank)` → 0–100, desil dari subset likuid (ambang `LIQUIDITY_THRESHOLD`: BEI Rp500 jt/hari, AS US$10 jt/hari) lalu semua saham ditempatkan pada batas desil itu, penyesuaian industri (nilai − median industri; industri < 3 anggota → median pasar, ditandai).
+- `factors.ts` (termasuk **SUE** dan **audit operasional**): nilai faktor **point-in-time** per akhir bulan — harga hanya s.d. bulan itu, laporan hanya yang sudah terbit (BEI tahunan +4 bln, kuartalan +2 bln; SEC memakai tanggal pengajuan pertama, cadangan +3/+2 bln). Momentum 12-2 (`P(t−2)/P(t−13)`), jendela Bettman **t−12…t−7** sesuai koreksi jurnal (varian 6 bulan terakhir disiapkan untuk validasi), reversal 1 bulan, SUE Novy-Marx (selisih musiman, sd 8 kuartal, butuh 12 kuartal; jika kurang → proksi kejutan analis, hanya untuk skor hari ini), F-score Piotroski (total utang sebagai pengganti utang jangka panjang), sinyal Abarbanell & Bushee (INV, AR, CAPX vs industri, GM, S&A, ETR; arah sudah dibalik sehingga lebih tinggi = lebih baik; LF/EQ/AQ "Not reported"), GPA (bank/asuransi → ROA), B/M, BVPS, EPS, FEPS (hanya hari ini), P(t−5).
+- `hybridValue.ts`: model hibrida Bettman **diestimasi ulang** per pasar per bulan dengan OLS (eliminasi Gauss), 1% residu ekstrem dibuang lalu refit, Model 4 bila cakupan analis < 50%, kolom konstan (mis. tidak ada saham D_Down) dibuang otomatis, varian per-saham ÷ P(t−5) diuji; yang dipilih = galat median lebih kecil pada separuh data yang tidak dipakai untuk estimasi. Koefisien, n, R² dikirim bersama peringatan bahwa R² tinggi berasal dari P(t−5).
+- `pillars.ts`: 3 pilar 0–100 (bobot sesuai rencana 2.2), sub-faktor kosong → bobot dibagi ulang + ditandai; peringatan F-score 0–1 ("financial distress warning"); konteks "prior bad earnings news".
+- `newsHorizon.ts`: berita per horizon dengan half-life 2 hari / 3 minggu / 6 bulan, Medium tanpa berita yang hanya melaporkan harga, Long hanya kategori struktural; ditarik ke nol bila beritanya sedikit; batas ±15/±10/±5 poin; judul penyumbang + poin + umur + sumber. Berita baru menghapus cache sentimen aset itu (Short dihitung ulang).
+- `horizons.ts`: bobot per horizon sesuai tabel 2.3; komponen tidak berlaku (makro di luar IHSG/saham BEI/pasangan Rupiah, derivatif di luar crypto Binance) → "Not applicable"; aset tanpa laporan keuangan → pilar 2–3 diganti momentum time-series (12-1, diskalakan volatilitas) dan tren 200 hari. Tiap komponen melaporkan kontribusi (poin), sehingga skor = 50 + Σ kontribusi. Label 5 tingkat, confidence Low/Medium/High dari cakupan data, kesepakatan antarkomponen dan hasil validasi. Teknikal pendek: scorecard 9 aturan, jarak ke MA20/50, breakout 20 hari, volume relatif, reversal 1 bulan (negatif). Derivatif: funding & rasio long/short dibaca kontrarian (heuristik, ditulis di UI).
+- `macroSignal.ts`: perubahan 3 bulan BI-Rate & inflasi (data > 120 hari diabaikan); saham/IHSG: turun = mendukung; pasangan X/IDR: arah dibalik.
+- `cadence.ts`: cadence default + katalis berikutnya (laporan laba, ex-date, FOMC) + rumus cadence dari half-life IC (dipakai di Fase 5).
+- Endpoint: `GET /api/sentiment/v2?symbol=` (3 horizon, komponen, pilar & sub-faktor, model hibrida pasar, kesegaran data & progres pemindaian, disclaimer), `GET /api/sentiment/rankings?market=idx|us&horizon=` (pemimpin & terlemah dari cross-section; teknikal pendek hanya di halaman saham), skor Short/Medium/Long untuk 100 pasangan Binance di `GET /api/crypto/binance`.
 
 ## Butuh keputusan pemilik
 

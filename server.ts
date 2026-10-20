@@ -69,6 +69,12 @@ import {
 } from './server/binanceFeed.ts';
 import { CrossSection, monthlyFromBars, type CrossMarket } from './server/crossSection.ts';
 import { ANALYST_MODULES, parseAnalystData, type AnalystData } from './src/utils/analyst.ts';
+import { marketPillars, type MarketPillars } from './src/sentiment/pillars.ts';
+import { newsByHorizon, HORIZONS, type Horizon } from './src/sentiment/newsHorizon.ts';
+import { derivativesScore, scoreHorizon, shortTechnical, trendScore, tsMomentumScore, type HorizonScore } from './src/sentiment/horizons.ts';
+import { nextCatalyst, type Catalyst } from './src/sentiment/cadence.ts';
+import { isMacroLinked, macroSignal } from './src/sentiment/macroSignal.ts';
+import type { StockInput } from './src/sentiment/factors.ts';
 import {
   computeMarketSentiment,
   parseRssItems,
@@ -296,9 +302,13 @@ async function pollNews(force = false): Promise<void> {
         const asset = ASSETS.find((a) => a.code === tag);
         if (asset) {
           for (const l of ['en', 'id']) intelligenceCache.delete(`${asset.symbol}|${l}`); // sentiment reacts to the news
+          sentimentCache.delete(asset.symbol); // the Short horizon is re-scored on the next request
           analysisCache.delete(asset.symbol);
         }
-        if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
+        if (tag === MACRO_TAG || tag === GEO_TAG) {
+          intelligenceCache.clear();
+          sentimentCache.clear();
+        }
       }
       broadcastNews('news', added);
     }
@@ -2356,6 +2366,216 @@ function crossSectionOf(asset: Asset): CrossSection<Asset> | null {
   return asset.group === 'idStock' ? crossSections.idx : asset.group === 'usStock' ? crossSections.us : null;
 }
 
+// ---- Multi-horizon investment sentiment (stage 4) -------------------------------------------
+// A summary of evidence per horizon, not a buy/sell signal.
+
+const SENTIMENT_DISCLAIMER = 'Information and education only, not investment advice.';
+
+/** Latest validation result per market and horizon (filled by the validation run). */
+const validationStore = new Map<string, Partial<Record<Horizon, { ic: number; significant: boolean } | null>>>();
+function validationFor(market: string | null, h: Horizon): Partial<Record<Horizon, { ic: number; significant: boolean } | null>> {
+  const v = market ? validationStore.get(market) : undefined;
+  return v ? { [h]: v[h] ?? null } : {};
+}
+const pillarsCache = new Map<string, CacheEntry<MarketPillars>>();
+const sentimentCache = new Map<string, CacheEntry<unknown>>();
+
+const FINANCIAL_INDUSTRY = /bank|insurance|asuransi|perbankan|financ|capital markets|investment/i;
+
+/** The cross-section of a market as StockInput rows (only what the scans already collected). */
+function stockInputs(cs: CrossSection<Asset>, assets: Asset[], market: 'idx' | 'us'): StockInput[] {
+  const rows: StockInput[] = [];
+  for (const a of assets) {
+    const monthly = cs.monthlyOf(a.symbol);
+    if (!monthly || monthly.length < 14) continue;
+    const st = cs.statementsOf(a.symbol);
+    const an = cs.analystOf(a.symbol);
+    const industry = a.industry ?? an?.industry ?? null;
+    const tick = idxSweep.ticks.get(a.symbol) ?? yahooCache.get(a.symbol)?.data;
+    rows.push({
+      symbol: a.symbol,
+      market,
+      monthly,
+      annual: st?.annual ?? [],
+      quarterly: st?.quarterly ?? [],
+      analyst: an,
+      industry,
+      isFinancial: FINANCIAL_INDUSTRY.test(`${a.sector ?? ''} ${industry ?? ''} ${an?.sector ?? ''}`),
+      shares: a.supply,
+      valueTraded: tick?.valueTraded,
+    });
+  }
+  return rows;
+}
+
+/** Pillar scores of a market for the current month (cache 10 min; rebuilt as scans fill in). */
+function currentPillars(market: 'idx' | 'us'): MarketPillars | null {
+  const cs = crossSections[market];
+  cs.touch();
+  const key = market;
+  const cached = pillarsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const assets = market === 'idx' ? ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol) : ASSETS.filter((a) => a.group === 'usStock');
+  const inputs = stockInputs(cs, assets, market);
+  if (inputs.length < 5) return null;
+  const month = new Date().toISOString().slice(0, 7);
+  const data = marketPillars(inputs, market, month, true);
+  pillarsCache.set(key, { data, expiresAt: Date.now() + 10 * 60_000 });
+  return data;
+}
+
+/** Macro component from the cached Indonesia macro data (never waits for a fresh download). */
+function macroComponent(asset: Asset) {
+  if (!isMacroLinked(asset.group, asset.symbol)) return null;
+  const macro = macroCache.entry?.data;
+  if (!macro) {
+    getIndonesiaMacro().catch(() => {});
+    return null;
+  }
+  const rate = macro.biRate.length ? [...macro.biRate].sort((a, b) => a.date.localeCompare(b.date)) : macro.series.find((x) => x.id === 'policyRate')?.points ?? [];
+  const infl = macro.series.find((x) => x.id === 'inflationYoy')?.points ?? [];
+  return macroSignal(asset.group, asset.symbol, rate, infl, new Date().toISOString().slice(0, 10));
+}
+
+/** Scheduled events that matter for an asset (corporate calendar from cache + FOMC). */
+function catalystsFor(asset: Asset): Catalyst[] {
+  const out: Catalyst[] = [];
+  for (const e of calendarCache.get(asset.symbol)?.data ?? []) {
+    if (e.type === 'earnings' || e.type === 'exDividend' || e.type === 'dividendPayment') out.push({ type: e.type, date: e.date });
+  }
+  const fomc = nextMeeting(new Date().toISOString().slice(0, 10));
+  if (fomc) out.push({ type: 'fomc', date: fomc });
+  return out;
+}
+
+async function computeSentimentV2(asset: Asset) {
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const bars = await dailyHistoryFor(asset).catch(() => [] as DailyBar[]);
+  // Closed daily bars only (no live bar): indicators need finished candles
+  const closes = bars.map((b) => b.close);
+  const yearBars = asset.group === 'crypto' ? 365 : 252;
+  const market = asset.group === 'idStock' ? 'idx' : asset.group === 'usStock' ? 'us' : null;
+  const mp = market ? currentPillars(market) : null;
+  const sp = mp?.stocks.get(asset.symbol) ?? null;
+  if (market && !sp) crossSections[market].touch();
+  const tech = shortTechnical(closes);
+  const macro = macroComponent(asset);
+  let deriv: number | null = null;
+  if (asset.group === 'crypto' && asset.binanceFutures) {
+    const f = fundingFor(asset.binanceFutures);
+    deriv = derivativesScore({ fundingRate: f?.lastFundingRate ?? null });
+  }
+  if (asset.group === 'crypto') noteBinanceDemand();
+  const news = newsByHorizon(driverNewsFor(asset), asset.group, asset.symbol, now);
+  const lastBar = bars.length ? bars[bars.length - 1].date : null;
+  const horizons = {} as Record<Horizon, HorizonScore & { nextCatalyst: ReturnType<typeof nextCatalyst> }>;
+  const events = catalystsFor(asset);
+  for (const h of HORIZONS) {
+    const r = scoreHorizon(h, {
+      group: asset.group,
+      pillars: sp?.pillars ?? null,
+      technicalShort: tech?.score ?? null,
+      tsMomentum: tsMomentumScore(closes, yearBars),
+      trend: trendScore(closes),
+      news,
+      macro: macro?.score ?? null,
+      derivatives: deriv,
+      binance: Boolean(asset.binanceSpot || asset.binanceFutures),
+      macroLinked: isMacroLinked(asset.group, asset.symbol),
+      validation: validationFor(market ?? (asset.group === 'crypto' ? 'crypto' : null), h),
+      dates: {
+        technical: lastBar,
+        tsMomentum: lastBar,
+        trend: lastBar,
+        momentum: sp ? sp.raw.asOf : null,
+        health: sp?.raw.statementsDate ?? null,
+        quality: sp?.raw.statementsDate ?? null,
+        macro: macro?.dataDate ?? null,
+      },
+    });
+    horizons[h] = { ...r, nextCatalyst: nextCatalyst(events, h, today) };
+  }
+  const cs = market ? crossSections[market] : null;
+  return {
+    symbol: asset.symbol,
+    code: asset.code,
+    group: asset.group,
+    generatedAt: now,
+    horizons,
+    pillars: sp
+      ? {
+          scores: sp.pillars,
+          dUp: sp.dUp,
+          dDown: sp.dDown,
+          distressWarning: sp.distressWarning,
+          fairValue: sp.fairValue,
+          hybridDiscount: sp.hybridDiscount,
+          raw: sp.raw,
+        }
+      : null,
+    market: mp
+      ? {
+          market: mp.market,
+          n: mp.n,
+          smallPeerGroup: mp.smallPeerGroup,
+          liquidityThreshold: mp.liquidityThreshold,
+          hybrid: mp.hybrid,
+          hybridErrors: mp.hybridErrors,
+        }
+      : null,
+    notApplicable: market ? null : 'no-statements',
+    technicalParts: tech?.parts ?? null,
+    macro,
+    freshness: {
+      prices: lastBar,
+      statements: sp?.raw.statementsDate ?? null,
+      news: newsHub.lastPollAt || null,
+      scans: cs ? cs.status() : null,
+    },
+    disclaimer: SENTIMENT_DISCLAIMER,
+  };
+}
+
+async function getSentimentV2(asset: Asset) {
+  const key = asset.symbol;
+  const cached = sentimentCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const data = await computeSentimentV2(asset);
+  sentimentCache.set(key, { data, expiresAt: Date.now() + 2 * 60_000 });
+  return data;
+}
+
+/** Ranking rows of a market for one horizon (stocks from the cross-section; crypto from Binance). */
+function rankingsFor(market: 'idx' | 'us', h: Horizon) {
+  const mp = currentPillars(market);
+  if (!mp) return { rows: [], n: 0 };
+  const rows = [...mp.stocks.values()].map((sp) => {
+    const asset = getAssetBySymbol(sp.symbol);
+    const r = scoreHorizon(h, {
+      group: asset?.group ?? 'idStock',
+      pillars: sp.pillars,
+      news: asset ? newsByHorizon(driverNewsFor(asset), asset.group, asset.symbol, Date.now()) : null,
+      macroLinked: market === 'idx',
+      macro: asset ? macroComponent(asset)?.score ?? null : null,
+    });
+    return {
+      symbol: sp.symbol,
+      code: asset?.code ?? sp.symbol,
+      name: asset?.name ?? sp.symbol,
+      industry: asset?.industry ?? null,
+      score: r.score,
+      label: r.label,
+      confidence: r.confidence,
+      coverage: r.coverage,
+      pillars: { momentum: sp.pillars.momentum.score, health: sp.pillars.health.score, quality: sp.pillars.quality.score },
+      distressWarning: sp.distressWarning,
+    };
+  });
+  rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  return { rows, n: mp.n };
+}
+
 const CALENDAR_TTL_MS = 12 * 3600_000;
 const calendarCache = new Map<string, CacheEntry<CalendarEvent[]>>();
 
@@ -3172,6 +3392,40 @@ async function startServer() {
     res.json({ markets: Object.values(crossSections).map((cs) => cs.status()), binance: binanceStatus(), serverTime: Date.now() });
   });
 
+
+  // Multi-horizon investment sentiment of one asset (evidence summary, not a buy/sell signal)
+  app.get('/api/sentiment/v2', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset) {
+      res.status(400).json({ error: 'Unknown symbol' });
+      return;
+    }
+    try {
+      res.json(await getSentimentV2(asset));
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Sentiment unavailable' });
+    }
+  });
+
+  // Sentiment leaders of a market for one horizon (cross-section of the scanned stocks)
+  app.get('/api/sentiment/rankings', (req, res) => {
+    const market = req.query.market === 'us' ? 'us' : 'idx';
+    const h: Horizon = req.query.horizon === 'short' || req.query.horizon === 'long' ? req.query.horizon : 'medium';
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const { rows, n } = rankingsFor(market, h);
+    res.json({
+      market,
+      horizon: h,
+      n,
+      top: rows.filter((r) => r.score !== null).slice(0, limit),
+      bottom: rows.filter((r) => r.score !== null).slice(-limit).reverse(),
+      scans: crossSections[market].status(),
+      note: 'Full-universe rankings use the pillars, news and macro; short-term technicals are added on each stock page.',
+      disclaimer: SENTIMENT_DISCLAIMER,
+      serverTime: Date.now(),
+    });
+  });
+
   // ---- Binance (public market data only; no API key) ----------------------------------------
   // Top-100 USDT pairs with live price, 1h/4h/24h/7d change, volume and funding
   app.get('/api/crypto/binance', async (_req, res) => {
@@ -3184,7 +3438,21 @@ async function startServer() {
       const w = windowChanges(cachedClosedKlines(p.symbol, '1h').concat(), q?.price ?? NaN);
       const f = fundingOf(p.baseAsset);
       const asset = byPair.get(p.symbol);
+      // Short / Medium / Long scores from closed daily candles, funding and (linked coins) news
+      const daily = cachedClosedKlines(p.symbol, '1d').map((k) => k.close);
+      const news = asset ? newsByHorizon(driverNewsFor(asset), 'crypto', asset.symbol, Date.now()) : null;
+      const input = {
+        group: 'crypto' as const,
+        technicalShort: shortTechnical(daily)?.score ?? null,
+        tsMomentum: tsMomentumScore(daily, 365),
+        trend: trendScore(daily),
+        derivatives: f ? derivativesScore({ fundingRate: f.lastFundingRate }) : null,
+        binance: true,
+        news,
+      };
+      const scores = Object.fromEntries(HORIZONS.map((h) => [h, scoreHorizon(h, input)]).map(([h, r]) => [h, { score: (r as HorizonScore).score, label: (r as HorizonScore).label }]));
       return {
+        scores,
         rank: p.rank,
         symbol: p.symbol,
         base: p.baseAsset,
