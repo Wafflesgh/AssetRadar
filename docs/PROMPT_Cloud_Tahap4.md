@@ -22,7 +22,7 @@ Kamu adalah Claude Code yang berjalan di **cloud**, di salinan repo AssetRadar d
 ## 1. Cek lingkungan cloud (wajib sebelum menulis kode)
 
 - `node -v` ≥ 22, `npm install` (`.npmrc` sudah `legacy-peer-deps`), `npm run lint && npm test && npm run build` lulus di kondisi awal.
-- Kerjakan **Fase 0** di rencana: cek semua sumber (Yahoo spark & quoteSummary dengan cookie+crumb, SEC, Binance `data-api.binance.vision` dan `fapi.binance.com`, alternative.me, FRED, World Bank, bi.go.id, BPS, Badan Pangan, DJPPR). Catat status HTTP, contoh data, dan tanggal data terbaru di `docs/PROGRESS_Tahap4.md`.
+- Kerjakan **Fase 0** di rencana: cek semua sumber (Yahoo spark & quoteSummary dengan cookie+crumb, SEC, Binance (`data-api.binance.vision`, `api.binance.com` + cadangannya, WebSocket `data-stream.binance.vision`, `fapi.binance.com`; baca `exchangeInfo.rateLimits` dan header `X-MBX-USED-WEIGHT-1M`), alternative.me, FRED, World Bank, bi.go.id, BPS, Badan Pangan, DJPPR). Catat status HTTP, contoh data, dan tanggal data terbaru di `docs/PROGRESS_Tahap4.md`.
 - Jaringan cloud bisa berbeda dari laptop pemilik (mis. Binance membalas 451 dari IP AS). Sumber yang terblokir **dari cloud**: tetap tulis kodenya lengkap dengan deteksi blokir + pesan jujur di UI, test dengan fixture kecil (respons nyata yang disimpan di repo, hanya untuk test), dan tandai "belum diverifikasi live — perlu dicek pemilik di laptop". **Jangan pernah** menampilkan fixture sebagai data di aplikasi.
 
 ## 2. Kunci di cloud
