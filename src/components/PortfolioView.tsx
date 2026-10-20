@@ -510,7 +510,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
       )}
 
       {txs.length > 0 && (
-        <Suspense fallback={<p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading analytics…</p>}>
+        <Suspense fallback={<p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('pfa.loadingAnalytics')}</p>}>
           <PortfolioAnalytics txs={txs} ticks={ticks} onSelectAsset={onSelectAsset} />
         </Suspense>
       )}

@@ -152,3 +152,12 @@ test('validation and settings parsing', () => {
   assert.deepEqual(validateAlert({ kind: 'geo' }), []);
   assert.deepEqual(parseAlertSettings({ quiet: { enabled: true, start: '9:00' } }).quiet, { enabled: true, start: '22:00', end: '06:00' });
 });
+
+test('notification and validation texts follow the chosen language', () => {
+  let state: AlertState = {};
+  state = evaluateAlert(base({}), state, { now: T0, price: 90, name: 'BTC', lang: 'id' }).state;
+  const r = evaluateAlert(base({}), state, { now: T0 + MIN, price: 101, name: 'BTC', lang: 'id' });
+  assert.equal(r.fire?.title, 'BTC naik melewati 100');
+  assert.match(r.fire?.body ?? '', /^Sekarang /);
+  assert.deepEqual(validateAlert({ kind: 'priceAbove', symbol: 'BTC/IDR', value: 0 }, 'id'), ['Isi harga di atas 0.']);
+});

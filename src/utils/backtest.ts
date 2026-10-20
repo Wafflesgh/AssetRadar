@@ -9,6 +9,8 @@
  */
 import { rsi, sma } from '../ai/indicators.ts';
 
+import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
+
 export interface OhlcBar {
   date: string;
   open: number;
@@ -78,16 +80,18 @@ export interface BacktestResult {
   warmup: number;
 }
 
-export function describeCondition(c: Condition): string {
+export function describeCondition(c: Condition, lang: AppLang = 'en'): string {
+  const tx = (key: string, params?: TParams) => translate(lang, key as TranslationKey, params);
+  const dir = (d: string) => tx(`bt.dir.${d}`);
   switch (c.type) {
     case 'maCross':
-      return `MA${c.fast} crosses ${c.dir} MA${c.slow}`;
+      return tx('bt.cond.maCross', { fast: c.fast, dir: dir(c.dir), slow: c.slow });
     case 'priceVsMa':
-      return `Close ${c.dir} MA${c.period}`;
+      return tx('bt.cond.priceVsMa', { dir: dir(c.dir), period: c.period });
     case 'rsi':
-      return `RSI(${c.period}) ${c.dir} ${c.level}`;
+      return tx('bt.cond.rsi', { period: c.period, dir: dir(c.dir), level: c.level });
     case 'breakout':
-      return c.dir === 'high' ? `Close above the ${c.days}-day high` : `Close below the ${c.days}-day low`;
+      return c.dir === 'high' ? tx('bt.cond.breakHigh', { days: c.days }) : tx('bt.cond.breakLow', { days: c.days });
   }
 }
 
@@ -292,18 +296,19 @@ export function splitTest(bars: OhlcBar[], strategy: Strategy, from: number): { 
 }
 
 /** Plain-English warnings about over-fitting and weak evidence. */
-export function backtestWarnings(full: BacktestResult, split: ReturnType<typeof splitTest>): string[] {
+export function backtestWarnings(full: BacktestResult, split: ReturnType<typeof splitTest>, lang: AppLang = 'en'): string[] {
+  const tx = (key: string, params?: TParams) => translate(lang, key as TranslationKey, params);
   const w: string[] = [];
-  if (full.stats.trades < 10) w.push(`Only ${full.stats.trades} closed trades — far too few to tell skill from luck.`);
-  if (full.stats.totalReturn < full.buyHold.totalReturn) w.push('The rules did worse than simply buying and holding over this period.');
+  if (full.stats.trades < 10) w.push(tx('bt.warn.fewTrades', { n: full.stats.trades }));
+  if (full.stats.totalReturn < full.buyHold.totalReturn) w.push(tx('bt.warn.worseBH'));
   if (split) {
     const is = split.inSample.stats.totalReturn;
     const oos = split.outOfSample.stats.totalReturn;
-    if (is > 0 && oos <= 0) w.push('It made money in the first half but not in the second half — a typical sign of rules fitted to the past.');
-    else if (is - oos > 0.2) w.push('The second half was much weaker than the first; the result depends strongly on the period chosen.');
-    if (split.outOfSample.stats.totalReturn < split.outOfSample.buyHold.totalReturn) w.push('In the second half (out-of-sample) buy & hold did better.');
+    if (is > 0 && oos <= 0) w.push(tx('bt.warn.firstHalfOnly'));
+    else if (is - oos > 0.2) w.push(tx('bt.warn.weakerSecond'));
+    if (split.outOfSample.stats.totalReturn < split.outOfSample.buyHold.totalReturn) w.push(tx('bt.warn.oosBH'));
   }
-  w.push('Trying many rule variants and keeping the best one makes the backtest look better than reality (over-fitting).');
+  w.push(tx('bt.warn.overfit'));
   return w;
 }
 
@@ -313,20 +318,21 @@ export function defaultCosts(group: string): { buyCostPct: number; sellCostPct: 
   return { buyCostPct: 0.1, sellCostPct: 0.1, lotSize: 1 };
 }
 
-export function validateStrategy(s: Strategy): string[] {
+export function validateStrategy(s: Strategy, lang: AppLang = 'en'): string[] {
   const errors: string[] = [];
-  if (!s.entry.length) errors.push('Add at least one entry rule.');
-  if (!s.exit.length && !s.stopLossPct && !s.takeProfitPct) errors.push('Add an exit rule, a stop-loss or a take-profit.');
+  const e = (key: string) => errors.push(translate(lang, key as TranslationKey));
+  if (!s.entry.length) e('bt.err.entry');
+  if (!s.exit.length && !s.stopLossPct && !s.takeProfitPct) e('bt.err.exit');
   for (const c of [...s.entry, ...s.exit]) {
-    if (c.type === 'maCross' && !(c.fast > 0 && c.slow > c.fast)) errors.push('For a moving-average cross the slow period must be longer than the fast one.');
-    if (c.type === 'priceVsMa' && !(c.period >= 2)) errors.push('The moving-average period must be at least 2.');
-    if (c.type === 'rsi' && !(c.period >= 2 && c.level > 0 && c.level < 100)) errors.push('RSI needs a period ≥ 2 and a level between 0 and 100.');
-    if (c.type === 'breakout' && !(c.days >= 2)) errors.push('The breakout needs at least 2 days.');
+    if (c.type === 'maCross' && !(c.fast > 0 && c.slow > c.fast)) e('bt.err.maCross');
+    if (c.type === 'priceVsMa' && !(c.period >= 2)) e('bt.err.maPeriod');
+    if (c.type === 'rsi' && !(c.period >= 2 && c.level > 0 && c.level < 100)) e('bt.err.rsi');
+    if (c.type === 'breakout' && !(c.days >= 2)) e('bt.err.breakout');
   }
-  if (!(s.capital > 0)) errors.push('Starting capital must be above 0.');
-  if (s.buyCostPct < 0 || s.sellCostPct < 0) errors.push('Costs cannot be negative.');
-  if (s.stopLossPct !== undefined && !(s.stopLossPct > 0 && s.stopLossPct < 100)) errors.push('Stop-loss must be between 0 and 100 %.');
-  if (s.takeProfitPct !== undefined && !(s.takeProfitPct > 0)) errors.push('Take-profit must be above 0 %.');
+  if (!(s.capital > 0)) e('bt.err.capital');
+  if (s.buyCostPct < 0 || s.sellCostPct < 0) e('bt.err.costs');
+  if (s.stopLossPct !== undefined && !(s.stopLossPct > 0 && s.stopLossPct < 100)) e('bt.err.stop');
+  if (s.takeProfitPct !== undefined && !(s.takeProfitPct > 0)) e('bt.err.take');
   return [...new Set(errors)];
 }
 

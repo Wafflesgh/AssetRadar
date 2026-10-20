@@ -8,9 +8,11 @@
  */
 import type { CalendarEvent } from './corporateCalendar.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
+import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
 export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo';
 
+/** English labels (also the list of valid kinds); the UI uses alertKindLabel() for the chosen language. */
 export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   priceAbove: 'Price crosses above',
   priceBelow: 'Price crosses below',
@@ -19,6 +21,10 @@ export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   news: 'New headline',
   geo: 'Geopolitical alert (high)',
 };
+
+export function alertKindLabel(kind: AlertKind, lang: AppLang = 'en'): string {
+  return translate(lang, `alerts.kind.${kind}` as TranslationKey);
+}
 
 export interface UserAlert {
   id: string;
@@ -60,6 +66,8 @@ export interface AlertContext {
   /** Display name, e.g. "Bitcoin (BTC/IDR)". */
   name?: string;
   formatPrice?: (v: number) => string;
+  /** Language of the notification text (default English). */
+  lang?: AppLang;
 }
 
 export interface AlertFire {
@@ -73,12 +81,13 @@ export const MIN_COOLDOWN_MIN = 60;
 const GEO_WINDOW_MS = 6 * 3600_000;
 const NEWS_MAX_AGE_MS = 3 * 3600_000;
 
-export function validateAlert(a: Partial<UserAlert>): string[] {
+export function validateAlert(a: Partial<UserAlert>, lang: AppLang = 'en'): string[] {
   const errors: string[] = [];
-  if (!a.kind || !(a.kind in ALERT_KIND_LABELS)) errors.push('Choose an alert type.');
-  if (a.kind !== 'geo' && !a.symbol) errors.push('Choose an asset.');
-  if ((a.kind === 'priceAbove' || a.kind === 'priceBelow') && !(typeof a.value === 'number' && a.value > 0)) errors.push('Enter a price above 0.');
-  if (a.kind === 'dailyMove' && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) errors.push('Enter a move between 0 and 100 %.');
+  const e = (key: string) => errors.push(translate(lang, key as TranslationKey));
+  if (!a.kind || !(a.kind in ALERT_KIND_LABELS)) e('alerts.err.kind');
+  if (a.kind !== 'geo' && !a.symbol) e('alerts.err.asset');
+  if ((a.kind === 'priceAbove' || a.kind === 'priceBelow') && !(typeof a.value === 'number' && a.value > 0)) e('alerts.err.price');
+  if (a.kind === 'dailyMove' && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) e('alerts.err.move');
   return errors;
 }
 
@@ -113,6 +122,8 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
   if (!alert.active) return { fire: null, state };
   const name = ctx.name ?? alert.symbol ?? '';
   const fmt = ctx.formatPrice ?? ((v: number) => v.toLocaleString('en-US'));
+  const lang = ctx.lang ?? 'en';
+  const tx = (key: string, params?: TParams) => translate(lang, key as TranslationKey, params);
   const next: AlertState = { ...state };
   let fire: AlertFire | null = null;
 
@@ -127,8 +138,11 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
         prev !== undefined && (alert.kind === 'priceAbove' ? prev < alert.value && price >= alert.value : prev > alert.value && price <= alert.value);
       if (crossed && cooledDown(alert, state, ctx.now)) {
         fire = {
-          title: `${name} ${alert.kind === 'priceAbove' ? 'rose above' : 'fell below'} ${fmt(alert.value)}`,
-          body: `Now ${fmt(price)}${ctx.changePct24h !== undefined ? ` (${ctx.changePct24h >= 0 ? '+' : ''}${ctx.changePct24h.toFixed(2)}% 24h)` : ''}.`,
+          title: tx(alert.kind === 'priceAbove' ? 'alerts.fire.above' : 'alerts.fire.below', { name, level: fmt(alert.value) }),
+          body: tx('alerts.fire.now', {
+            price: fmt(price),
+            change: ctx.changePct24h !== undefined ? ` (${ctx.changePct24h >= 0 ? '+' : ''}${ctx.changePct24h.toFixed(2)}% 24h)` : '',
+          }),
         };
       }
       break;
@@ -142,8 +156,9 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       else if (armed && cooledDown(alert, state, ctx.now)) {
         next.armed = false;
         fire = {
-          title: `${name} ${chg >= 0 ? 'up' : 'down'} ${Math.abs(chg).toFixed(2)}% today`,
-          body: `Your alert: a daily move of at least ${alert.value}%.${ctx.price !== undefined ? ` Price ${fmt(ctx.price)}.` : ''}`,
+          title: tx(chg >= 0 ? 'alerts.fire.up' : 'alerts.fire.down', { name, pct: Math.abs(chg).toFixed(2) }),
+          body:
+            tx('alerts.fire.moveBody', { value: alert.value }) + (ctx.price !== undefined ? ` ${tx('alerts.fire.price', { price: fmt(ctx.price) })}` : ''),
         };
       }
       break;
@@ -156,13 +171,16 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
         for (const e of fresh) seen.add(calendarEventKey(e));
         next.seen = [...seen].slice(-50);
         fire = {
-          title: `${name}: ${fresh.map((e) => (e.type === 'earnings' ? 'earnings report' : 'ex-dividend')).join(' & ')} tomorrow`,
+          title: tx('alerts.fire.calTitle', {
+            name,
+            events: fresh.map((e) => tx(e.type === 'earnings' ? 'alerts.fire.earnings' : 'alerts.fire.exdiv')).join(' & '),
+          }),
           body: fresh
             .map((e) => {
               const who = alert.symbol ? '' : `${e.symbol.replace(/\.JK$/, '')}: `;
               return e.type === 'earnings'
-                ? `${who}earnings on ${e.date}${e.estimate ? ' (estimated)' : ''}`
-                : `${who}ex-dividend on ${e.date}${e.amount ? ` (${fmt(e.amount)} per share)` : ''}`;
+                ? who + tx('alerts.fire.earningsOn', { date: e.date }) + (e.estimate ? ` ${tx('alerts.fire.estimated')}` : '')
+                : who + tx('alerts.fire.exdivOn', { date: e.date }) + (e.amount ? ` ${tx('alerts.fire.perShare', { amount: fmt(e.amount) })}` : '');
             })
             .join(' · '),
         };
@@ -180,7 +198,7 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       next.lastSeenAt = fresh[0].firstSeenAt;
       if (cooledDown(alert, state, ctx.now)) {
         fire = {
-          title: `${name}: ${fresh.length > 1 ? `${fresh.length} new headlines` : 'new headline'}`,
+          title: fresh.length > 1 ? tx('alerts.fire.newsMany', { name, n: fresh.length }) : tx('alerts.fire.newsOne', { name }),
           body: `${fresh[0].title} — ${fresh[0].source}`,
         };
       }
@@ -194,7 +212,7 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       if (!alertItem) return { fire: null, state };
       seen.add(alertItem.id);
       next.seen = [...seen].slice(-50);
-      fire = { title: '⚠ Geopolitical alert', body: `${alertItem.title} — ${alertItem.source}`, url: '#/radar' };
+      fire = { title: `⚠ ${tx('alerts.fire.geo')}`, body: `${alertItem.title} — ${alertItem.source}`, url: '#/radar' };
       break;
     }
   }

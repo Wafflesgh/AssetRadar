@@ -6,6 +6,7 @@
  * local edit, every 5 minutes, when the tab becomes visible and when the device comes back
  * online. Local data stays the source of truth offline and when sync is off.
  */
+import { getLang, t } from '../i18n/index.ts';
 import {
   applySyncItems,
   getSyncMeta,
@@ -78,7 +79,7 @@ export async function refreshSyncStatus(): Promise<SyncServerStatus | null> {
     // A token the server no longer accepts (passphrase changed, expired) is dropped
     if (getSyncSession() && server.passphraseConfigured && !server.loggedIn) {
       saveSyncSession(null);
-      setState({ server, serverUnreachable: false, loggedIn: false, lastError: 'Session expired — log in again' });
+      setState({ server, serverUnreachable: false, loggedIn: false, lastError: t('sync.err.expired') });
     } else {
       setState({ server, serverUnreachable: false, loggedIn: Boolean(getSyncSession()) && server.loggedIn });
     }
@@ -123,7 +124,7 @@ export function syncNow(options: { first?: boolean } = {}): Promise<void> {
 async function doSync(first: boolean): Promise<void> {
   if (!getSyncSession()) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    setState({ lastError: 'Offline — will sync when back online' });
+    setState({ lastError: t('sync.err.offline') });
     return;
   }
   setState({ syncing: true });
@@ -168,11 +169,11 @@ async function doSync(first: boolean): Promise<void> {
       loggedIn: true,
       lastSyncAt: now,
       lastError: null,
-      ...(first ? { firstMerge: { toDevice: describeSummary(summary, 'toLocal'), toServer: describeSummary(summary, 'toRemote') } } : {}),
+      ...(first ? { firstMerge: { toDevice: describeSummary(summary, 'toLocal', getLang()), toServer: describeSummary(summary, 'toRemote', getLang()) } } : {}),
     });
     if (applied.length) window.dispatchEvent(new CustomEvent('assetradar:sync-applied', { detail: { collections: applied } }));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sync failed';
+    const message = err instanceof Error ? err.message : t('sync.err.failed');
     saveSyncMeta({ ...getSyncMeta(), lastError: message });
     setState({ syncing: false, lastError: message, loggedIn: Boolean(getSyncSession()) });
   }

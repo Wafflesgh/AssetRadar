@@ -9,6 +9,7 @@ import express, { type Express } from 'express';
 import webpush from 'web-push';
 import { KeyedMutex, type KvStore } from './store.ts';
 import type { OwnerAuth } from './sync.ts';
+import { translate } from '../src/i18n/core.ts';
 
 export const PUSH_SUBS_KEY = 'push:subs';
 
@@ -17,6 +18,8 @@ export interface StoredSubscription {
   keys: { p256dh: string; auth: string };
   createdAt: number;
   label?: string;
+  /** App language of the device when it subscribed (notification texts follow it). */
+  lang?: 'en' | 'id';
 }
 
 export interface PushPayload {
@@ -55,6 +58,12 @@ export async function loadSubscriptions(store: KvStore): Promise<StoredSubscript
   return Array.isArray(raw) ? raw.filter((s) => s && typeof s.endpoint === 'string' && s.keys?.p256dh && s.keys?.auth) : [];
 }
 
+/** Language for server-made notifications: that of the most recently subscribed device (single owner). */
+export async function pushLang(store: KvStore): Promise<'en' | 'id'> {
+  const subs = await loadSubscriptions(store);
+  return subs.at(-1)?.lang === 'id' ? 'id' : 'en';
+}
+
 /** Sends to every subscribed device; returns how many accepted it. Gone subscriptions are removed. */
 export async function sendPushToAll(store: KvStore, payload: PushPayload): Promise<{ sent: number; failed: number }> {
   if (!ensureVapid()) return { sent: 0, failed: 0 };
@@ -88,7 +97,13 @@ function parseSubscription(raw: unknown): StoredSubscription | null {
   const s = raw as Partial<StoredSubscription> | null;
   if (!s || typeof s.endpoint !== 'string' || !/^https:\/\//.test(s.endpoint) || s.endpoint.length > 1000) return null;
   if (typeof s.keys?.p256dh !== 'string' || typeof s.keys?.auth !== 'string') return null;
-  return { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth }, createdAt: Date.now(), label: typeof s.label === 'string' ? s.label.slice(0, 80) : undefined };
+  return {
+    endpoint: s.endpoint,
+    keys: { p256dh: s.keys.p256dh, auth: s.keys.auth },
+    createdAt: Date.now(),
+    label: typeof s.label === 'string' ? s.label.slice(0, 80) : undefined,
+    lang: s.lang === 'id' ? 'id' : 'en',
+  };
 }
 
 export function registerPushRoutes(app: Express, store: KvStore, auth: OwnerAuth, serverAlertsReady: () => boolean): void {
@@ -134,7 +149,8 @@ export function registerPushRoutes(app: Express, store: KvStore, auth: OwnerAuth
       res.status(503).json({ error: 'Push is not configured on this server' });
       return;
     }
-    const result = await sendPushToAll(store, { title: 'AssetRadar test notification', body: 'Push notifications work on this device.', url: '#/alerts', tag: 'test' });
+    const lang = await pushLang(store);
+    const result = await sendPushToAll(store, { title: translate(lang, 'alerts.test.title'), body: translate(lang, 'alerts.test.pushBody'), url: '#/alerts', tag: 'test' });
     res.json(result);
   });
 }

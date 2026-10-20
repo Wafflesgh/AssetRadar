@@ -169,7 +169,7 @@ import { dailyJobDue, wibDate } from './src/utils/sync.ts';
 import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore } from './server/store.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
-import { loadSubscriptions, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
+import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
 import {
   addHistory,
   afterFire,
@@ -185,7 +185,7 @@ import {
   type UserAlert,
 } from './src/utils/alerts.ts';
 import { formatAssetPrice } from './src/utils/format.ts';
-import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
+import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefInput, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
 import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3618,7 +3618,19 @@ const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
 // ---- Morning brief (±07:30 WIB; optional Telegram and web push) ----------------------------------
 
 const BRIEF_PREFIX = 'brief:';
-const briefMemo = new Map<string, MorningBrief>();
+/** Both language versions of a day's brief (older saves hold only the English one). */
+type BriefPair = { en: MorningBrief; id?: MorningBrief };
+const briefMemo = new Map<string, BriefPair>();
+
+function asBriefPair(saved: unknown): BriefPair | null {
+  const v = saved as Partial<BriefPair> & Partial<MorningBrief>;
+  if (!v || typeof v !== 'object') return null;
+  if (v.en && typeof v.en === 'object') return v as BriefPair;
+  if (Array.isArray(v.sections)) return { en: v as MorningBrief };
+  return null;
+}
+
+const pickBrief = (pair: BriefPair, lang: AppLang): MorningBrief => (lang === 'id' && pair.id ? pair.id : pair.en);
 
 function telegramConfigured(): boolean {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
@@ -3658,7 +3670,7 @@ function briefQuote(asset: Asset | undefined, tick: PriceTick | undefined): Brie
 }
 
 /** Builds the brief for a WIB date from the caches (prices, calendar, macro, news, forward test). */
-async function generateBrief(date: string): Promise<MorningBrief> {
+async function generateBrief(date: string): Promise<BriefPair> {
   const now = Date.now();
   const [yahoo, indodax] = await Promise.all([getYahooTicks().catch(() => ({}) as Record<string, PriceTick>), getIndodaxPrices().catch(() => ({}) as Record<string, PriceTick>)]);
   const ticks: Record<string, PriceTick> = { ...yahoo, ...indodax };
@@ -3689,7 +3701,7 @@ async function generateBrief(date: string): Promise<MorningBrief> {
     for (const e of entry.data) if (e.date === date && e.type !== 'dividend' && e.symbol === sym) events.push(e);
   }
 
-  const macro: Array<{ label: string; value: string; date: string }> = [];
+  const macro: BriefInput['macro'] = [];
   try {
     const m = await Promise.race([getIndonesiaMacro(), new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
     if (m) {
@@ -3697,7 +3709,7 @@ async function generateBrief(date: string): Promise<MorningBrief> {
       if (bi) macro.push({ label: 'BI-Rate', value: `${bi.value.toFixed(2)}%`, date: bi.date });
       for (const sr of m.series.slice(0, 5)) {
         const lastPoint = sr.points[sr.points.length - 1];
-        if (lastPoint) macro.push({ label: sr.label, value: `${Number(lastPoint.value.toFixed(2)).toLocaleString('en-US')}${sr.unit === '%' ? '%' : ` ${sr.unit}`}`, date: lastPoint.date });
+        if (lastPoint) macro.push({ id: sr.id, label: sr.label, value: `${Number(lastPoint.value.toFixed(2)).toLocaleString('en-US')}${sr.unit === '%' ? '%' : ` ${sr.unit}`}`, date: lastPoint.date });
       }
     }
   } catch {
@@ -3713,7 +3725,7 @@ async function generateBrief(date: string): Promise<MorningBrief> {
     forward = null;
   }
 
-  const brief = buildBrief({
+  const input: BriefInput = {
     date,
     generatedAt: now,
     wallStreet: list(['SPX', 'NDX', 'DJI']),
@@ -3728,9 +3740,14 @@ async function generateBrief(date: string): Promise<MorningBrief> {
     macro,
     news: newsHub.items,
     forward,
-  });
+  };
+  const pair: BriefPair = { en: buildBrief({ ...input, lang: 'en' }), id: buildBrief({ ...input, lang: 'id' }) };
+  for (const lang of ['en', 'id'] as const) await polishBrief(pair[lang] as MorningBrief, lang);
+  return pair;
+}
 
-  // Optional: Gemini rewrites the overview in plain English from the same facts
+/** Optional: Gemini rewrites the overview from the same facts, in the brief's language. */
+async function polishBrief(brief: MorningBrief, lang: AppLang): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && brief.sections.length > 1) {
     try {
@@ -3739,7 +3756,7 @@ async function generateBrief(date: string): Promise<MorningBrief> {
       const response = await Promise.race([
         ai.models.generateContent({
           model: 'gemini-3.8-flash',
-          contents: `Write 3-4 plain-English sentences summarizing this morning's market mood for an Indonesian investor, using ONLY these facts. No predictions, no buy/sell advice.\n${facts}`,
+          contents: `Write 3-4 plain ${lang === 'id' ? 'Indonesian (Bahasa Indonesia)' : 'English'} sentences summarizing this morning's market mood for an Indonesian investor, using ONLY these facts. No predictions, no buy/sell advice.\n${facts}`,
           config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
         }),
         new Promise<null>((r) => setTimeout(() => r(null), 12_000)),
@@ -3753,31 +3770,38 @@ async function generateBrief(date: string): Promise<MorningBrief> {
       console.warn('[Brief] Gemini failed:', err instanceof Error ? err.message : err);
     }
   }
-  return brief;
 }
 
-async function storedBrief(date: string): Promise<MorningBrief | null> {
+async function storedBrief(date: string): Promise<BriefPair | null> {
   const memo = briefMemo.get(date);
   if (memo) return memo;
-  const saved = await store.get<MorningBrief>(`${BRIEF_PREFIX}${date}`).catch(() => null);
+  const saved = asBriefPair(await store.get<unknown>(`${BRIEF_PREFIX}${date}`).catch(() => null));
   if (saved) briefMemo.set(date, saved);
   return saved;
+}
+
+/** Telegram text and push for a brief, in the owner's language (that of the latest push device). */
+async function deliverBrief(pair: BriefPair, date: string, tag: string): Promise<{ telegram: boolean; push: number }> {
+  const lang = syncStorageReady(store) ? await pushLang(store).catch(() => 'en' as const) : 'en';
+  const brief = pickBrief(pair, lang);
+  const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
+  let push = 0;
+  if (vapidConfigured() && syncStorageReady(store)) {
+    const overview = brief.sections[0]?.lines[0] ?? '';
+    push = (await sendPushToAll(store, { title: translate(lang, 'brief.title', { date }), body: overview.slice(0, 180), url: '#/brief', tag }).catch(() => ({ sent: 0 }))).sent;
+  }
+  return { telegram, push };
 }
 
 /** Today's brief: generate, store, and send to Telegram / web push when configured. */
 async function runMorningBrief(): Promise<{ date: string; telegram: boolean; push: number }> {
   const { date } = briefDateFor(Date.now());
-  const brief = await generateBrief(date);
+  const pair = await generateBrief(date);
   // Without any market data the brief is not worth sending; try again later
-  if (!brief.sections.some((x) => x.id === 'global' || x.id === 'ihsg')) throw new Error('Market data unavailable for the brief');
-  briefMemo.set(date, brief);
-  await store.set(`${BRIEF_PREFIX}${date}`, brief).catch((err) => console.warn('[Brief] save failed:', err instanceof Error ? err.message : err));
-  const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
-  let push = 0;
-  if (vapidConfigured() && syncStorageReady(store)) {
-    const overview = brief.sections[0]?.lines[0] ?? '';
-    push = (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: overview.slice(0, 180), url: '#/brief', tag: `brief-${date}` }).catch(() => ({ sent: 0 }))).sent;
-  }
+  if (!pair.en.sections.some((x) => x.id === 'global' || x.id === 'ihsg')) throw new Error('Market data unavailable for the brief');
+  briefMemo.set(date, pair);
+  await store.set(`${BRIEF_PREFIX}${date}`, pair).catch((err) => console.warn('[Brief] save failed:', err instanceof Error ? err.message : err));
+  const { telegram, push } = await deliverBrief(pair, date, `brief-${date}`);
   await markJobDone('brief', date);
   console.log(`[Brief] ${date} ready (telegram: ${telegram ? 'sent' : 'off'}, push: ${push})`);
   return { date, telegram, push };
@@ -3938,6 +3962,7 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
   }
   const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
   const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
+  const lang = await pushLang(store).catch(() => 'en' as const);
   for (const alert of list) {
     const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
     const tick = alert.symbol ? ticks[alert.symbol] : undefined;
@@ -3949,8 +3974,9 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
       events: alert.symbol ? events.filter((e) => e.symbol === alert.symbol) : events,
       news: newsHub.items,
       code: asset?.code,
-      name: alert.id === HOLDINGS_CALENDAR_ID ? 'Your stocks' : asset ? `${asset.shortName}` : undefined,
+      name: alert.id === HOLDINGS_CALENDAR_ID ? translate(lang, 'alerts.yourStocks') : asset ? `${asset.shortName}` : undefined,
       formatPrice: asset ? (v) => formatAssetPrice(v, asset) : undefined,
+      lang,
     });
     if (JSON.stringify(state) !== JSON.stringify(serverAlerts.states[alert.id] ?? {})) {
       serverAlerts.states[alert.id] = state;
@@ -4005,6 +4031,7 @@ async function startServer() {
   // Morning brief: today's from 07:30 WIB (made on the first request if the scheduler has not run),
   // before that yesterday's; ?date=YYYY-MM-DD for a stored one
   app.get('/api/brief', async (req, res) => {
+    const lang = parseLang(req.query.lang);
     try {
       await loadJobState();
       const asked = String(req.query.date || '');
@@ -4018,7 +4045,7 @@ async function startServer() {
           res.status(404).json({ error: 'No brief saved for that date' });
           return;
         }
-        res.json({ brief: b, preview: false });
+        res.json({ brief: pickBrief(b, lang), preview: false });
         return;
       }
       const { date, ready } = briefDateFor(Date.now());
@@ -4028,11 +4055,11 @@ async function startServer() {
         brief = await storedBrief(date);
       }
       if (brief) {
-        res.json({ brief, preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+        res.json({ brief: pickBrief(brief, lang), preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
         return;
       }
       // Nothing saved yet (e.g. before 07:30 after a restart): a live preview, not stored
-      res.json({ brief: await generateBrief(date), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+      res.json({ brief: pickBrief(await generateBrief(date), lang), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
     } catch (err) {
       console.warn('[Brief] failed:', err instanceof Error ? err.message : err);
       res.status(502).json({ error: 'Brief unavailable' });
@@ -4051,10 +4078,8 @@ async function startServer() {
       return;
     }
     const { date } = briefDateFor(Date.now());
-    const brief = (await storedBrief(date)) ?? (await generateBrief(date));
-    const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
-    const push = vapidConfigured() ? (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: (brief.sections[0]?.lines[0] ?? '').slice(0, 180), url: '#/brief', tag: 'brief-test' })).sent : 0;
-    res.json({ telegram, push });
+    const pair = (await storedBrief(date)) ?? (await generateBrief(date));
+    res.json(await deliverBrief(pair, date, 'brief-test'));
   });
 
   // Server forward test: track record of the daily AI verdict snapshots

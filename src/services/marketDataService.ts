@@ -27,7 +27,7 @@ import type { MacroIndicator, MacroPoint, MacroSeries, PulseCategory } from '../
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 import { isStreamStalled, reconnectDelayMs } from '../utils/priceStream.ts';
-import { langParam } from '../i18n/index.ts';
+import { getLang, langParam } from '../i18n/index.ts';
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
 /** How non-crypto prices arrive: pushed by the server stream, or REST polling as the fallback. */
@@ -866,7 +866,7 @@ export interface BriefResponse {
 
 /** Today's morning brief (from 07:30 WIB; before that yesterday's), or a saved one by date. */
 export async function fetchMorningBrief(date?: string): Promise<BriefResponse> {
-  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}` : '/api/brief');
+  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}&lang=${getLang()}` : `/api/brief?lang=${getLang()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

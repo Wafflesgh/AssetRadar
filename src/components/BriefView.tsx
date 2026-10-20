@@ -8,12 +8,15 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, Newspaper, RefreshCw } from 'lucide-react';
 import { fetchBriefDates, fetchMorningBrief, type BriefResponse } from '../services/marketDataService.ts';
 import { getAssetByCode } from '../config/assets.ts';
+import { dateLocale, useLang, useT } from '../i18n/index.ts';
 
-const TIME = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' });
 const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
 const muted = { color: 'var(--text-secondary)' };
 
 export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; onSelectAsset: (symbol: string) => void }) {
+  const t = useT();
+  const lang = useLang();
+  const time = new Intl.DateTimeFormat(dateLocale(lang), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' });
   const [date, setDate] = useState<string>('');
   const [dates, setDates] = useState<string[]>([]);
   const [data, setData] = useState<BriefResponse | null>(null);
@@ -36,7 +39,7 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
     return () => {
       alive = false;
     };
-  }, [date, retry]);
+  }, [date, retry, lang]);
 
   const brief = data?.brief;
   const watchCodes = new Set(watchlist.map((s) => s.replace(/\.JK$/, '')));
@@ -46,16 +49,16 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div className="space-y-1">
           <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Newspaper className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> Morning Brief
+            <Newspaper className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> {t('briefv.title')}
           </h1>
           <p className="text-sm" style={muted}>
-            A short summary of the markets every morning at about 07:30 WIB. A summary of the mood — not a buy or sell signal.
+            {t('briefv.intro')}
           </p>
         </div>
         <label className="text-xs flex items-center gap-2">
-          <span style={muted}>Date</span>
+          <span style={muted}>{t('briefv.date')}</span>
           <select value={date} onChange={(e) => setDate(e.target.value)} className="px-2 py-1.5 rounded-lg border text-xs" style={{ ...card, color: 'var(--text-primary)' }}>
-            <option value="">Latest</option>
+            <option value="">{t('briefv.latest')}</option>
             {dates.map((d) => (
               <option key={d} value={d}>
                 {d}
@@ -67,13 +70,13 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
 
       {state === 'error' && (
         <div className="p-4 rounded-xl border text-sm flex items-center justify-between gap-3" style={card}>
-          <span>Data unavailable.</span>
+          <span>{t('common.dataUnavailable')}</span>
           <button type="button" onClick={() => setRetry((n) => n + 1)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RefreshCw className="w-3.5 h-3.5" /> Try again
+            <RefreshCw className="w-3.5 h-3.5" /> {t('common.tryAgain')}
           </button>
         </div>
       )}
-      {state === 'loading' && !brief && <p className="text-sm" style={muted}>Preparing the brief…</p>}
+      {state === 'loading' && !brief && <p className="text-sm" style={muted}>{t('briefv.preparing')}</p>}
 
       {brief && (
         <article className="p-4 md:p-5 rounded-xl border space-y-4" style={card} aria-labelledby="brief-title">
@@ -82,8 +85,8 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
               {brief.headline}
             </h2>
             <p className="text-xs" style={muted}>
-              {data?.preview ? 'Live preview — the brief for this date is made at 07:30 WIB. ' : ''}
-              Made {TIME.format(brief.generatedAt)} WIB{brief.aiPolished ? ' · summary worded by Gemini from the figures below' : ' · rule-based summary'}
+              {data?.preview ? `${t('briefv.preview')} ` : ''}
+              {t('briefv.made', { time: time.format(brief.generatedAt) })} · {brief.aiPolished ? t('briefv.ai') : t('briefv.rules')}
             </p>
           </div>
           {brief.sections.map((s) => (
@@ -129,14 +132,13 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
             </section>
           ))}
           <p className="text-xs pt-2 border-t" style={{ ...muted, borderColor: 'var(--border-subtle)' }}>
-            {brief.disclaimer} ★ = in your watchlist or portfolio (synced).
+            {brief.disclaimer} {t('briefv.star')}
           </p>
         </article>
       )}
 
       <p className="text-xs" style={muted}>
-        The brief can also be sent to your Telegram or as a phone notification when the owner sets it up on the server (see README, “Morning
-        brief”){data?.telegram ? ' — Telegram is on.' : '.'} Without that it is only shown here.
+        {t('briefv.delivery')} {data?.telegram ? t('briefv.telegramOn') : ''} {t('briefv.onlyHere')}
       </p>
     </div>
   );

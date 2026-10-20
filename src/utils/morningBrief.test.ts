@@ -65,6 +65,11 @@ test('brief assembly from sample data', () => {
   };
   const b = buildBrief(input);
   assert.equal(b.sections[0].id, 'overview');
+  // Same facts in Indonesian
+  const id = buildBrief({ ...input, lang: 'id' });
+  assert.match(id.sections[0].lines[0], /^Wall Street ditutup naik tajam. Pasar Asia sejauh ini turun./);
+  assert.equal(id.sections.find((s) => s.id === 'calendar')?.lines[0], '★ BBCA: ex-dividen (50 per saham)');
+  assert.match(briefToText(id), /^Ringkasan pagi AssetRadar/);
   assert.match(b.sections[0].lines[0], /Wall Street closed strongly higher\. Asian markets are lower so far\. The IHSG ended the last session higher/);
   const cal = b.sections.find((s) => s.id === 'calendar');
   assert.deepEqual(cal?.lines, ['★ BBCA: ex-dividend (50 per share)', 'TLKM: earnings report'], 'watchlist/portfolio first');

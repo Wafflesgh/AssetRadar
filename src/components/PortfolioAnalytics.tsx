@@ -12,8 +12,11 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { getAssetBySymbol, type PriceTick } from '../config/assets.ts';
 import { fetchCorporateCalendar, fetchDailyHistory, type DailyHistory } from '../services/marketDataService.ts';
 import { onSyncApplied } from '../services/syncService.ts';
-import { EVENT_LABELS, type CalendarEvent } from '../utils/corporateCalendar.ts';
-import { formatRupiah } from '../utils/format.ts';
+import { type CalendarEvent } from '../utils/corporateCalendar.ts';
+import { formatRupiah, getNumberLocale } from '../utils/format.ts';
+import { useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+import { assetShortName } from '../i18n/assetNames.ts';
 import { tradeUnitOf, type PortfolioTx } from '../utils/portfolio.ts';
 import {
   annualized,
@@ -39,6 +42,11 @@ const muted = { color: 'var(--text-secondary)' };
 const inputStyle = { backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' };
 const pct = (v: number | null | undefined, digits = 1) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(digits)}%`);
 const todayWib = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+const num = (v: number, max?: number) => v.toLocaleString(getNumberLocale(), max === undefined ? undefined : { maximumFractionDigits: max });
+const nameOf = (sym: string) => {
+  const a = getAssetBySymbol(sym);
+  return a ? assetShortName(a) : sym;
+};
 
 type Tab = 'performance' | 'risk' | 'dividends' | 'calendar';
 
@@ -70,6 +78,7 @@ function idrSeriesFn(symbol: string, hist: Record<string, DailyHistory>): ((date
 }
 
 export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: PortfolioTx[]; ticks: Record<string, PriceTick>; onSelectAsset: (s: string) => void }) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>('performance');
   const [hist, setHist] = useState<Record<string, DailyHistory>>({});
   const [failed, setFailed] = useState<string[]>([]);
@@ -155,7 +164,7 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
   const benchLast = perf.bench[perf.bench.length - 1];
   const twrReturns = returnsOf(perf.points.map((p) => p.twr));
   const benchReturns = returnsOf(perf.bench);
-  const chartData = perf.points.map((p, i) => ({ date: p.date, Portfolio: Number(p.twr.toFixed(2)), IHSG: perf.bench[i] === null ? null : Number((perf.bench[i] as number).toFixed(2)) }));
+  const chartData = perf.points.map((p, i) => ({ date: p.date, portfolio: Number(p.twr.toFixed(2)), ihsg: perf.bench[i] === null ? null : Number((perf.bench[i] as number).toFixed(2)) }));
   const ddPort = maxDrawdown(perf.points.map((p) => ({ date: p.date, v: p.twr })));
   const ddBench = maxDrawdown(perf.points.map((p, i) => ({ date: p.date, v: perf.bench[i] })));
   const estimatedDays = perf.points.filter((p) => p.estimated).length;
@@ -190,22 +199,22 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: 'performance', label: 'Performance' },
-    { id: 'risk', label: 'Risk' },
-    { id: 'dividends', label: `Dividends${suggestions.length ? ` (${suggestions.length})` : ''}` },
-    { id: 'calendar', label: 'Calendar' },
+    { id: 'performance', label: t('pfa.tab.performance') },
+    { id: 'risk', label: t('pfa.tab.risk') },
+    { id: 'dividends', label: t('pfa.tab.dividends') + (suggestions.length ? ` (${suggestions.length})` : '') },
+    { id: 'calendar', label: t('pfa.tab.calendar') },
   ];
 
   return (
     <section className="p-4 md:p-5 rounded-xl border space-y-4" style={card} aria-labelledby="pf-analytics">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h2 id="pf-analytics" className="text-base font-bold">
-          Portfolio analytics
+          {t('pfa.title')}
         </h2>
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Analytics">
-          {tabs.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: tab === t.id ? 'var(--accent-radar)' : 'var(--border-subtle)', color: tab === t.id ? 'var(--accent-radar)' : 'var(--text-primary)', backgroundColor: tab === t.id ? 'var(--accent-radar-soft)' : 'transparent' }}>
-              {t.label}
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label={t('pfa.title')}>
+          {tabs.map((x) => (
+            <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} onClick={() => setTab(x.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: tab === x.id ? 'var(--accent-radar)' : 'var(--border-subtle)', color: tab === x.id ? 'var(--accent-radar)' : 'var(--text-primary)', backgroundColor: tab === x.id ? 'var(--accent-radar-soft)' : 'transparent' }}>
+              {x.label}
             </button>
           ))}
         </div>
@@ -213,9 +222,9 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
 
       {failed.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span style={{ color: 'var(--color-down)' }}>Price history unavailable for {failed.map((s) => getAssetBySymbol(s)?.shortName ?? s).join(', ')}.</span>
+          <span style={{ color: 'var(--color-down)' }}>{t('pfa.histUnavailable', { names: failed.map(nameOf).join(', ') })}</span>
           <button type="button" onClick={() => setRetry((n) => n + 1)} className="inline-flex items-center gap-1 px-2 py-1 rounded border font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RefreshCw className="w-3 h-3" /> Try again
+            <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
           </button>
         </div>
       )}
@@ -223,16 +232,16 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
       {tab === 'performance' && (
         <div className="space-y-3">
           {loading && perf.points.length === 0 ? (
-            <p className="text-sm" style={muted}>Loading price history…</p>
+            <p className="text-sm" style={muted}>{t('cmp.loadingHistory')}</p>
           ) : perf.points.length < 2 ? (
-            <p className="text-sm" style={muted}>Not enough price history yet to chart the performance.</p>
+            <p className="text-sm" style={muted}>{t('pfa.notEnough')}</p>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                <Metric label={`Time-weighted return (since ${first.date})`} value={pct(last.twr / 100 - 1)} />
-                <Metric label="IHSG, same period" value={benchLast === null || benchLast === undefined ? '—' : pct(benchLast / 100 - 1)} />
-                <Metric label="Per year (TWR)" value={days >= 365 ? pct(annualized(last.twr, days)) : 'Under 1 year'} />
-                <Metric label="Value at last close" value={formatRupiah(last.value)} />
+                <Metric label={t('pfa.twr', { date: first.date })} value={pct(last.twr / 100 - 1)} />
+                <Metric label={t('pfa.ihsgSame')} value={benchLast === null || benchLast === undefined ? '—' : pct(benchLast / 100 - 1)} />
+                <Metric label={t('pfa.perYear')} value={days >= 365 ? pct(annualized(last.twr, days)) : t('pfa.underYear')} />
+                <Metric label={t('pfa.valueLast')} value={formatRupiah(last.value)} />
               </div>
               <div className="h-60 md:h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -242,28 +251,23 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
                     <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} domain={['auto', 'auto']} />
                     <Tooltip contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', fontSize: 12 }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="Portfolio" dot={false} strokeWidth={2} stroke="#38BDF8" isAnimationActive={false} />
-                    <Line type="monotone" dataKey="IHSG" dot={false} strokeWidth={1.5} stroke="#F59E0B" isAnimationActive={false} connectNulls />
+                    <Line type="monotone" dataKey="portfolio" name={t('nav.portfolio')} dot={false} strokeWidth={2} stroke="#38BDF8" isAnimationActive={false} />
+                    <Line type="monotone" dataKey="ihsg" name="IHSG" dot={false} strokeWidth={1.5} stroke="#F59E0B" isAnimationActive={false} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </>
           )}
           <details className="text-xs" style={muted}>
-            <summary className="cursor-pointer font-semibold">How is this calculated?</summary>
+            <summary className="cursor-pointer font-semibold">{t('pfa.howTitle')}</summary>
             <p className="mt-1.5">
-              The portfolio is valued in Rupiah at each daily close (foreign prices converted with that day's exchange rate; gold from gold
-              futures in grams). The <strong>time-weighted return</strong> links the daily returns, where each day's return is (value +
-              dividends received − money added) ÷ the previous day's value − 1. Buying and selling are treated as deposits and withdrawals, so
-              the result shows how your picks performed regardless of when and how much money you added — the same method fund managers
-              report, which makes it comparable with the IHSG over the same days. Recorded dividends count on their payment date. Fees lower
-              the return.
-              {estimatedDays > 0 && ` On ${estimatedDays} day(s) a holding had no close yet, so its last trade price was used.`}
+              <Rich text={t('pfa.how')} />
+              {estimatedDays > 0 && ` ${t('pfa.estimatedDays', { n: estimatedDays })}`}
             </p>
           </details>
           {perf.unpriced.length > 0 && (
             <p className="text-xs" style={muted}>
-              Not included (no Rupiah price history): {perf.unpriced.map((s) => getAssetBySymbol(s)?.shortName ?? s).join(', ')}.
+              {t('pfa.notIncluded', { names: perf.unpriced.map(nameOf).join(', ') })}
             </p>
           )}
         </div>
@@ -272,19 +276,17 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
       {tab === 'risk' && (
         <div className="space-y-3 text-xs">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <Metric label="Volatility per year (portfolio)" value={pct(annualizedVolatility(twrReturns), 1).replace('+', '')} />
-            <Metric label="Volatility per year (IHSG)" value={pct(annualizedVolatility(benchReturns), 1).replace('+', '')} />
-            <Metric label="Max drawdown (portfolio)" value={ddPort ? pct(ddPort.drawdown) : '—'} sub={ddPort && ddPort.drawdown < 0 ? `${ddPort.peak} → ${ddPort.trough}` : undefined} />
-            <Metric label="Max drawdown (IHSG)" value={ddBench ? pct(ddBench.drawdown) : '—'} sub={ddBench && ddBench.drawdown < 0 ? `${ddBench.peak} → ${ddBench.trough}` : undefined} />
+            <Metric label={t('pfa.volPort')} value={pct(annualizedVolatility(twrReturns), 1).replace('+', '')} />
+            <Metric label={t('pfa.volIhsg')} value={pct(annualizedVolatility(benchReturns), 1).replace('+', '')} />
+            <Metric label={t('pfa.ddPort')} value={ddPort ? pct(ddPort.drawdown) : '—'} sub={ddPort && ddPort.drawdown < 0 ? `${ddPort.peak} → ${ddPort.trough}` : undefined} />
+            <Metric label={t('pfa.ddIhsg')} value={ddBench ? pct(ddBench.drawdown) : '—'} sub={ddBench && ddBench.drawdown < 0 ? `${ddBench.peak} → ${ddBench.trough}` : undefined} />
           </div>
           <p style={muted}>
-            Volatility = how much the daily return swings, scaled to a year (√252). Max drawdown = the deepest fall from a previous high. Both
-            describe the past; they can be larger in the future. The split by asset class versus your risk profile's sample allocation is shown
-            in the allocation section above.
+            {t('pfa.riskNote')}
           </p>
-          <h3 className="font-bold text-sm pt-1">Correlation between your holdings (daily returns, last ~12 months)</h3>
+          <h3 className="font-bold text-sm pt-1">{t('pfa.corrTitle')}</h3>
           {corr.length === 0 ? (
-            <p style={muted}>Needs at least two holdings with price history.</p>
+            <p style={muted}>{t('pfa.corrNeeds')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full whitespace-nowrap">
@@ -292,21 +294,20 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
                   {corr.slice(0, 15).map((c) => (
                     <tr key={`${c.a}|${c.b}`} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="py-1.5 pr-2">
-                        {getAssetBySymbol(c.a)?.shortName} ↔ {getAssetBySymbol(c.b)?.shortName}
+                        {nameOf(c.a)} ↔ {nameOf(c.b)}
                       </td>
                       <td className="py-1.5 pr-2 text-right font-mono-num" style={{ color: c.r === null ? undefined : c.r > 0.6 ? 'var(--color-down)' : c.r < 0.2 ? 'var(--color-up)' : undefined }}>
                         {c.r === null ? '—' : c.r.toFixed(2)}
                       </td>
                       <td className="py-1.5 text-right" style={muted}>
-                        {c.days} days
+                        {t('pfa.days', { n: c.days })}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="mt-1.5" style={muted}>
-                Close to 1 = they usually move together (less diversification); near 0 or negative = they move more independently.
-                Correlation is not causation and changes over time.
+                {t('pfa.corrNote')}
               </p>
             </div>
           )}
@@ -316,12 +317,11 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
       {tab === 'dividends' && (
         <div className="space-y-3 text-xs">
           <p>
-            Cash dividends recorded: <strong className="font-mono-num">{dividends.length}</strong> · total{' '}
-            <strong className="font-mono-num">{formatRupiah(divTotalIdr)}</strong>
+            <Rich text={t('pfa.divRecorded', { n: dividends.length, total: formatRupiah(divTotalIdr) })} />
           </p>
           {suggestions.length > 0 && (
             <div className="space-y-2 p-3 rounded-lg border" style={{ borderColor: 'var(--accent-radar)' }}>
-              <p className="font-semibold">Dividends you were probably entitled to (from the dividend history × shares you held before the ex-date). Confirm to record them — nothing is added automatically.</p>
+              <p className="font-semibold">{t('pfa.suggestTitle')}</p>
               <ul className="space-y-1.5">
                 {suggestions.map((s) => {
                   const asset = getAssetBySymbol(s.symbol);
@@ -329,15 +329,15 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
                   return (
                     <li key={s.key} className="flex flex-wrap items-center justify-between gap-2">
                       <span>
-                        <strong>{asset?.shortName ?? s.symbol}</strong> ex-date {s.exDate}: {s.shares.toLocaleString('en-US')} shares × {s.perShare.toLocaleString('en-US')} ={' '}
-                        <span className="font-mono-num">{currency === 'IDR' ? formatRupiah(s.amount) : `${s.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`}</span> (gross, before tax)
+                        <strong>{asset ? assetShortName(asset) : s.symbol}</strong> {t('pfa.suggestLine', { date: s.exDate, shares: num(s.shares), perShare: num(s.perShare) })}{' '}
+                        <span className="font-mono-num">{currency === 'IDR' ? formatRupiah(s.amount) : `${num(s.amount, 2)} ${currency}`}</span> {t('pfa.gross')}
                       </span>
                       <span className="flex gap-1.5">
                         <button type="button" onClick={() => persistDividends([...dividends, { id: `dv-${Date.now().toString(36)}-${s.key.length}`, symbol: s.symbol, exDate: s.exDate, perShare: s.perShare, shares: s.shares, amount: s.amount, currency, source: 'suggested' }])} className="px-2.5 py-1 rounded-lg font-semibold" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-                          Confirm
+                          {t('pfa.confirm')}
                         </button>
                         <button type="button" onClick={() => dismiss(s.key)} className="px-2.5 py-1 rounded-lg border font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-                          Dismiss
+                          {t('pfa.dismiss')}
                         </button>
                       </span>
                     </li>
@@ -346,18 +346,18 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
               </ul>
             </div>
           )}
-          {eventsState === 'loading' && stockSymbols.length > 0 && <p style={muted}>Checking the dividend history…</p>}
+          {eventsState === 'loading' && stockSymbols.length > 0 && <p style={muted}>{t('pfa.checkingDiv')}</p>}
           <DividendForm symbols={symbols} txs={txs} onAdd={(d) => persistDividends([...dividends, d])} />
           {dividends.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full whitespace-nowrap">
                 <thead>
                   <tr style={muted}>
-                    <th className="py-1.5 pr-2 text-left font-semibold">Stock</th>
-                    <th className="py-1.5 pr-2 text-left font-semibold">Ex-date</th>
-                    <th className="py-1.5 pr-2 text-right font-semibold">Per share</th>
-                    <th className="py-1.5 pr-2 text-right font-semibold">Shares</th>
-                    <th className="py-1.5 pr-2 text-right font-semibold">Received</th>
+                    <th className="py-1.5 pr-2 text-left font-semibold">{t('scr.stock')}</th>
+                    <th className="py-1.5 pr-2 text-left font-semibold">{t('pfa.exDate')}</th>
+                    <th className="py-1.5 pr-2 text-right font-semibold">{t('pfa.perShare')}</th>
+                    <th className="py-1.5 pr-2 text-right font-semibold">{t('pfa.shares')}</th>
+                    <th className="py-1.5 pr-2 text-right font-semibold">{t('pfa.received')}</th>
                     <th className="py-1.5" />
                   </tr>
                 </thead>
@@ -366,16 +366,16 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
                     <tr key={d.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="py-1.5 pr-2 font-semibold">
                         <button type="button" className="hover:underline" onClick={() => onSelectAsset(d.symbol)}>
-                          {getAssetBySymbol(d.symbol)?.shortName ?? d.symbol}
+                          {nameOf(d.symbol)}
                         </button>
                       </td>
                       <td className="py-1.5 pr-2 font-mono-num">{d.exDate}</td>
-                      <td className="py-1.5 pr-2 text-right font-mono-num">{d.perShare.toLocaleString('en-US')}</td>
-                      <td className="py-1.5 pr-2 text-right font-mono-num">{d.shares.toLocaleString('en-US')}</td>
+                      <td className="py-1.5 pr-2 text-right font-mono-num">{num(d.perShare)}</td>
+                      <td className="py-1.5 pr-2 text-right font-mono-num">{num(d.shares)}</td>
                       <td className="py-1.5 pr-2 text-right font-mono-num">{d.currency === 'IDR' ? formatRupiah(d.amount) : `${d.amount.toFixed(2)} ${d.currency}`}</td>
                       <td className="py-1.5 text-right">
                         <button type="button" onClick={() => persistDividends(dividends.filter((x) => x.id !== d.id))} className="underline" style={{ color: 'var(--color-down)' }}>
-                          Delete
+                          {t('common.delete')}
                         </button>
                       </td>
                     </tr>
@@ -384,18 +384,18 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
               </table>
             </div>
           )}
-          <p style={muted}>Indonesian cash dividends are usually taxed 10% for individuals — enter the amount you actually received.</p>
+          <p style={muted}>{t('pfa.tax')}</p>
         </div>
       )}
 
       {tab === 'calendar' && (
         <div className="space-y-2 text-xs">
           {stockSymbols.length === 0 ? (
-            <p style={muted}>No stocks in the portfolio.</p>
+            <p style={muted}>{t('pfa.noStocks')}</p>
           ) : eventsState === 'loading' ? (
-            <p style={muted}>Loading the calendar…</p>
+            <p style={muted}>{t('pfa.loadingCal')}</p>
           ) : upcoming.length === 0 ? (
-            <p style={muted}>No upcoming ex-dates, dividend payments or earnings reports published for the stocks you hold.</p>
+            <p style={muted}>{t('pfa.noUpcoming')}</p>
           ) : (
             <ul className="space-y-1.5">
               {upcoming.map((e, i) => (
@@ -403,17 +403,17 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
                   <span>
                     <span className="font-mono-num font-semibold">{e.date}</span> ·{' '}
                     <button type="button" className="font-semibold hover:underline" onClick={() => onSelectAsset(e.symbol)}>
-                      {getAssetBySymbol(e.symbol)?.shortName ?? e.symbol}
+                      {nameOf(e.symbol)}
                     </button>{' '}
-                    · {EVENT_LABELS[e.type]}
-                    {e.estimate ? ' (estimated)' : ''}
+                    · {t(`event.${e.type}` as TranslationKey)}
+                    {e.estimate ? ` ${t('alerts.fire.estimated')}` : ''}
                   </span>
-                  {e.amount ? <span className="font-mono-num">{e.amount.toLocaleString('en-US')} per share</span> : null}
+                  {e.amount ? <span className="font-mono-num">{t('pfa.amountPerShare', { amount: num(e.amount) })}</span> : null}
                 </li>
               ))}
             </ul>
           )}
-          <p style={muted}>Dates from Yahoo Finance; check the company's announcements on idx.co.id before acting on them.</p>
+          <p style={muted}>{t('pfa.calNote')}</p>
         </div>
       )}
     </section>
@@ -431,6 +431,7 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
 }
 
 function DividendForm({ symbols, txs, onAdd }: { symbols: string[]; txs: PortfolioTx[]; onAdd: (d: DividendRecord) => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [symbol, setSymbol] = useState(symbols[0] ?? '');
   const [exDate, setExDate] = useState('');
@@ -445,7 +446,7 @@ function DividendForm({ symbols, txs, onAdd }: { symbols: string[]; txs: Portfol
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="px-3 py-1.5 rounded-lg border font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-        + Record a dividend
+        + {t('pfa.record')}
       </button>
     );
   }
@@ -453,7 +454,7 @@ function DividendForm({ symbols, txs, onAdd }: { symbols: string[]; txs: Portfol
     e.preventDefault();
     const amt = amount.trim() ? Number(amount) : suggested;
     if (!symbol || !/^\d{4}-\d{2}-\d{2}$/.test(exDate) || !(ps > 0) || !(amt > 0)) {
-      setError('Fill in the stock, ex-date, dividend per share and the amount received.');
+      setError(t('pfa.formErr'));
       return;
     }
     const asset = getAssetBySymbol(symbol);
@@ -475,34 +476,34 @@ function DividendForm({ symbols, txs, onAdd }: { symbols: string[]; txs: Portfol
   return (
     <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
       <label className="space-y-1">
-        <span style={muted}>Stock</span>
+        <span style={muted}>{t('scr.stock')}</span>
         <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="w-full px-2 py-1.5 rounded border" style={inputStyle}>
           {symbols.map((s) => (
             <option key={s} value={s}>
-              {getAssetBySymbol(s)?.shortName ?? s}
+              {nameOf(s)}
             </option>
           ))}
         </select>
       </label>
       <label className="space-y-1">
-        <span style={muted}>Ex-dividend date</span>
+        <span style={muted}>{t('pfa.exDivDate')}</span>
         <input type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} className="w-full px-2 py-1.5 rounded border" style={inputStyle} />
       </label>
       <label className="space-y-1">
-        <span style={muted}>Payment date (optional)</span>
+        <span style={muted}>{t('pfa.payDate')}</span>
         <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-2 py-1.5 rounded border" style={inputStyle} />
       </label>
       <label className="space-y-1">
-        <span style={muted}>Dividend per share</span>
+        <span style={muted}>{t('pfa.divPerShare')}</span>
         <input inputMode="decimal" value={perShare} onChange={(e) => setPerShare(e.target.value)} className="w-full px-2 py-1.5 rounded border font-mono-num" style={inputStyle} />
       </label>
       <label className="space-y-1">
-        <span style={muted}>Amount received (blank = {suggested ? suggested.toLocaleString('en-US') : 'per share × shares'})</span>
+        <span style={muted}>{t('pfa.amountRecv', { blank: suggested ? num(suggested) : t('pfa.perShareTimes') })}</span>
         <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-2 py-1.5 rounded border font-mono-num" style={inputStyle} />
       </label>
       <div className="space-y-1">
-        <span style={muted}>Shares held before the ex-date</span>
-        <p className="font-mono-num font-semibold py-1.5">{exDate ? shares.toLocaleString('en-US') : '—'}</p>
+        <span style={muted}>{t('pfa.sharesBefore')}</span>
+        <p className="font-mono-num font-semibold py-1.5">{exDate ? num(shares) : '—'}</p>
       </div>
       {error && (
         <p className="sm:col-span-3 font-semibold" role="alert" style={{ color: 'var(--color-down)' }}>
@@ -511,10 +512,10 @@ function DividendForm({ symbols, txs, onAdd }: { symbols: string[]; txs: Portfol
       )}
       <div className="sm:col-span-3 flex gap-2">
         <button type="submit" className="px-3 py-1.5 rounded-lg font-semibold" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-          Save dividend
+          {t('pfa.saveDiv')}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg border font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     </form>

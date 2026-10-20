@@ -26,6 +26,14 @@ import {
 } from '../utils/screener.ts';
 import { getScreensRaw, saveScreens } from '../utils/storage.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
+import { getNumberLocale } from '../utils/format.ts';
+import { t as tr, tOr, useT } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+
+/** Field label / short column name in the current language. */
+const fieldLabel = (key: FieldKey) => tOr(`scr.f.${key}`, FIELD_BY_KEY[key].label);
+const fieldShort = (key: FieldKey) => tOr(`scr.fs.${key}`, FIELD_BY_KEY[key].short);
+const screenName = (sc: Screen) => (sc.custom ? sc.name : tOr(`scr.preset.${sc.id}`, sc.name));
 
 const IDX = ALL_ASSETS.filter((a) => a.group === 'idStock');
 const SECTORS = [...new Set(IDX.map((a) => a.sector).filter((s): s is string => Boolean(s)))].sort();
@@ -41,14 +49,15 @@ const EMPTY: Screen = { id: 'custom', name: 'Custom', filters: [], sort: { field
 function cell(row: ScreenerRow, key: FieldKey): { text: string; color?: string; missing?: boolean } {
   const def = FIELD_BY_KEY[key];
   const v = fieldValue(row, key);
-  if (v === null) return { text: def.fundamental && row.f === undefined ? 'Scanning…' : 'Not reported', missing: true };
+  if (v === null) return { text: def.fundamental && row.f === undefined ? tr('scr.scanning') : tr('common.notReported'), missing: true };
   const shown = v / def.scale;
+  const loc = getNumberLocale();
   const text =
     key === 'price'
-      ? shown.toLocaleString('en-US', { maximumFractionDigits: 0 })
+      ? shown.toLocaleString(loc, { maximumFractionDigits: 0 })
       : key === 'fScore'
         ? `${shown}/${row.f?.fScoreMax ?? 9}`
-        : shown.toLocaleString('en-US', { minimumFractionDigits: def.digits, maximumFractionDigits: def.digits });
+        : shown.toLocaleString(loc, { minimumFractionDigits: def.digits, maximumFractionDigits: def.digits });
   const signed = key === 'chg1d' || key === 'chg1w' || key === 'netIncomeYoY';
   return { text: signed && v > 0 ? `+${text}` : text, color: signed ? (v > 0 ? 'var(--color-up)' : v < 0 ? 'var(--color-down)' : undefined) : undefined };
 }
@@ -59,6 +68,7 @@ interface ScreenerViewProps {
 }
 
 export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
+  const t = useT();
   const [data, setData] = useState<ScreenerResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [reload, setReload] = useState(0);
@@ -142,40 +152,37 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Filter className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> IDX Stock Screener
+          <Filter className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> {t('scr.title')}
         </h1>
         <p className="text-sm" style={muted}>
-          Filter every stock listed on the Indonesia Stock Exchange by price, liquidity and the ratios of its latest financial statements.{' '}
-          <strong>A screen filters reported numbers — it is not a recommendation.</strong>
+          <Rich text={t('scr.intro')} />
         </p>
       </header>
 
       {state === 'error' && !data && (
         <div className="p-4 rounded-xl border text-sm flex items-center justify-between gap-3" style={card}>
-          <span>Data unavailable.</span>
+          <span>{t('common.dataUnavailable')}</span>
           <button type="button" onClick={() => { setState('loading'); setReload((n) => n + 1); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RefreshCw className="w-3.5 h-3.5" /> Try again
+            <RefreshCw className="w-3.5 h-3.5" /> {t('common.tryAgain')}
           </button>
         </div>
       )}
-      {state === 'loading' && !data && <p className="text-sm" style={muted}>Loading the stock list…</p>}
+      {state === 'loading' && !data && <p className="text-sm" style={muted}>{t('scr.loading')}</p>}
 
       {scan && (
         <div className="p-3 rounded-xl border text-xs space-y-1.5" style={card}>
           <div className="flex flex-wrap justify-between gap-2">
             <span>
-              Financial statements scanned: <strong className="font-mono-num">{scan.scanned}</strong> of {scan.total} stocks
-              {' · '}with ratios: <span className="font-mono-num">{scan.withData}</span>
-              {scan.scanning ? ' · scanning slowly in the background…' : scan.finishedAt ? ` · last full scan ${formatRelativeTime(scan.finishedAt)}` : ''}
+              <Rich text={t('scr.scanned', { scanned: scan.scanned, total: scan.total, withData: scan.withData })} />
+              {scan.scanning ? ` · ${t('scr.scanningBg')}` : scan.finishedAt ? ` · ${t('scr.lastScan', { when: formatRelativeTime(scan.finishedAt) })}` : ''}
             </span>
-            <span style={muted}>Prices {data?.pricesAt ? formatRelativeTime(data.pricesAt) : '—'} (delayed) · {data?.source}</span>
+            <span style={muted}>{t('scr.prices', { when: data?.pricesAt ? formatRelativeTime(data.pricesAt) : '—' })} · {data?.source}</span>
           </div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-surface-subtle)' }} role="progressbar" aria-valuemin={0} aria-valuemax={scan.total} aria-valuenow={scan.scanned} aria-label="Statement scan progress">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-surface-subtle)' }} role="progressbar" aria-valuemin={0} aria-valuemax={scan.total} aria-valuenow={scan.scanned} aria-label={t('scr.progress')}>
             <div className="h-full" style={{ width: `${(100 * scan.scanned) / Math.max(1, scan.total)}%`, backgroundColor: 'var(--accent-radar)' }} />
           </div>
           <p style={muted}>
-            Ratios use the latest annual report, or the trailing 12 months when a newer quarterly report is complete; P/E, P/B and yield use the
-            current price. Stocks without reported numbers show “Not reported”.
+            {t('scr.ratiosNote')}
           </p>
         </div>
       )}
@@ -187,10 +194,10 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
           return (
             <span key={p.id} className="inline-flex items-center rounded-full border text-xs font-semibold" style={{ borderColor: active ? 'var(--accent-radar)' : 'var(--border-subtle)', backgroundColor: active ? 'var(--accent-radar-soft)' : 'var(--bg-surface)' }}>
               <button type="button" onClick={() => setScreen(p)} className="px-3 py-1.5" style={{ color: active ? 'var(--accent-radar)' : 'var(--text-primary)' }}>
-                {p.name}
+                {screenName(p)}
               </button>
               {p.custom && (
-                <button type="button" aria-label={`Delete saved screen ${p.name}`} onClick={() => persist(saved.filter((x) => x.id !== p.id))} className="pr-2.5" style={muted}>
+                <button type="button" aria-label={t('scr.deleteSaved', { name: p.name })} onClick={() => persist(saved.filter((x) => x.id !== p.id))} className="pr-2.5" style={muted}>
                   <Trash2 className="w-3 h-3" />
                 </button>
               )}
@@ -199,48 +206,48 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
         })}
         {activeFilters > 0 && (
           <button type="button" onClick={() => setScreen(EMPTY)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border text-xs" style={{ borderColor: 'var(--border-subtle)' }}>
-            <X className="w-3 h-3" /> Clear
+            <X className="w-3 h-3" /> {t('scr.clear')}
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <section className="p-3 md:p-4 rounded-xl border space-y-3" style={card} aria-label="Filters">
+      <section className="p-3 md:p-4 rounded-xl border space-y-3" style={card} aria-label={t('scr.filters')}>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={screen.query ?? ''} onChange={(e) => setScreen({ ...screen, query: e.target.value })} placeholder="Code or name" aria-label="Filter by code or name" className="flex-1 min-w-[8rem] px-3 py-2 rounded-lg border text-sm" style={inputStyle} />
-          <select value={screen.sectors?.[0] ?? ''} onChange={(e) => setScreen({ ...screen, sectors: e.target.value ? [e.target.value] : [] })} aria-label="Sector" className="px-2 py-2 rounded-lg border text-sm max-w-full" style={inputStyle}>
-            <option value="">All sectors</option>
+          <input value={screen.query ?? ''} onChange={(e) => setScreen({ ...screen, query: e.target.value })} placeholder={t('scr.codeOrName')} aria-label={t('scr.filterCode')} className="flex-1 min-w-[8rem] px-3 py-2 rounded-lg border text-sm" style={inputStyle} />
+          <select value={screen.sectors?.[0] ?? ''} onChange={(e) => setScreen({ ...screen, sectors: e.target.value ? [e.target.value] : [] })} aria-label={t('idx.sector')} className="px-2 py-2 rounded-lg border text-sm max-w-full" style={inputStyle}>
+            <option value="">{t('scr.allSectors')}</option>
             {SECTORS.map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
-          <select value={screen.boards?.[0] ?? ''} onChange={(e) => setScreen({ ...screen, boards: e.target.value ? [e.target.value] : [] })} aria-label="Board" className="px-2 py-2 rounded-lg border text-sm" style={inputStyle}>
-            <option value="">All boards</option>
+          <select value={screen.boards?.[0] ?? ''} onChange={(e) => setScreen({ ...screen, boards: e.target.value ? [e.target.value] : [] })} aria-label={t('scr.board')} className="px-2 py-2 rounded-lg border text-sm" style={inputStyle}>
+            <option value="">{t('scr.allBoards')}</option>
             {BOARDS.map((b) => (
               <option key={b}>{b}</option>
             ))}
           </select>
           <button type="button" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="px-3 py-2 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-            {showFilters ? 'Hide ranges' : 'Show ranges'}
+            {showFilters ? t('scr.hideRanges') : t('scr.showRanges')}
           </button>
         </div>
         {showFilters && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2">
             {FIELDS.map((f) => (
               <div key={f.key} className="flex items-center gap-2 text-xs">
-                <span className="flex-1 min-w-0 truncate" title={f.label}>
-                  {f.label}
+                <span className="flex-1 min-w-0 truncate" title={fieldLabel(f.key)}>
+                  {fieldLabel(f.key)}
                 </span>
-                <input inputMode="decimal" value={filterValue(f.key, 'min')} onChange={(e) => setFilter(f.key, 'min', e.target.value)} placeholder="min" aria-label={`${f.label} minimum`} className="w-16 px-2 py-1 rounded border font-mono-num" style={inputStyle} />
-                <input inputMode="decimal" value={filterValue(f.key, 'max')} onChange={(e) => setFilter(f.key, 'max', e.target.value)} placeholder="max" aria-label={`${f.label} maximum`} className="w-16 px-2 py-1 rounded border font-mono-num" style={inputStyle} />
+                <input inputMode="decimal" value={filterValue(f.key, 'min')} onChange={(e) => setFilter(f.key, 'min', e.target.value)} placeholder="min" aria-label={t('scr.min', { field: fieldLabel(f.key) })} className="w-16 px-2 py-1 rounded border font-mono-num" style={inputStyle} />
+                <input inputMode="decimal" value={filterValue(f.key, 'max')} onChange={(e) => setFilter(f.key, 'max', e.target.value)} placeholder="max" aria-label={t('scr.max', { field: fieldLabel(f.key) })} className="w-16 px-2 py-1 rounded border font-mono-num" style={inputStyle} />
               </div>
             ))}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Name this screen" aria-label="Name for the saved screen" className="flex-1 min-w-[8rem] px-3 py-1.5 rounded-lg border text-xs" style={inputStyle} />
+          <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={t('scr.nameIt')} aria-label={t('scr.nameLabel')} className="flex-1 min-w-[8rem] px-3 py-1.5 rounded-lg border text-xs" style={inputStyle} />
           <button type="button" onClick={saveCurrent} disabled={!saveName.trim()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
-            <Save className="w-3.5 h-3.5" /> Save screen
+            <Save className="w-3.5 h-3.5" /> {t('scr.save')}
           </button>
           <button type="button" onClick={download} disabled={!result.rows.length} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
             <Download className="w-3.5 h-3.5" /> CSV
@@ -251,19 +258,17 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
       {data && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span>
-            <strong className="font-mono-num">{result.rows.length}</strong> stocks match
-            {result.missingData > 0 && (
-              <span style={muted}> · {result.missingData} more left out because a filtered number is not reported (or not scanned yet)</span>
-            )}
+            <Rich text={t('scr.match', { n: result.rows.length })} />
+            {result.missingData > 0 && <span style={muted}> · {t('scr.leftOut', { n: result.missingData })}</span>}
           </span>
           {picked.length > 0 && (
             <span className="inline-flex items-center gap-2">
-              <span style={muted}>{picked.length}/4 picked</span>
+              <span style={muted}>{t('scr.picked', { n: picked.length })}</span>
               <button type="button" disabled={picked.length < 2} onClick={() => onCompare(picked)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-                <GitCompare className="w-3.5 h-3.5" /> Compare
+                <GitCompare className="w-3.5 h-3.5" /> {t('cmp.title')}
               </button>
               <button type="button" onClick={() => setPicked([])} className="text-xs underline" style={muted}>
-                clear
+                {t('scr.clearPicks')}
               </button>
             </span>
           )}
@@ -273,32 +278,32 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
       {data && (
         <div className="overflow-x-auto rounded-xl border" style={card}>
           <table className="w-full text-xs whitespace-nowrap">
-            <caption className="sr-only">Screener results</caption>
+            <caption className="sr-only">{t('scr.results')}</caption>
             <thead>
               <tr style={muted}>
                 <th className="p-2 text-left font-semibold">
-                  <span className="sr-only">Pick to compare</span>
+                  <span className="sr-only">{t('scr.pickToCompare')}</span>
                 </th>
                 <th className="p-2 text-left font-semibold">
                   <button type="button" onClick={() => sortBy('code')}>
-                    Stock {screen.sort?.field === 'code' ? (screen.sort.dir === 'asc' ? '▲' : '▼') : ''}
+                    {t('scr.stock')} {screen.sort?.field === 'code' ? (screen.sort.dir === 'asc' ? '▲' : '▼') : ''}
                   </button>
                 </th>
                 {COLUMNS.map((k) => (
                   <th key={k} className="p-2 text-right font-semibold" aria-sort={screen.sort?.field === k ? (screen.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                    <button type="button" onClick={() => sortBy(k)} title={FIELD_BY_KEY[k].label}>
-                      {FIELD_BY_KEY[k].short} {screen.sort?.field === k ? (screen.sort.dir === 'asc' ? '▲' : '▼') : ''}
+                    <button type="button" onClick={() => sortBy(k)} title={fieldLabel(k)}>
+                      {fieldShort(k)} {screen.sort?.field === k ? (screen.sort.dir === 'asc' ? '▲' : '▼') : ''}
                     </button>
                   </th>
                 ))}
-                <th className="p-2 text-left font-semibold">Figures</th>
+                <th className="p-2 text-left font-semibold">{t('scr.figures')}</th>
               </tr>
             </thead>
             <tbody>
               {shown.map((r) => (
                 <tr key={r.symbol} className="border-t cursor-pointer hover:opacity-80" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => onSelectAsset(r.symbol)}>
                   <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={picked.includes(r.symbol)} onChange={() => togglePick(r.symbol)} aria-label={`Pick ${r.code} to compare`} disabled={!picked.includes(r.symbol) && picked.length >= 4} />
+                    <input type="checkbox" checked={picked.includes(r.symbol)} onChange={() => togglePick(r.symbol)} aria-label={t('scr.pickRow', { code: r.code })} disabled={!picked.includes(r.symbol) && picked.length >= 4} />
                   </td>
                   <td className="p-2 max-w-[11rem]">
                     <span className="font-bold font-mono-num">{r.code}</span>
@@ -315,14 +320,14 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
                     );
                   })}
                   <td className="p-2" style={muted}>
-                    {r.f ? `${r.f.label}${r.f.basis === 'ttm' ? ' (TTM)' : ''}` : r.f === null ? 'Not reported' : 'Scanning…'}
+                    {r.f ? `${r.f.label}${r.f.basis === 'ttm' ? ' (TTM)' : ''}` : r.f === null ? t('common.notReported') : t('scr.scanning')}
                   </td>
                 </tr>
               ))}
               {shown.length === 0 && (
                 <tr>
                   <td colSpan={COLUMNS.length + 3} className="p-4 text-center text-sm" style={muted}>
-                    No stock matches these filters.
+                    {t('scr.noMatch')}
                   </td>
                 </tr>
               )}
@@ -333,21 +338,20 @@ export function ScreenerView({ onSelectAsset, onCompare }: ScreenerViewProps) {
 
       {pages > 1 && (
         <div className="flex items-center justify-center gap-3 text-xs">
-          <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} aria-label="Previous page" className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
+          <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} aria-label={t('scr.prev')} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="font-mono-num">
             {page + 1} / {pages}
           </span>
-          <button type="button" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} aria-label="Next page" className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
+          <button type="button" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} aria-label={t('scr.next')} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       )}
 
       <p className="text-[11px]" style={muted}>
-        Educational information, not investment advice. Figures come from Yahoo Finance and may be incomplete or late; check the company's
-        official reports before relying on them.
+        {t('scr.footer')}
       </p>
     </div>
   );

@@ -24,6 +24,7 @@ import {
 } from '../utils/alerts.ts';
 import type { CalendarEvent } from '../utils/corporateCalendar.ts';
 import { formatAssetPrice } from '../utils/format.ts';
+import { getLang, t } from '../i18n/index.ts';
 import {
   getAlertHistoryRaw,
   getAlertSettingsRaw,
@@ -162,17 +163,17 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 
 /** Subscribes this device for server push (asks for permission first). */
 export async function enablePush(): Promise<void> {
-  if ((await requestNotificationPermission()) !== 'granted') throw new Error('Notifications are blocked for this site in the browser settings.');
+  if ((await requestNotificationPermission()) !== 'granted') throw new Error(t('alerts.test.blocked'));
   const reg = await navigator.serviceWorker.getRegistration();
-  if (!reg) throw new Error('Push needs the installed/production app (no service worker in this build).');
+  if (!reg) throw new Error(t('alerts.err.noSw'));
   const res = await fetch('/api/push/config');
   const config = await res.json();
-  if (!config.publicKey) throw new Error('Push is not configured on the server.');
+  if (!config.publicKey) throw new Error(t('alerts.err.noPush'));
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) }));
   const save = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...ownerHeaders() },
-    body: JSON.stringify({ subscription: { ...sub.toJSON(), label: navigator.userAgent.slice(0, 80) } }),
+    body: JSON.stringify({ subscription: { ...sub.toJSON(), label: navigator.userAgent.slice(0, 80), lang: getLang() } }),
   });
   if (!save.ok) throw new Error((await save.json().catch(() => ({})))?.error || `HTTP ${save.status}`);
   serverMode = true;
@@ -193,12 +194,12 @@ export async function sendTestNotification(): Promise<string> {
     const res = await fetch('/api/push/test', { method: 'POST', headers: ownerHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    return `Sent through the server to ${data.sent} device(s)${data.failed ? `, ${data.failed} failed` : ''}.`;
+    return t('alerts.test.sent', { sent: data.sent }) + (data.failed ? ` ${t('alerts.test.failed', { failed: data.failed })}` : '');
   }
-  if ((await requestNotificationPermission()) !== 'granted') throw new Error('Notifications are blocked for this site in the browser settings.');
-  const ok = await showLocalNotification({ title: 'AssetRadar test notification', body: 'Notifications work while the app is open.', url: '#/alerts' }, 'test');
-  if (!ok) throw new Error('This browser could not show a notification.');
-  return 'Shown on this device.';
+  if ((await requestNotificationPermission()) !== 'granted') throw new Error(t('alerts.test.blocked'));
+  const ok = await showLocalNotification({ title: t('alerts.test.title'), body: t('alerts.test.body'), url: '#/alerts' }, 'test');
+  if (!ok) throw new Error(t('alerts.test.cannot'));
+  return t('alerts.test.shown');
 }
 
 export async function fetchServerAlertHistory(): Promise<AlertHistoryEntry[] | null> {
@@ -281,8 +282,9 @@ export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
       events: alert.kind === 'calendar' ? calendarEventsTomorrow(events, null, now) : undefined,
       news,
       code: asset?.code,
-      name: alert.id === HOLDINGS_CALENDAR_ID ? 'Your stocks' : asset?.shortName,
+      name: alert.id === HOLDINGS_CALENDAR_ID ? t('alerts.yourStocks') : asset?.shortName,
       formatPrice: asset ? (v) => formatAssetPrice(v, asset) : undefined,
+      lang: getLang(),
     });
     if (JSON.stringify(state) !== JSON.stringify(states[alert.id] ?? {})) {
       states[alert.id] = state;

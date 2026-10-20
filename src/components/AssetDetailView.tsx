@@ -228,7 +228,7 @@ export function AssetDetailView({
               style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
             >
               <Bell className="w-4 h-4" />
-              <span>Alert</span>
+              <span>{t('detail.alert')}</span>
             </button>
             {onCompare && (
               <button
@@ -238,7 +238,7 @@ export function AssetDetailView({
                 style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
               >
                 <GitCompare className="w-4 h-4" />
-                <span>Compare</span>
+                <span>{t('cmp.title')}</span>
               </button>
             )}
           </div>

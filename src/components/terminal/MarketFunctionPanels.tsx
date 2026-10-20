@@ -4,7 +4,7 @@
  * time), FXC (currency cross-rate matrix built from the Rupiah pairs), CURV (US Treasury
  * yield curve with the 10Y–3M spread), IDMACRO (Indonesia macro snapshot) and BRIEF (morning brief).
  */
-import { t as tr, tOr, type TranslationKey } from '../../i18n/index.ts';
+import { t as tr, tOr, useLang, useT, type TranslationKey } from '../../i18n/index.ts';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import { fetchIndonesiaMacro, fetchMorningBrief, fetchYieldCurve, type BriefResponse, type IndonesiaMacro, type YieldCurve } from '../../services/marketDataService.ts';
@@ -373,6 +373,8 @@ export function IdMacroPanel({ highlighted, className }: { highlighted?: boolean
 // ---- BRIEF ----------------------------------------------------------------------------------
 
 export function BriefPanel({ highlighted, className }: { highlighted?: boolean; className?: string }) {
+  const tt = useT();
+  const lang = useLang();
   const [data, setData] = useState<BriefResponse | null>(null);
   const [error, setError] = useState(false);
   const load = () =>
@@ -386,9 +388,9 @@ export function BriefPanel({ highlighted, className }: { highlighted?: boolean; 
     load();
     const t = setInterval(load, 30 * 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [lang]);
   return (
-    <TerminalPanel id="panel-brief" className={className} title="Morning Brief" subtitle={`BRIEF · ${data?.brief.date ?? ''}${data?.preview ? ' · preview' : ''}`} highlighted={highlighted}>
+    <TerminalPanel id="panel-brief" className={className} title={tt('term.title.brief')} subtitle={`BRIEF · ${data?.brief.date ?? ''}${data?.preview ? ` · ${tt('briefv.previewShort')}` : ''}`} highlighted={highlighted}>
       {error && !data ? (
         <PanelMessage kind="error" onRetry={load} />
       ) : !data ? (

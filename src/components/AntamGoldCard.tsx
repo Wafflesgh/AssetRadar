@@ -12,6 +12,7 @@ import { ANTAM_SIZES, buybackVsSpot, latestEntry, OFFICIAL_SOURCES, parseGoldEnt
 import { formatRupiah } from '../utils/format.ts';
 import { getGoldPricesRaw, saveGoldPrices } from '../utils/storage.ts';
 import { onSyncApplied } from '../services/syncService.ts';
+import { useLang, useT, type TranslationKey } from '../i18n/index.ts';
 
 const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
 const muted = { color: 'var(--text-secondary)' };
@@ -34,7 +35,10 @@ export function useGoldPrices(): GoldPriceEntry[] {
 }
 
 export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
+  const t = useT();
+  const lang = useLang();
   const entries = useGoldPrices();
+  const srcName = (s: GoldSource) => (s === 'antam' ? 'Antam' : s === 'pegadaian' ? 'Pegadaian' : t('gold.other'));
   const [date, setDate] = useState(todayWib());
   const [source, setSource] = useState<GoldSource>('antam');
   const [buyback, setBuyback] = useState('');
@@ -47,7 +51,7 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const draft: Partial<GoldPriceEntry> = { date, source, buybackPerGram: parseNum(buyback), sellPerGram: sell.trim() ? parseNum(sell) : undefined };
-    const errs = validateGoldEntry(draft, todayWib());
+    const errs = validateGoldEntry(draft, todayWib(), lang);
     if (errs.length) return setErrors(errs);
     setErrors([]);
     const item: GoldPriceEntry = { id: `gp-${Date.now().toString(36)}`, date, source, buybackPerGram: draft.buybackPerGram as number };
@@ -61,18 +65,16 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
     <section className="p-4 md:p-5 rounded-xl border space-y-3" style={card} aria-labelledby="antam-heading">
       <div>
         <h2 id="antam-heading" className="text-base font-bold">
-          Antam gold bar (Logam Mulia / Pegadaian)
+          {t('gold.title')}
         </h2>
         <p className="text-xs" style={muted}>
-          Physical gold bars are bought and sold at the dealer's own prices, not at the spot price above. AssetRadar does not copy these prices
-          automatically (no official feed is available, and copying the websites is not allowed) — open the official page and type in the
-          buyback price per gram. It then values the gold in your portfolio.
+          {t('gold.intro')}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
         {OFFICIAL_SOURCES.map((s) => (
           <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-            {s.label} <ExternalLink className="w-3 h-3" />
+            {t(`gold.src.${s.id}` as TranslationKey)} <ExternalLink className="w-3 h-3" />
           </a>
         ))}
       </div>
@@ -80,47 +82,47 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
       {latest ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
           <div className="p-2.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <div style={muted}>Latest buyback ({latest.source === 'antam' ? 'Antam' : latest.source === 'pegadaian' ? 'Pegadaian' : 'other'}, {latest.date})</div>
+            <div style={muted}>{t('gold.latest', { source: srcName(latest.source), date: latest.date })}</div>
             <div className="text-base font-bold font-mono-num">{formatRupiah(latest.buybackPerGram)}/g</div>
           </div>
           <div className="p-2.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <div style={muted}>Spot (live) per gram</div>
-            <div className="text-base font-bold font-mono-num">{spot ? `${formatRupiah(spot)}/g` : 'Data unavailable'}</div>
+            <div style={muted}>{t('gold.spot')}</div>
+            <div className="text-base font-bold font-mono-num">{spot ? `${formatRupiah(spot)}/g` : t('common.dataUnavailable')}</div>
           </div>
           <div className="p-2.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <div style={muted}>Buyback vs spot</div>
+            <div style={muted}>{t('gold.vsSpot')}</div>
             <div className="text-base font-bold font-mono-num">{gap === null ? '—' : `${gap > 0 ? '+' : ''}${(gap * 100).toFixed(1)}%`}</div>
           </div>
         </div>
       ) : (
         <p className="text-xs" style={muted}>
-          No buyback price recorded yet.
+          {t('gold.none')}
         </p>
       )}
 
       <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs items-end">
         <label className="space-y-1">
-          <span style={muted}>Date of the price</span>
+          <span style={muted}>{t('gold.date')}</span>
           <input type="date" value={date} max={todayWib()} onChange={(e) => setDate(e.target.value)} className="w-full px-2 py-1.5 rounded border" style={inputStyle} />
         </label>
         <label className="space-y-1">
-          <span style={muted}>Source</span>
+          <span style={muted}>{t('common.source')}</span>
           <select value={source} onChange={(e) => setSource(e.target.value as GoldSource)} className="w-full px-2 py-1.5 rounded border" style={inputStyle}>
             <option value="antam">Antam</option>
             <option value="pegadaian">Pegadaian</option>
-            <option value="other">Other</option>
+            <option value="other">{t('gold.other')}</option>
           </select>
         </label>
         <label className="space-y-1">
-          <span style={muted}>Buyback per gram (Rp)</span>
-          <input inputMode="numeric" value={buyback} onChange={(e) => setBuyback(e.target.value)} placeholder="e.g. 2,050,000" className="w-full px-2 py-1.5 rounded border font-mono-num" style={inputStyle} />
+          <span style={muted}>{t('gold.buyback')}</span>
+          <input inputMode="numeric" value={buyback} onChange={(e) => setBuyback(e.target.value)} placeholder={t('gold.buybackPh')} className="w-full px-2 py-1.5 rounded border font-mono-num" style={inputStyle} />
         </label>
         <label className="space-y-1">
-          <span style={muted}>1 g selling price (optional)</span>
+          <span style={muted}>{t('gold.sell')}</span>
           <input inputMode="numeric" value={sell} onChange={(e) => setSell(e.target.value)} className="w-full px-2 py-1.5 rounded border font-mono-num" style={inputStyle} />
         </label>
         <button type="submit" className="px-3 py-2 rounded-lg font-semibold" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-          Save price
+          {t('gold.save')}
         </button>
       </form>
       {errors.length > 0 && (
@@ -133,7 +135,7 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
 
       {latest && (
         <details className="text-xs">
-          <summary className="cursor-pointer font-semibold">Value per bar size at the latest buyback price</summary>
+          <summary className="cursor-pointer font-semibold">{t('gold.perBar')}</summary>
           <div className="overflow-x-auto mt-2">
             <table className="w-full whitespace-nowrap">
               <tbody>
@@ -146,7 +148,7 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
               </tbody>
             </table>
             <p className="mt-1" style={muted}>
-              Buyback is paid per gram for every size; selling prices per gram are higher for small bars.
+              {t('gold.perBarNote')}
             </p>
           </div>
         </details>
@@ -154,27 +156,27 @@ export function AntamGoldCard({ tick }: { tick?: PriceTick }) {
 
       {entries.length > 0 && (
         <details className="text-xs">
-          <summary className="cursor-pointer font-semibold">Recorded prices ({entries.length})</summary>
+          <summary className="cursor-pointer font-semibold">{t('gold.recorded', { n: entries.length })}</summary>
           <ul className="mt-2 space-y-1">
             {[...entries].sort((a, b) => b.date.localeCompare(a.date)).map((e) => (
               <li key={e.id} className="flex justify-between gap-2 border-t pt-1" style={{ borderColor: 'var(--border-subtle)' }}>
                 <span>
-                  {e.date} · {e.source} · buyback <span className="font-mono-num">{formatRupiah(e.buybackPerGram)}</span>/g
+                  {e.date} · {srcName(e.source)} · {t('gold.buybackShort')} <span className="font-mono-num">{formatRupiah(e.buybackPerGram)}</span>/g
                   {e.sellPerGram ? (
                     <>
                       {' '}
-                      · sell <span className="font-mono-num">{formatRupiah(e.sellPerGram)}</span>/g
+                      · {t('gold.sellShort')} <span className="font-mono-num">{formatRupiah(e.sellPerGram)}</span>/g
                     </>
                   ) : null}
                 </span>
-                <button type="button" aria-label="Delete price" onClick={() => saveGoldPrices(entries.filter((x) => x.id !== e.id))} style={{ color: 'var(--color-down)' }}>
+                <button type="button" aria-label={t('gold.delete')} onClick={() => saveGoldPrices(entries.filter((x) => x.id !== e.id))} style={{ color: 'var(--color-down)' }}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </li>
             ))}
           </ul>
           <p className="mt-1" style={muted}>
-            Only prices you entered are kept — there is no automatic price history.
+            {t('gold.onlyEntered')}
           </p>
         </details>
       )}

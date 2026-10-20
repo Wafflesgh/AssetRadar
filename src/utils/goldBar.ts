@@ -6,6 +6,8 @@
  * gap between the buyback price and spot.
  */
 
+import { translate, type AppLang, type TranslationKey } from '../i18n/core.ts';
+
 export const ANTAM_SIZES = [0.5, 1, 2, 3, 5, 10, 25, 50, 100, 250, 500, 1000] as const;
 
 export const OFFICIAL_SOURCES = [
@@ -37,14 +39,15 @@ export function perBar(pricePerGram: number, sizeGrams: number): number {
   return pricePerGram * sizeGrams;
 }
 
-export function validateGoldEntry(e: Partial<GoldPriceEntry>, today: string): string[] {
+export function validateGoldEntry(e: Partial<GoldPriceEntry>, today: string, lang: AppLang = 'en'): string[] {
   const errors: string[] = [];
-  if (!e.date || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) errors.push('Enter the date of the price.');
-  else if (e.date > today) errors.push('The date cannot be in the future.');
-  if (!(typeof e.buybackPerGram === 'number' && e.buybackPerGram > 0)) errors.push('Enter the buyback price per gram.');
+  const tx = (key: string) => translate(lang, key as TranslationKey);
+  if (!e.date || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) errors.push(tx('gold.err.date'));
+  else if (e.date > today) errors.push(tx('gold.err.future'));
+  if (!(typeof e.buybackPerGram === 'number' && e.buybackPerGram > 0)) errors.push(tx('gold.err.buyback'));
   // Gold has cost between Rp100,000 and Rp20,000,000 per gram in any plausible period
-  else if (e.buybackPerGram < 100_000 || e.buybackPerGram > 20_000_000) errors.push('The buyback price per gram looks wrong — check the number of digits.');
-  if (e.sellPerGram !== undefined && !(e.sellPerGram > 0)) errors.push('The selling price must be above 0.');
+  else if (e.buybackPerGram < 100_000 || e.buybackPerGram > 20_000_000) errors.push(tx('gold.err.range'));
+  if (e.sellPerGram !== undefined && !(e.sellPerGram > 0)) errors.push(tx('gold.err.sell'));
   return errors;
 }
 

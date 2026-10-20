@@ -11,7 +11,9 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { getAssetBySymbol, type PriceTick } from '../config/assets.ts';
 import { fetchDailyHistory, fetchFinancialStatements, type DailyHistory, type FinancialStatements } from '../services/marketDataService.ts';
 import { COMPARE_PERIODS, MAX_COMPARE, normalizeSeries, periodReturns, periodStart, type ComparePeriod } from '../utils/compare.ts';
-import { formatAssetPrice } from '../utils/format.ts';
+import { formatAssetPrice, getNumberLocale } from '../utils/format.ts';
+import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
+import { assetShortName } from '../i18n/assetNames.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
 import { AssetSearch } from './AssetSearch.tsx';
 
@@ -21,13 +23,13 @@ const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-
 const muted = { color: 'var(--text-secondary)' };
 
 function compact(v: number | undefined): string {
-  if (v === undefined || !Number.isFinite(v)) return 'Not reported';
+  if (v === undefined || !Number.isFinite(v)) return tr('common.notReported');
   const a = Math.abs(v);
   const [d, s] = a >= 1e12 ? [1e12, 'T'] : a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : [1, ''];
-  return `${(v / d).toLocaleString('en-US', { maximumFractionDigits: 2 })}${s}`;
+  return `${(v / d).toLocaleString(getNumberLocale(), { maximumFractionDigits: 2 })}${s}`;
 }
-const pctOf = (v: number | undefined, factor = 100) => (v === undefined || !Number.isFinite(v) ? 'Not reported' : `${(v * factor).toFixed(1)}%`);
-const times = (v: number | undefined) => (v === undefined || !Number.isFinite(v) ? 'Not reported' : `${v.toFixed(2)}×`);
+const pctOf = (v: number | undefined, factor = 100) => (v === undefined || !Number.isFinite(v) ? tr('common.notReported') : `${(v * factor).toFixed(1)}%`);
+const times = (v: number | undefined) => (v === undefined || !Number.isFinite(v) ? tr('common.notReported') : `${v.toFixed(2)}×`);
 const signed = (v: number | null | undefined, digits = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`);
 
 type Loaded<T> = { state: 'loading' } | { state: 'error' } | { state: 'ready'; data: T };
@@ -40,6 +42,11 @@ interface CompareViewProps {
 }
 
 export function CompareView({ symbols, ticks, onChange, onSelectAsset }: CompareViewProps) {
+  const t = useT();
+  const nameOf = (sym: string) => {
+    const a = getAssetBySymbol(sym);
+    return a ? assetShortName(a) : sym;
+  };
   const [period, setPeriod] = useState<ComparePeriod>('1Y');
   const [statementPeriod, setStatementPeriod] = useState<'annual' | 'quarterly'>('annual');
   const [history, setHistory] = useState<Record<string, Loaded<DailyHistory>>>({});
@@ -97,11 +104,10 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-          <GitCompare className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> Compare
+          <GitCompare className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> {t('cmp.title')}
         </h1>
         <p className="text-sm" style={muted}>
-          Put 2–4 stocks or other assets side by side. Performance starts at 100 and is measured in each asset's own currency (so it is in %),
-          with no currency conversion.
+          {t('cmp.intro')}
         </p>
       </header>
 
@@ -111,27 +117,26 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
             <span key={a.symbol} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full border text-xs font-semibold" style={{ borderColor: SERIES_COLORS[i] }}>
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SERIES_COLORS[i] }} aria-hidden="true" />
               <button type="button" onClick={() => onSelectAsset(a.symbol)} className="hover:underline">
-                {a.shortName}
+                {assetShortName(a)}
               </button>
-              <button type="button" onClick={() => remove(a.symbol)} aria-label={`Remove ${a.shortName}`} className="p-0.5 rounded-full" style={muted}>
+              <button type="button" onClick={() => remove(a.symbol)} aria-label={t('cmp.remove', { name: assetShortName(a) })} className="p-0.5 rounded-full" style={muted}>
                 <X className="w-3.5 h-3.5" />
               </button>
             </span>
           ))}
         </div>
         {symbols.length < MAX_COMPARE ? (
-          <AssetSearch onSelect={(a) => add(a.symbol)} ticks={ticks} label="Add an asset to compare" placeholder={`Add an asset (${symbols.length}/${MAX_COMPARE}): BBRI, NVDA, gold…`} limit={6} />
+          <AssetSearch onSelect={(a) => add(a.symbol)} ticks={ticks} label={t('cmp.addLabel')} placeholder={t('cmp.addPh', { n: symbols.length, max: MAX_COMPARE })} limit={6} />
         ) : (
           <p className="text-xs" style={muted}>
-            Maximum of {MAX_COMPARE} assets. Remove one to add another.
+            {t('cmp.max', { max: MAX_COMPARE })}
           </p>
         )}
       </section>
 
       {symbols.length < 2 && (
         <p className="text-sm p-4 rounded-xl border" style={card}>
-          Pick at least two assets to compare. Tip: tick stocks in the IDX Screener or use the Compare button on an asset page; in the Terminal type
-          <code className="mx-1">CMP BBCA BBRI</code>.
+          {t('cmp.pick')} <code className="mx-1">CMP BBCA BBRI</code>.
         </p>
       )}
 
@@ -139,9 +144,9 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
         <section className="p-3 md:p-4 rounded-xl border space-y-3" style={card} aria-labelledby="cmp-perf">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="cmp-perf" className="text-base font-bold">
-              Performance (start = 100)
+              {t('cmp.perf')}
             </h2>
-            <div className="flex gap-1" role="group" aria-label="Period">
+            <div className="flex gap-1" role="group" aria-label={t('stmt.period')}>
               {COMPARE_PERIODS.map((p) => (
                 <button key={p.key} type="button" onClick={() => setPeriod(p.key)} aria-pressed={period === p.key} className="px-2.5 py-1 rounded-md text-xs font-semibold font-mono-num border" style={{ borderColor: period === p.key ? 'var(--accent-radar)' : 'var(--border-subtle)', color: period === p.key ? 'var(--accent-radar)' : 'var(--text-primary)' }}>
                   {p.label}
@@ -151,9 +156,9 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
           </div>
           {failed.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span style={{ color: 'var(--color-down)' }}>Data unavailable for {failed.map((s) => getAssetBySymbol(s)?.shortName ?? s).join(', ')}.</span>
+              <span style={{ color: 'var(--color-down)' }}>{t('cmp.unavailableFor', { names: failed.map(nameOf).join(', ') })}</span>
               <button type="button" onClick={() => setRetry((n) => n + 1)} className="inline-flex items-center gap-1 px-2 py-1 rounded border font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-                <RefreshCw className="w-3 h-3" /> Try again
+                <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
               </button>
             </div>
           )}
@@ -166,9 +171,9 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
                   <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} domain={['auto', 'auto']} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', fontSize: 12 }}
-                    formatter={(v, name) => [Number(v).toFixed(1), getAssetBySymbol(String(name))?.shortName ?? String(name)]}
+                    formatter={(v, name) => [Number(v).toFixed(1), nameOf(String(name))]}
                   />
-                  <Legend formatter={(name) => getAssetBySymbol(String(name))?.shortName ?? String(name)} wrapperStyle={{ fontSize: 12 }} />
+                  <Legend formatter={(name) => nameOf(String(name))} wrapperStyle={{ fontSize: 12 }} />
                   {ready.map((s) => (
                     <Line key={s} type="monotone" dataKey={s} dot={false} strokeWidth={2} stroke={SERIES_COLORS[symbols.indexOf(s)]} isAnimationActive={false} />
                   ))}
@@ -176,42 +181,42 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
               </ResponsiveContainer>
             </div>
           ) : (
-            symbols.some((s) => history[s]?.state === 'loading') && <p className="text-sm" style={muted}>Loading price history…</p>
+            symbols.some((s) => history[s]?.state === 'loading') && <p className="text-sm" style={muted}>{t('cmp.loadingHistory')}</p>
           )}
           <p className="text-[11px]" style={muted}>
-            Daily closes{ready.length ? ` (${[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')})` : ''}. When one market is
-            closed (holiday, weekend) its last close is carried forward. Past performance does not predict future returns.
+            {t('cmp.closes')}
+            {ready.length ? ` (${[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')})` : ''}. {t('cmp.closesNote')}
           </p>
         </section>
       )}
 
       {assets.length > 0 && (
-        <section className="rounded-xl border overflow-x-auto" style={card} aria-label="Prices and changes">
+        <section className="rounded-xl border overflow-x-auto" style={card} aria-label={t('cmp.pricesLabel')}>
           <table className="w-full text-xs whitespace-nowrap">
             <thead>
               <tr style={muted}>
-                <th className="p-2 text-left font-semibold">Asset</th>
-                <th className="p-2 text-right font-semibold">Price</th>
+                <th className="p-2 text-left font-semibold">{t('cmp.asset')}</th>
+                <th className="p-2 text-right font-semibold">{t('cmp.price')}</th>
                 <th className="p-2 text-right font-semibold">24h</th>
                 <th className="p-2 text-right font-semibold">7d</th>
                 <th className="p-2 text-right font-semibold">30d</th>
-                <th className="p-2 text-right font-semibold">{period} (chart)</th>
+                <th className="p-2 text-right font-semibold">{t('cmp.periodChart', { period })}</th>
               </tr>
             </thead>
             <tbody>
               {assets.map((a, i) => {
-                const t = ticks[a.symbol];
-                const ok = t && t.status !== 'error' && Number.isFinite(t.price);
+                const tick = ticks[a.symbol];
+                const ok = tick && tick.status !== 'error' && Number.isFinite(tick.price);
                 return (
                   <tr key={a.symbol} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                     <td className="p-2 font-semibold">
                       <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: SERIES_COLORS[i] }} aria-hidden="true" />
-                      {a.shortName} <span style={muted}>· {a.currency === 'USX' ? 'USD' : a.currency}</span>
+                      {assetShortName(a)} <span style={muted}>· {a.currency === 'USX' ? 'USD' : a.currency}</span>
                     </td>
-                    <td className="p-2 text-right font-mono-num">{ok ? formatAssetPrice(t.price, a) : 'Data unavailable'}</td>
-                    <td className="p-2 text-right font-mono-num">{signed(ok ? t.changePct24h : null)}</td>
-                    <td className="p-2 text-right font-mono-num">{signed(ok ? t.changePct7d : null)}</td>
-                    <td className="p-2 text-right font-mono-num">{signed(ok ? t.changePct30d : null)}</td>
+                    <td className="p-2 text-right font-mono-num">{ok ? formatAssetPrice(tick.price, a) : t('common.dataUnavailable')}</td>
+                    <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct24h : null)}</td>
+                    <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct7d : null)}</td>
+                    <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct30d : null)}</td>
                     <td className="p-2 text-right font-mono-num">{signed(returns[a.symbol])}</td>
                   </tr>
                 );
@@ -225,20 +230,19 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
         <section className="p-3 md:p-4 rounded-xl border space-y-3" style={card} aria-labelledby="cmp-fund">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="cmp-fund" className="text-base font-bold">
-              Financial statements (latest {statementPeriod === 'annual' ? 'year' : 'quarter'})
+              {statementPeriod === 'annual' ? t('cmp.fsYear') : t('cmp.fsQuarter')}
             </h2>
-            <div className="flex gap-1" role="group" aria-label="Statement period">
+            <div className="flex gap-1" role="group" aria-label={t('cmp.fsPeriod')}>
               {(['annual', 'quarterly'] as const).map((p) => (
                 <button key={p} type="button" onClick={() => setStatementPeriod(p)} aria-pressed={statementPeriod === p} className="px-2.5 py-1 rounded-md text-xs font-semibold border" style={{ borderColor: statementPeriod === p ? 'var(--accent-radar)' : 'var(--border-subtle)', color: statementPeriod === p ? 'var(--accent-radar)' : 'var(--text-primary)' }}>
-                  {p === 'annual' ? 'Annual' : 'Quarterly'}
+                  {p === 'annual' ? t('stmt.period.annual') : t('stmt.period.quarterly')}
                 </button>
               ))}
             </div>
           </div>
-          <StatementsTable stocks={stocks.map((a) => ({ symbol: a.symbol, name: a.shortName, color: SERIES_COLORS[symbols.indexOf(a.symbol)], loaded: statements[`${a.symbol}|${statementPeriod}`] }))} />
+          <StatementsTable stocks={stocks.map((a) => ({ symbol: a.symbol, name: assetShortName(a), color: SERIES_COLORS[symbols.indexOf(a.symbol)], loaded: statements[`${a.symbol}|${statementPeriod}`] }))} />
           <p className="text-[11px]" style={muted}>
-            Amounts are in each company's reporting currency (shown under its name); ratios for quarters use the trailing 12 months when
-            available. Source: Yahoo Finance and, for US stocks, SEC EDGAR. Information only, not a recommendation.
+            {t('cmp.fsNote')}
           </p>
         </section>
       )}
@@ -247,26 +251,28 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
 }
 
 function StatementsTable({ stocks }: { stocks: Array<{ symbol: string; name: string; color: string; loaded?: Loaded<FinancialStatements> }> }) {
+  const t = useT();
+  const L = (key: string) => t(key as TranslationKey);
   const latest = stocks.map((s) => {
     if (s.loaded?.state !== 'ready') return null;
     const rows = s.loaded.data.rows.filter((r) => !r.missing);
     return rows[rows.length - 1] ?? null;
   });
   const lines: Array<{ label: string; get: (i: number) => string }> = [
-    { label: 'Period', get: (i) => latest[i]?.label ?? '—' },
-    { label: 'Revenue', get: (i) => compact(latest[i]?.values.revenue ?? latest[i]?.values.netInterestIncome) },
-    { label: 'Net income', get: (i) => compact(latest[i]?.values.netIncome) },
-    { label: 'Total assets', get: (i) => compact(latest[i]?.values.totalAssets) },
-    { label: "Shareholders' equity", get: (i) => compact(latest[i]?.values.equity) },
-    { label: 'Gross margin', get: (i) => pctOf(latest[i]?.ratios.grossMargin) },
-    { label: 'Net margin', get: (i) => pctOf(latest[i]?.ratios.netMargin) },
-    { label: 'ROE', get: (i) => pctOf(latest[i]?.ratios.roe) },
-    { label: 'Debt-to-equity', get: (i) => times(latest[i]?.ratios.der) },
-    { label: 'P/E', get: (i) => times(latest[i]?.ratios.pe) },
-    { label: 'P/B', get: (i) => times(latest[i]?.ratios.pb) },
-    { label: 'Dividend yield', get: (i) => pctOf(latest[i]?.ratios.dividendYield) },
-    { label: 'Revenue growth YoY', get: (i) => pctOf(latest[i]?.ratios.revenueYoY, 1) },
-    { label: 'Net income growth YoY', get: (i) => pctOf(latest[i]?.ratios.netIncomeYoY, 1) },
+    { label: L('stmt.period'), get: (i) => latest[i]?.label ?? '—' },
+    { label: L('item.revenue'), get: (i) => compact(latest[i]?.values.revenue ?? latest[i]?.values.netInterestIncome) },
+    { label: L('item.netIncome'), get: (i) => compact(latest[i]?.values.netIncome) },
+    { label: L('item.totalAssets'), get: (i) => compact(latest[i]?.values.totalAssets) },
+    { label: L('item.equity'), get: (i) => compact(latest[i]?.values.equity) },
+    { label: L('ratio.grossMargin'), get: (i) => pctOf(latest[i]?.ratios.grossMargin) },
+    { label: L('ratio.netMargin'), get: (i) => pctOf(latest[i]?.ratios.netMargin) },
+    { label: L('ratio.roe'), get: (i) => pctOf(latest[i]?.ratios.roe) },
+    { label: L('ratio.der'), get: (i) => times(latest[i]?.ratios.der) },
+    { label: L('ratio.pe'), get: (i) => times(latest[i]?.ratios.pe) },
+    { label: L('ratio.pb'), get: (i) => times(latest[i]?.ratios.pb) },
+    { label: L('ratio.dividendYield'), get: (i) => pctOf(latest[i]?.ratios.dividendYield) },
+    { label: L('ratio.revenueYoY'), get: (i) => pctOf(latest[i]?.ratios.revenueYoY, 1) },
+    { label: L('ratio.netIncomeYoY'), get: (i) => pctOf(latest[i]?.ratios.netIncomeYoY, 1) },
   ];
   return (
     <div className="overflow-x-auto">
@@ -274,13 +280,13 @@ function StatementsTable({ stocks }: { stocks: Array<{ symbol: string; name: str
         <thead>
           <tr>
             <th className="p-2 text-left font-semibold" style={muted}>
-              Item
+              {t('stmt.item')}
             </th>
             {stocks.map((s) => (
               <th key={s.symbol} className="p-2 text-right font-semibold">
                 <span style={{ color: s.color }}>{s.name}</span>
                 <span className="block font-normal" style={muted}>
-                  {s.loaded?.state === 'ready' ? s.loaded.data.currency : s.loaded?.state === 'error' ? 'Data unavailable' : 'Loading…'}
+                  {s.loaded?.state === 'ready' ? s.loaded.data.currency : s.loaded?.state === 'error' ? t('common.dataUnavailable') : t('common.loading')}
                 </span>
               </th>
             ))}
@@ -294,8 +300,9 @@ function StatementsTable({ stocks }: { stocks: Array<{ symbol: string; name: str
               </td>
               {stocks.map((s, i) => {
                 const text = latest[i] ? line.get(i) : s.loaded?.state === 'error' ? '—' : '…';
+                const missing = text === t('common.notReported');
                 return (
-                  <td key={s.symbol} className={`p-2 text-right ${text === 'Not reported' ? 'text-[10px]' : 'font-mono-num'}`} style={text === 'Not reported' ? muted : undefined}>
+                  <td key={s.symbol} className={`p-2 text-right ${missing ? 'text-[10px]' : 'font-mono-num'}`} style={missing ? muted : undefined}>
                     {text}
                   </td>
                 );

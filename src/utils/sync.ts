@@ -7,6 +7,7 @@
  * lost, and a collection can supply its own resolver (forward-test entries prefer the one that
  * already has a result). Used by both the server (/api/sync/merge) and the browser.
  */
+import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
 export const SYNC_COLLECTIONS = [
   'watchlist',
@@ -220,17 +221,19 @@ export function parseSyncData(raw: unknown, maxItems = 60_000): SyncData {
 }
 
 /** Plain-English one-liner of a merge summary for the Sync card. */
-export function describeSummary(summary: MergeSummary, side: 'toLocal' | 'toRemote'): string[] {
+/** One line per collection that changed, in the given language. */
+export function describeSummary(summary: MergeSummary, side: 'toLocal' | 'toRemote', lang: AppLang = 'en'): string[] {
+  const tx = (key: string, params?: TParams) => translate(lang, key as TranslationKey, params);
   const lines: string[] = [];
   for (const col of SYNC_COLLECTIONS) {
     const s = summary[col]?.[side];
     if (!s || s.added + s.conflicts + s.deleted === 0) continue;
     const parts = [
-      s.added ? `${s.added} added` : '',
-      s.conflicts ? `${s.conflicts} updated (newest edit kept)` : '',
-      s.deleted ? `${s.deleted} removed` : '',
+      s.added ? tx('sync.sum.added', { n: s.added }) : '',
+      s.conflicts ? tx('sync.sum.updated', { n: s.conflicts }) : '',
+      s.deleted ? tx('sync.sum.removed', { n: s.deleted }) : '',
     ].filter(Boolean);
-    lines.push(`${COLLECTION_LABELS[col]}: ${parts.join(', ')}`);
+    lines.push(`${tx(`sync.col.${col}`)}: ${parts.join(', ')}`);
   }
   return lines;
 }
