@@ -7,7 +7,9 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { assetDescription, assetName, assetShortName, assetUnitLabel, groupTitle } from '../i18n/assetNames.ts';
-import { ArrowLeft, Star, Info, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Star, Info, RefreshCw, Bell, GitCompare } from 'lucide-react';
+import { AlertDialog } from './AlertEditor.tsx';
+import { AntamGoldCard } from './AntamGoldCard.tsx';
 import {
   ASSETS,
   AssetConfig,
@@ -42,6 +44,10 @@ interface AssetDetailViewProps {
   onChangeTimeframe: (interval: TimeframeInterval) => void;
   effectiveTheme: 'light' | 'dark';
   isWatchlisted: boolean;
+  /** All live ticks (for the alert form's asset picker). */
+  ticks?: Record<string, PriceTick>;
+  /** Adds this asset to the Compare page and opens it. */
+  onCompare?: (symbol: string) => void;
   onToggleWatchlist: (symbol: string) => void;
 }
 
@@ -54,6 +60,8 @@ export function AssetDetailView({
   onChangeTimeframe,
   effectiveTheme,
   isWatchlisted,
+  ticks = {},
+  onCompare,
   onToggleWatchlist,
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
@@ -62,6 +70,7 @@ export function AssetDetailView({
   const [chartLines, setChartLines] = useState<ChartLine[]>([]);
   useEffect(() => setChartLines([]), [asset.symbol]);
   const t = useT();
+  const [alertOpen, setAlertOpen] = useState(false);
 
   // Reset fallback toggle when switching assets
   useEffect(() => {
@@ -188,11 +197,12 @@ export function AssetDetailView({
             </p>
           </div>
 
-          {/* Watchlist Toggle Button */}
+          {/* Watchlist, alert */}
+          <div className="flex flex-wrap gap-2 shrink-0 self-start">
           <button
             type="button"
             onClick={() => onToggleWatchlist(asset.symbol)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 self-start"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0"
             style={{
               backgroundColor: isWatchlisted
                 ? 'var(--color-gold-soft)'
@@ -211,6 +221,27 @@ export function AssetDetailView({
               {isWatchlisted ? t('detail.saved') : t('detail.add')}
             </span>
           </button>
+            <button
+              type="button"
+              onClick={() => setAlertOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap"
+              style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+            >
+              <Bell className="w-4 h-4" />
+              <span>Alert</span>
+            </button>
+            {onCompare && (
+              <button
+                type="button"
+                onClick={() => onCompare(asset.symbol)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap"
+                style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+              >
+                <GitCompare className="w-4 h-4" />
+                <span>Compare</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Live Price Metrics Row */}
@@ -479,11 +510,14 @@ export function AssetDetailView({
 
       {isStock && <CorporateCalendarPanel asset={asset} />}
 
+      {asset.symbol === 'XAU/USD' && <AntamGoldCard tick={tick} />}
+
       {/* Sentiment Analysis & Market News Panel for Selected Asset */}
       <AssetIntelligencePanel
         symbol={asset.symbol}
         assetName={assetName(asset)}
       />
+      {alertOpen && <AlertDialog asset={asset} ticks={{ ...ticks, ...(tick ? { [asset.symbol]: tick } : {}) }} onClose={() => setAlertOpen(false)} />}
     </div>
   );
 }

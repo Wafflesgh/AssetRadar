@@ -1,19 +1,25 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance) and #/crypto/<PAIR>.
+ * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance), #/crypto/<PAIR>, #/alerts, #/screener,
+ * #/compare?s=BBCA,BBRI, #/brief, #/backtest.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
+import { buildCompareParam, parseCompareParam } from './compare.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'crypto';
+export type RouteTab =
+  | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest';
 
 export interface ParsedRoute {
   tab: RouteTab;
   assetSymbol?: string;
   /** Binance pair on #/crypto/<PAIR> (may contain non-Latin characters). */
   pair?: string;
+  /** Compare page: asset symbols from ?s= (2–4). */
+  compare?: string[];
 }
 
 // Legacy asset ids from before the English rename
@@ -25,6 +31,19 @@ const LEGACY_ASSET_IDS: Record<string, string> = { ihsg: '^JKSE' };
  */
 export function parseHashRoute(hash: string): ParsedRoute {
   const cleaned = hash.trim().replace(/^#\/?/, '').toLowerCase();
+  const [path, query = ''] = cleaned.split('?');
+  if (path === 'compare' || path === 'bandingkan') {
+    return { tab: 'compare', compare: parseCompareParam(new URLSearchParams(query).get('s')) };
+  }
+  if (path === 'screener') {
+    return { tab: 'screener' };
+  }
+  if (path === 'brief' || path === 'ringkasan') {
+    return { tab: 'brief' };
+  }
+  if (path === 'backtest') {
+    return { tab: 'backtest' };
+  }
   if (!cleaned || cleaned === 'radar') {
     return { tab: 'radar' };
   }
@@ -71,6 +90,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
     }
     return pair ? { tab: 'crypto', pair: pair.toUpperCase() } : { tab: 'crypto' };
   }
+  if (cleaned === 'alerts' || cleaned === 'alert') {
+    return { tab: 'alerts' };
+  }
   const assetPrefix = ['asset/', 'aset/'].find((p) => cleaned.startsWith(p));
   if (assetPrefix) {
     const rawId = decodeURIComponent(cleaned.slice(assetPrefix.length)).trim();
@@ -94,8 +116,16 @@ export function parseHashRoute(hash: string): ParsedRoute {
 /**
  * Builds the canonical URL hash string for a given tab and asset symbol/id.
  */
-export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string {
+export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?: string[]): string {
   switch (tab) {
+    case 'screener':
+      return '#/screener';
+    case 'brief':
+      return '#/brief';
+    case 'backtest':
+      return '#/backtest';
+    case 'compare':
+      return compare && compare.length ? `#/compare?s=${buildCompareParam(compare)}` : '#/compare';
     case 'radar':
       return '#/radar';
     case 'watchlist':
@@ -120,6 +150,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/macro';
     case 'crypto':
       return assetSymbolOrId ? `#/crypto/${encodeURIComponent(assetSymbolOrId)}` : '#/crypto';
+    case 'alerts':
+      return '#/alerts';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];

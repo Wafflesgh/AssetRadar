@@ -101,3 +101,10 @@ test('command-first forms from the plan: SENT <CODE>, LVL <CODE>, RANK IDX SHORT
   assert.deepEqual(parseTerminalCommand('bnb pepe'), { type: 'binancePair', pair: 'PEPEUSDT' });
   assert.equal(parseTerminalCommand('sent nosuchcode')?.type, 'error');
 });
+
+test('CMP opens the Compare page with 2–4 assets', () => {
+  assert.deepEqual(parseTerminalCommand('cmp bbca bbri'), { type: 'compare', symbols: ['BBCA.JK', 'BBRI.JK'] });
+  assert.equal(parseTerminalCommand('CMP BBCA')?.type, 'error');
+  assert.equal(parseTerminalCommand('CMP BBCA NOPE')?.type, 'error');
+  assert.equal(parseTerminalCommand('CMP BBCA BBRI BMRI TLKM ASII')?.type, 'error');
+});

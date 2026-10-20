@@ -3,7 +3,8 @@
  * the selected horizon and profile (on this device), checks saved verdicts against real daily
  * closes once their horizon has passed, and shows how often prices rose after each verdict
  * versus the base rate of all saved verdicts. Under 30 results it says so instead of judging.
- * Export/import moves the log between devices.
+ * Export/import moves the log between devices (sync does it automatically when logged in). Also
+ * shows the server's own record, saved every weekday at 16:15 WIB even when the app is closed.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Download, History, Upload } from 'lucide-react';
@@ -18,12 +19,22 @@ import {
   trackRecord,
   type DailyClose,
   type ForwardLog,
+  type TrackRecord,
 } from '../ai/forwardTest.ts';
 import type { PriceTick } from '../config/assets.ts';
 import { fetchHistory } from '../services/marketDataService.ts';
 import { getForwardLogRaw, saveForwardLogRaw } from '../utils/storage.ts';
 import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
+import { onSyncApplied } from '../services/syncService.ts';
+
+interface ServerTrack {
+  record: TrackRecord;
+  lastRunDate: string | null;
+  scheduleWib: string;
+  persistent: boolean;
+  cronConfigured: boolean;
+}
 
 const verdictLabel = (v: string) => tr(`verdict.${v}` as TranslationKey);
 
@@ -46,6 +57,19 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
   const [log, setLog] = useState<ForwardLog>(() => loadLog());
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [server, setServer] = useState<ServerTrack | null>(null);
+
+  useEffect(() => onSyncApplied(['forwardLog'], () => setLog(loadLog())), []);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/ai/forward-track?horizon=${horizonDays}&profile=${encodeURIComponent(profile)}`)
+      .then((r) => (r.ok && !r.headers.get('X-AssetRadar-Offline') ? r.json() : null))
+      .then((d) => alive && setServer(d))
+      .catch(() => alive && setServer(null));
+    return () => {
+      alive = false;
+    };
+  }, [horizonDays, profile]);
 
   const save = (next: ForwardLog) => {
     setLog(next);
@@ -170,46 +194,16 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
         {checking ? ` ${t('ltr.checking')}` : ''}
       </p>
 
-      {record.evaluated < MIN_RESULTS ? (
-        <p className="text-sm p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
-          {t('ltr.tooFew', { n: record.evaluated, min: MIN_RESULTS, days: horizonDays })}
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <caption className="sr-only">{t('ltr.caption')}</caption>
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                <th className="py-1.5 pr-2 font-semibold">{t('ltr.verdict')}</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.results')}</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.rose')}</th>
-                <th className="py-1.5 font-semibold text-right">{t('ltr.avgMove')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {record.rows
-                .filter((r) => r.samples > 0)
-                .map((r) => (
-                  <tr key={r.verdict} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="py-1.5 pr-2 font-semibold">{verdictLabel(r.verdict)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono-num">{r.samples}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono-num">
-                      {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>{t('ltr.few')}</span>}
-                    </td>
-                    <td className="py-1.5 text-right font-mono-num">{pct(r.avgReturn, 1)}</td>
-                  </tr>
-                ))}
-              <tr className="border-t font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-                <td className="py-1.5 pr-2">{t('ltr.baseRate')}</td>
-                <td className="py-1.5 pr-2 text-right font-mono-num">{record.evaluated}</td>
-                <td className="py-1.5 pr-2 text-right font-mono-num">{pct(record.baseUpRate)}</td>
-                <td className="py-1.5 text-right" />
-              </tr>
-            </tbody>
-          </table>
-          <p className="text-[11px] mt-2" style={{ color: 'var(--text-secondary)' }}>
-            {t('ltr.note')}
+      <RecordTable record={record} horizonDays={horizonDays} />
+
+      {server && (
+        <div className="pt-3 border-t space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
+          <h3 className="text-xs font-bold">{t('ltr.serverTitle', { time: server.scheduleWib })}</h3>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {t('ltr.serverStatus', { date: server.lastRunDate ?? t('ltr.notYet'), saved: server.record.saved, evaluated: server.record.evaluated })}
+            {!server.persistent && ` · ${t('ltr.serverNoDb')}`}
           </p>
+          {server.record.saved > 0 && <RecordTable record={server.record} horizonDays={horizonDays} />}
         </div>
       )}
       {notice && (
@@ -218,5 +212,54 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
         </p>
       )}
     </section>
+  );
+}
+
+function RecordTable({ record, horizonDays }: { record: TrackRecord; horizonDays: number }) {
+  const t = useT();
+  if (record.evaluated < MIN_RESULTS) {
+    return (
+      <p className="text-sm p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
+        {t('ltr.tooFew', { n: record.evaluated, min: MIN_RESULTS, days: horizonDays })}
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <caption className="sr-only">{t('ltr.caption')}</caption>
+        <thead>
+          <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
+            <th className="py-1.5 pr-2 font-semibold">{t('ltr.verdict')}</th>
+            <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.results')}</th>
+            <th className="py-1.5 pr-2 font-semibold text-right">{t('ltr.rose')}</th>
+            <th className="py-1.5 font-semibold text-right">{t('ltr.avgMove')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {record.rows
+            .filter((r) => r.samples > 0)
+            .map((r) => (
+              <tr key={r.verdict} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                <td className="py-1.5 pr-2 font-semibold">{verdictLabel(r.verdict)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono-num">{r.samples}</td>
+                <td className="py-1.5 pr-2 text-right font-mono-num">
+                  {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>{t('ltr.few')}</span>}
+                </td>
+                <td className="py-1.5 text-right font-mono-num">{pct(r.avgReturn, 1)}</td>
+              </tr>
+            ))}
+          <tr className="border-t font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
+            <td className="py-1.5 pr-2">{t('ltr.baseRate')}</td>
+            <td className="py-1.5 pr-2 text-right font-mono-num">{record.evaluated}</td>
+            <td className="py-1.5 pr-2 text-right font-mono-num">{pct(record.baseUpRate)}</td>
+            <td className="py-1.5 text-right" />
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-[11px] mt-2" style={{ color: 'var(--text-secondary)' }}>
+        {t('ltr.note')}
+      </p>
+    </div>
   );
 }

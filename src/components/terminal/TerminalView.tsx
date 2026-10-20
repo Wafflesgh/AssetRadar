@@ -15,7 +15,7 @@ import { NewsTape } from '../NewsTape.tsx';
 import { latestNewsKey, useLiveNews } from '../../hooks/useLiveNews.ts';
 import { CommandLine } from './CommandLine.tsx';
 import { GroupTabs, HeatmapPanel, MonitorPanel, type TerminalGroup } from './MarketPanels.tsx';
-import { FxCrossPanel, IdMacroPanel, MoversTerminalPanel, WorldIndicesPanel, YieldCurvePanel } from './MarketFunctionPanels.tsx';
+import { FxCrossPanel, BriefPanel, IdMacroPanel, MoversTerminalPanel, WorldIndicesPanel, YieldCurvePanel } from './MarketFunctionPanels.tsx';
 import { CalendarTerminalPanel, HistoryPanel, IntelPanel } from './AnalysisPanels.tsx';
 import { AssetNewsPanel, SentimentPanel, useAssetIntelligence } from './IntelligencePanels.tsx';
 import { ChartPanel, CorrelationPanel, EconomicCalendarPanel, NewsFeedPanel } from './DataPanels.tsx';
@@ -31,6 +31,7 @@ interface TerminalViewProps {
   onGoToRadar: () => void;
   onGoToAdvisor: () => void;
   onGoToQuant: () => void;
+  onCompare?: (symbols: string[]) => void;
 }
 
 const PANEL_ELEMENT_ID: Record<PanelId, string> = {
@@ -53,6 +54,7 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   lvl: 'panel-lvl',
   rank: 'panel-rank',
   bnb: 'panel-bnb',
+  brief: 'panel-brief',
 };
 
 /** Panel name for the command feedback, in the current language. */
@@ -74,6 +76,7 @@ const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string;
   { label: 'FXC', command: () => 'FXC', title: 'term.panel.FXC' },
   { label: 'CURV', command: () => 'CURV', title: 'term.title.curv' },
   { label: 'IDMACRO', command: () => 'IDMACRO', title: 'term.title.idmacro' },
+  { label: 'BRIEF', command: () => 'BRIEF', title: 'term.panel.BRIEF' },
   { label: 'HM', command: () => 'HM', title: 'term.title.heatmap' },
   { label: 'ECO', command: () => 'ECO', title: 'term.title.eco' },
   { label: 'CORR', command: () => 'CORR', title: 'term.panel.CORR' },
@@ -101,6 +104,7 @@ export function TerminalView({
   onGoToRadar,
   onGoToAdvisor,
   onGoToQuant,
+  onCompare,
 }: TerminalViewProps) {
   const t = useT();
   const lang = useLang();
@@ -165,6 +169,10 @@ export function TerminalView({
         onGoToRadar();
         return tr('term.ok.radar');
       }
+      if (cmd.type === 'compare') {
+        onCompare?.(cmd.symbols);
+        return 'Opening Compare.';
+      }
       if (cmd.type === 'quant') {
         onGoToQuant();
         return tr('term.ok.quant');
@@ -182,7 +190,7 @@ export function TerminalView({
       focusPanel(cmd.panel, true);
       return tr('term.ok.panel', { panel: panelName(cmd.panel) });
     },
-    [focusPanel, onGoToRadar, onGoToAdvisor, onGoToQuant]
+    [focusPanel, onGoToRadar, onGoToAdvisor, onGoToQuant, onCompare]
   );
 
   const selectAsset = useCallback((symbol: string) => setSelectedSymbol(symbol), []);
@@ -260,6 +268,7 @@ export function TerminalView({
         <HistoryPanel asset={asset} highlighted={highlight === 'hp'} />
         <CalendarTerminalPanel asset={asset} onSelect={selectAsset} highlighted={highlight === 'cal'} />
         <IdMacroPanel highlighted={highlight === 'idmacro'} />
+        <BriefPanel highlighted={highlight === 'brief'} />
         <CorrelationPanel highlighted={highlight === 'corr'} />
         <EconomicCalendarPanel highlighted={highlight === 'eco'} />
         <NewsFeedPanel asset={asset} ticks={ticks} highlighted={highlight === 'top'} />

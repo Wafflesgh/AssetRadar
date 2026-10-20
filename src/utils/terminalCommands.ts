@@ -1,14 +1,15 @@
 /**
  * terminalCommands.ts — Parser and autocomplete for the Terminal command line
  * (Bloomberg style: "<CODE> <FUNCTION>", e.g. "ETH GP", "BBCA INTEL", "SPX HP"), the market
- * functions (MOV, WEI, FXC, CURV, HM, ECO, CORR, TOP) and the HELP command list.
+ * functions (MOV, WEI, FXC, CURV, HM, ECO, CORR, TOP), "CMP <CODE> <CODE>…" (Compare page) and the
+ * HELP command list.
  * Asset codes and aliases come from ASSETS (config/assets.ts).
  */
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
 import { translate, type AppLang, type TranslationKey } from '../i18n/core.ts';
 
 export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal' | 'sent' | 'lvl';
-export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro' | 'rank' | 'bnb';
+export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro' | 'rank' | 'bnb' | 'brief';
 export type TerminalPanel = AssetPanel | MarketPanel;
 
 export type TerminalCommand =
@@ -19,6 +20,7 @@ export type TerminalCommand =
   | { type: 'radar' }
   | { type: 'advisor' }
   | { type: 'quant' }
+  | { type: 'compare'; symbols: string[] }
   | { type: 'error'; message: string };
 
 /** Recognized asset codes (aliases are accepted but not suggested). Order = suggestion order. */
@@ -33,6 +35,7 @@ export const PANEL_COMMANDS: Record<string, { panel: MarketPanel }> = {
   CURV: { panel: 'curv' },
   CAL: { panel: 'cal' },
   IDMACRO: { panel: 'idmacro' },
+  BRIEF: { panel: 'brief' },
   HM: { panel: 'heatmap' },
   ECO: { panel: 'eco' },
   CORR: { panel: 'corr' },
@@ -73,6 +76,7 @@ export function terminalHelp(lang: AppLang = 'en'): CommandHelpItem[] {
     { command: 'LVL <CODE>', description: tk(lang, 'term.help.LVL') },
     { command: 'RANK IDX|US SHORT|MEDIUM|LONG', description: tk(lang, 'term.help.RANK') },
     { command: 'BNB <PAIR>', description: tk(lang, 'term.help.BNBPAIR') },
+    { command: 'CMP <CODE> <CODE>', description: tk(lang, 'term.help.CMP') },
     ...Object.keys(PANEL_COMMANDS).map((command) => ({ command, description: tk(lang, `term.panel.${command}`) })),
     ...['HELP', 'AI', 'QUANT', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.help.${command}`) })),
   ];
@@ -93,6 +97,14 @@ export function parseTerminalCommand(input: string, lang: AppLang = 'en'): Termi
   if (text === 'AI' || text === 'ADVISOR') return { type: 'advisor' };
   if (text === 'QUANT' || text === 'LAB') return { type: 'quant' };
   if (PANEL_COMMANDS[text]) return { type: 'panel', panel: PANEL_COMMANDS[text].panel };
+  if (text === 'CMP' || text.startsWith('CMP ')) {
+    const codes = text.split(' ').slice(1);
+    const unknown = codes.filter((c) => !getAssetByCode(c));
+    if (unknown.length) return { type: 'error', message: tk(lang, 'term.err.cmpUnknown', { codes: unknown.join(', ') }) };
+    const symbols = [...new Set(codes.map((c) => (getAssetByCode(c) as { symbol: string }).symbol))];
+    if (symbols.length < 2 || symbols.length > 4) return { type: 'error', message: tk(lang, 'term.err.cmpCount') };
+    return { type: 'compare', symbols };
+  }
 
   // Command-first forms: SENT <CODE>, LVL <CODE>, RANK IDX|US [SHORT|MEDIUM|LONG], BNB <PAIR>
   const [head, ...args] = text.split(' ');
@@ -136,7 +148,7 @@ function commandSuggestions(lang: AppLang): CommandHelpItem[] {
   return [
     ...Object.keys(PANEL_COMMANDS).map((command) => ({ command, description: tk(lang, `term.panel.${command}`) })),
     { command: 'HELP', description: tk(lang, 'term.help.HELP') },
-    ...['AI', 'QUANT', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.sug.${command}`) })),
+    ...['AI', 'QUANT', 'CMP', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.sug.${command}`) })),
   ];
 }
 

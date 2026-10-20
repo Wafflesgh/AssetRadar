@@ -4,7 +4,7 @@
  * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
  */
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
-import { Sun, Moon, Wifi } from 'lucide-react';
+import { Sun, Moon, Wifi, CloudOff } from 'lucide-react';
 import {
   ASSETS,
   getAssetBySymbol,
@@ -49,6 +49,8 @@ import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 import { useT } from './i18n/index.ts';
 import { LangToggle } from './components/LangToggle.tsx';
+import { onSyncApplied, startSync, subscribeSync } from './services/syncService.ts';
+import { checkLocalAlerts, initAlerts } from './services/alertService.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -56,6 +58,11 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const BacktestView = lazy(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
+const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
+const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
+const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
+const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 const CryptoBinanceView = lazy(() => import('./components/CryptoBinanceView.tsx').then((m) => ({ default: m.CryptoBinanceView })));
 
@@ -77,6 +84,9 @@ export default function App() {
     if (typeof window === 'undefined') return 'BTC/IDR';
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
   });
+  const [compareSymbols, setCompareSymbols] = useState<string[]>(() =>
+    typeof window === 'undefined' ? [] : parseHashRoute(window.location.hash).compare ?? []
+  );
   const [ticks, setTicks] = useState<Record<string, PriceTick>>({});
   const [feedMode, setFeedMode] = useState<FeedMode>('polling');
   const [connectionState, setConnectionState] =
@@ -96,6 +106,25 @@ export default function App() {
 
   const managerRef = useRef<MarketDataManager | null>(null);
 
+  // Cross-device sync: start it, show a small warning in the header when it fails, and reload the
+  // settings and watchlist when another device changed them
+  const [syncFailed, setSyncFailed] = useState<string | null>(null);
+  useEffect(() => {
+    startSync();
+    initAlerts();
+    const unsub = subscribeSync((s) => setSyncFailed(s.loggedIn && s.lastError ? s.lastError : null));
+    const off = onSyncApplied(['watchlist', 'settings'], () => {
+      setWatchlist(getSavedWatchlist());
+      setTimeframe(getSavedTimeframe());
+      setThemePreference(getSavedTheme());
+      setStartInTerminal(getStartInTerminal());
+    });
+    return () => {
+      unsub();
+      off();
+    };
+  }, []);
+
   // Sync URL hash with browser Back/Forward navigation
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -103,7 +132,7 @@ export default function App() {
       window.history.replaceState(
         null,
         '',
-        buildHashRoute(activeTab, selectedSymbol)
+        buildHashRoute(activeTab, selectedSymbol, compareSymbols)
       );
     }
 
@@ -111,6 +140,7 @@ export default function App() {
       const parsed = parseHashRoute(window.location.hash);
       setActiveTab(parsed.tab);
       setCryptoPair(parsed.pair);
+      if (parsed.compare) setCompareSymbols(parsed.compare);
       if (parsed.assetSymbol) {
         setSelectedSymbol(parsed.assetSymbol);
       }
@@ -127,6 +157,8 @@ export default function App() {
         // Feed the live buffer behind the "moving fastest right now" tables
         liveHistory.recordTicks(updatedTicks);
         setTicks({ ...updatedTicks });
+        // Alerts are checked in the browser unless the server pushes them
+        checkLocalAlerts(updatedTicks);
       },
       onConnectionStateChange: (state) => {
         setConnectionState(state);
@@ -198,7 +230,7 @@ export default function App() {
     (tab: NavTab) => {
       setActiveTab(tab);
       if (typeof window !== 'undefined') {
-        const nextHash = buildHashRoute(tab, tab === 'crypto' ? undefined : selectedSymbol);
+        const nextHash = buildHashRoute(tab, tab === 'crypto' ? undefined : selectedSymbol, compareSymbols);
         if (tab === 'crypto') setCryptoPair(undefined);
         if (window.location.hash !== nextHash) {
           window.location.hash = nextHash;
@@ -206,13 +238,21 @@ export default function App() {
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [selectedSymbol]
+    [selectedSymbol, compareSymbols]
   );
 
   const handleOpenPair = useCallback((pair?: string) => {
     setCryptoPair(pair);
     const nextHash = buildHashRoute('crypto', pair);
     if (typeof window !== 'undefined' && window.location.hash !== nextHash) window.location.hash = nextHash;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  /** Opens the Compare page with these assets (2–4). */
+  const handleCompare = useCallback((symbols: string[]) => {
+    setCompareSymbols(symbols);
+    setActiveTab('compare');
+    window.location.hash = buildHashRoute('compare', undefined, symbols);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -340,6 +380,11 @@ export default function App() {
               {activeTab === 'calendar' && t('header.title.calendar')}
               {activeTab === 'macro' && t('header.title.macro')}
               {activeTab === 'crypto' && t('header.title.crypto')}
+              {activeTab === 'alerts' && t('header.title.alerts')}
+              {activeTab === 'screener' && t('header.title.screener')}
+              {activeTab === 'compare' && t('header.title.compare')}
+              {activeTab === 'brief' && t('header.title.brief')}
+              {activeTab === 'backtest' && t('header.title.backtest')}
             </span>
           </div>
         </div>
@@ -348,6 +393,18 @@ export default function App() {
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <HeaderSearch ticks={ticks} onSelectAsset={handleSelectAsset} />
           <LangToggle className="hidden md:inline-flex" />
+          {syncFailed && (
+            <button
+              type="button"
+              onClick={() => handleSelectTab('settings')}
+              className="p-1.5 rounded-lg"
+              title={t('sync.failedTitle', { reason: syncFailed })}
+              aria-label={t('sync.failedAria', { reason: syncFailed })}
+              style={{ color: 'var(--color-down)' }}
+            >
+              <CloudOff className="w-4 h-4" />
+            </button>
+          )}
           <div
             data-testid="connection-indicator"
             className="flex items-center gap-1.5 text-xs font-semibold"
@@ -398,6 +455,7 @@ export default function App() {
             onGoToRadar={() => handleSelectTab('radar')}
             onGoToAdvisor={() => handleSelectTab('advisor')}
             onGoToQuant={() => handleSelectTab('quant')}
+            onCompare={handleCompare}
           />
         )}
 
@@ -422,6 +480,8 @@ export default function App() {
             effectiveTheme={effectiveTheme}
             isWatchlisted={watchlist.includes(currentAsset.symbol)}
             onToggleWatchlist={handleToggleWatchlist}
+            ticks={ticks}
+            onCompare={(symbol) => handleCompare(compareSymbols.includes(symbol) ? compareSymbols : [...compareSymbols, symbol].slice(-4))}
           />
         )}
 
@@ -483,6 +543,69 @@ export default function App() {
             }
           >
             <CryptoBinanceView pair={cryptoPair} onOpenPair={handleOpenPair} onSelectAsset={handleSelectAsset} theme={effectiveTheme} />
+          </Suspense>
+        )}
+        {activeTab === 'backtest' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <BacktestView ticks={ticks} />
+          </Suspense>
+        )}
+        {activeTab === 'brief' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <BriefView watchlist={[...watchlist, ...portfolioSymbols]} onSelectAsset={handleSelectAsset} />
+          </Suspense>
+        )}
+        {activeTab === 'compare' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <CompareView
+              symbols={compareSymbols}
+              ticks={ticks}
+              onSelectAsset={handleSelectAsset}
+              onChange={(symbols) => {
+                setCompareSymbols(symbols);
+                window.history.replaceState(null, '', buildHashRoute('compare', undefined, symbols));
+              }}
+            />
+          </Suspense>
+        )}
+        {activeTab === 'screener' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <ScreenerView onSelectAsset={handleSelectAsset} onCompare={handleCompare} />
+          </Suspense>
+        )}
+        {activeTab === 'alerts' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <AlertsView ticks={ticks} onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
         {activeTab === 'idx' && (

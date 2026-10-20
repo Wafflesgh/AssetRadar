@@ -1,6 +1,7 @@
 /**
- * SettingsView.tsx — Settings & About page: language and number format, theme choice, default
- * chart timeframe, the "open in Terminal mode" switch, data sources and the disclaimer.
+ * SettingsView.tsx — Settings & About page: install card, cross-device sync, language and number
+ * format, position-size target, theme choice, default chart timeframe, the "open in Terminal mode"
+ * switch, data sources and the disclaimer.
  */
 import { useState } from 'react';
 import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal, Languages, Calculator } from 'lucide-react';
@@ -9,6 +10,7 @@ import { Rich } from '../i18n/Rich.tsx';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference, getVolTarget, saveVolTarget } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
+import { SyncCard } from './SyncCard.tsx';
 
 interface SettingsViewProps {
   themePreference: ThemePreference;
@@ -58,6 +60,7 @@ export function SettingsView({
 
       <InstallAppCard />
 
+      <SyncCard />
       {/* Language and number format */}
       <section
         aria-labelledby="settings-lang-heading"

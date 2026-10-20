@@ -73,3 +73,26 @@ test('crypto (Binance) route with an optional pair, including non-Latin symbols'
   assert.equal(buildHashRoute('crypto', pair), `#/crypto/${encodeURIComponent(pair)}`);
   assert.deepEqual(parseHashRoute(buildHashRoute('crypto', pair)), { tab: 'crypto', pair });
 });
+
+test('alerts route', () => {
+  assert.deepEqual(parseHashRoute('#/alerts'), { tab: 'alerts' });
+  assert.equal(buildHashRoute('alerts'), '#/alerts');
+});
+
+test('screener and compare routes', () => {
+  assert.deepEqual(parseHashRoute('#/screener'), { tab: 'screener' });
+  assert.deepEqual(parseHashRoute('#/compare?s=BBCA,bbri,BMRI'), { tab: 'compare', compare: ['BBCA.JK', 'BBRI.JK', 'BMRI.JK'] });
+  assert.deepEqual(parseHashRoute('#/compare'), { tab: 'compare', compare: [] });
+  assert.equal(buildHashRoute('compare', undefined, ['BBCA.JK', 'BTC/IDR']), '#/compare?s=BBCA,BTC');
+  assert.equal(buildHashRoute('screener'), '#/screener');
+});
+
+test('brief route', () => {
+  assert.deepEqual(parseHashRoute('#/brief'), { tab: 'brief' });
+  assert.equal(buildHashRoute('brief'), '#/brief');
+});
+
+test('backtest route', () => {
+  assert.deepEqual(parseHashRoute('#/backtest'), { tab: 'backtest' });
+  assert.equal(buildHashRoute('backtest'), '#/backtest');
+});

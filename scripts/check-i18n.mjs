@@ -5,8 +5,9 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('../src/', import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL('../src/', import.meta.url));
 const files = [];
 (function walk(dir) {
   for (const name of readdirSync(dir)) {

@@ -6,6 +6,8 @@
  * - /api/*: network-first with the last good response as an offline fallback. Fallback
  *   responses carry the header "X-AssetRadar-Offline: 1" so the app labels them as saved data.
  * - Live streams (Server-Sent Events) and cross-origin requests are never touched.
+ * - Web push (alerts, morning brief): shows the notification; a tap focuses an open AssetRadar
+ *   window (or opens one) on the page in the payload, e.g. #/asset/btc.
  * BUILD_ID and PRECACHE are filled in by the Vite build (see vite.config.ts).
  */
 const BUILD_ID = '__BUILD_ID__';
@@ -85,4 +87,39 @@ self.addEventListener('fetch', (event) => {
   } else {
     event.respondWith(cacheFirst(request));
   }
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: 'AssetRadar', body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'AssetRadar', {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || undefined,
+      data: { url: data.url || '#/alerts' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const hash = (event.notification.data && event.notification.data.url) || '#/alerts';
+  const target = new URL('/' + (hash.startsWith('#') ? hash : '#' + hash), self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    })
+  );
 });

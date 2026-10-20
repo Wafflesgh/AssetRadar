@@ -21,6 +21,11 @@ import {
   Wallet,
   CalendarDays,
   Building2,
+  Bell,
+  Filter,
+  GitCompare,
+  Newspaper,
+  History,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -30,7 +35,9 @@ import { ThemePreference } from '../utils/storage.ts';
 import { useT, type TranslationKey } from '../i18n/index.ts';
 import { LangToggle } from './LangToggle.tsx';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'crypto';
+export type NavTab =
+  | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -59,11 +66,16 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'idx', label: 'nav.idx', shortLabel: 'nav.idxShort', icon: Landmark, mobile: true },
   { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'nav.advisor', shortLabel: 'nav.advisorShort', icon: BrainCircuit, mobile: true },
+  { id: 'brief', label: 'nav.brief', shortLabel: 'nav.briefShort', icon: Newspaper },
   { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
+  { id: 'screener', label: 'nav.screener', shortLabel: 'nav.screenerShort', icon: Filter },
+  { id: 'compare', label: 'nav.compare', icon: GitCompare },
   { id: 'portfolio', label: 'nav.portfolio', icon: Wallet },
+  { id: 'alerts', label: 'nav.alerts', icon: Bell },
   { id: 'calendar', label: 'nav.calendar', shortLabel: 'nav.calendarShort', icon: CalendarDays },
   { id: 'macro', label: 'nav.macro', icon: Building2 },
   { id: 'quant', label: 'nav.quant', shortLabel: 'nav.quantShort', icon: FlaskConical },
+  { id: 'backtest', label: 'nav.backtest', icon: History },
   { id: 'watchlist', label: 'nav.watchlist', shortLabel: 'nav.watchlistShort', icon: Star },
   { id: 'risk', label: 'nav.risk', shortLabel: 'nav.riskShort', icon: ShieldAlert },
   { id: 'settings', label: 'nav.settings', icon: Settings },

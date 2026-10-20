@@ -10,8 +10,10 @@ from the server about every 5 seconds. It installs on phones and desktops (PWA) 
 TradingView-style charts, a Bloomberg-style Terminal, evidence-based sentiment with technical
 and fundamental analysis, company financial statements, a personal portfolio, the IDX corporate
 calendar, Indonesian macro data, an AI screen with a live track record, a value/momentum
-portfolio simulator and risk-profile education. The interface is available in English and
-Bahasa Indonesia.
+portfolio simulator and risk-profile education — plus sync between devices, price alerts with
+phone notifications, an IDX stock screener, side-by-side comparison, portfolio performance
+against the IHSG with dividends, a morning brief, Antam gold-bar prices and a simple strategy
+backtester. The interface is available in English and Bahasa Indonesia.
 
 > Data is for information only, not investment advice. Charts by TradingView.
 
@@ -39,11 +41,11 @@ Bahasa Indonesia.
   fund flows, supply, geopolitics, analyst ratings or legal, with a direction per asset.
 - **Terminal mode** (`#/terminal`): ticker tape, command line and QuickBar
   (`ETH GP`, `BBCA INTEL`, `SPX HP`, `JCI N`, `MOV`, `WEI`, `FXC`, `CURV`, `HM`, `ECO`, `CORR`,
-  `TOP`, `AI`, `QUANT`, `BBCA SENT`, `BTC LVL`, `RANK IDX SHORT`, `BINANCE`, `BNB SOLUSDT`,
-  `HELP`), market filter, and MONITOR (live 5m change), CHART, INTEL, MOVERS, WORLD INDICES,
-  HEATMAP, SENTIMENT, NEWS, FX CROSS, US YIELD CURVE, HISTORICAL PRICES, CORRELATION 30D,
-  ECONOMIC CALENDAR, NEWS FEED, SENT (investment sentiment), LVL (ranges & levels), RANK and
-  BINANCE panels. Commands stay in English in both languages.
+  `TOP`, `BRIEF`, `CMP BBCA BBRI`, `AI`, `QUANT`, `BBCA SENT`, `BTC LVL`, `RANK IDX SHORT`, `BINANCE`,
+  `BNB SOLUSDT`, `HELP`), market filter, and MONITOR (live 5m change), CHART, INTEL, MOVERS,
+  WORLD INDICES, HEATMAP, SENTIMENT, NEWS, FX CROSS, US YIELD CURVE, HISTORICAL PRICES,
+  CORRELATION 30D, ECONOMIC CALENDAR, NEWS FEED, MORNING BRIEF, SENT (investment sentiment), LVL
+  (ranges & levels), RANK and BINANCE panels. Commands stay in English in both languages.
 - **AI Advisor** (`#/advisor`): a personalized, backtested screen (see below) with a
   "How verdicts are decided" box and a pass/fail checklist on every card.
 - **Quant Lab** (`#/quant`): value vs momentum allocation slider with annual return,
@@ -67,7 +69,7 @@ Bahasa Indonesia.
   `/` or Ctrl+K focuses it, and on phones it opens full-screen.
 - **Portfolio** (`#/portfolio`): buy/sell transactions (IDX stocks in lots of 100, gold in grams),
   average-cost positions, live value and unrealized/realized P/L in Rupiah, allocation by asset
-  class, JSON export/import. Stored on this device only.
+  class, JSON export/import. Stored on this device and synced when logged in (see below).
 - **AI Advisor live track record**: every verdict is saved once per day on this device and
   scored when its horizon has passed, so the screen is also judged on real, after-the-fact
   results (hit rate vs base rate, shown once there are ≥ 30 results).
@@ -117,6 +119,43 @@ Bahasa Indonesia.
   growth, external, fiscal, financial, commodities, global) from 10-year z-scores, what each
   usually means for IHSG / the Rupiah / banks, category tabs, stale labels, IDX valuation and
   breadth, and the next FOMC date. Describes conditions; not a forecast.
+- **Sync between devices** (Settings → Sync): watchlist, portfolio, dividends, AI forward-test
+  log, risk profile, alerts, saved screens and strategies, gold prices and settings are the same
+  on phone and PC. The owner logs in with a passphrase; data on each device stays as a backup and
+  the app works offline and without logging in. Items merge one by one (the newest edit wins,
+  deletions spread, no transaction is lost). Needs a database (optional, see "Optional setup").
+- **Server forward test of the AI Advisor**: every weekday after 16:15 WIB the server saves the
+  verdicts of both horizons and all risk profiles, even when nobody opens the app, and scores
+  them later against real closes ("Server record" in the AI Advisor).
+- **Alerts** (`#/alerts`, bell button on every asset page): price crossing above/below a level,
+  a daily move of at least X %, ex-dividend or earnings tomorrow (one stock, or every stock in the
+  watchlist and portfolio), a new headline for an asset, and the geopolitical alert; once or
+  repeating (at most hourly), quiet hours, history, "Send test notification". With the optional
+  setup the server checks alerts on its price loop and sends web push to your phone even when
+  the app is closed (iPhone: install the app first, iOS 16.4+); without it alerts are checked in
+  the browser while the app is open.
+- **IDX stock screener** (`#/screener`): every listed stock filtered by sector, board, price,
+  1-day/1-week change, value traded, market cap, P/E, P/B, ROE, net margin, DER, dividend yield,
+  Piotroski F-score and profit growth; presets, saved screens, sorting, CSV, scan progress and
+  the period of each row's figures ("Not reported" when missing). A screen filters reported
+  numbers — it is not a recommendation.
+- **Compare** (`#/compare?s=BBCA,BBRI,BMRI`, Terminal `CMP BBCA BBRI`): 2–4 assets rebased to 100
+  over 1M–5Y, prices and changes, and for stocks the statements and ratios side by side.
+- **Portfolio analytics**: daily value and time-weighted return against the IHSG (method
+  explained on the page), volatility, max drawdown, correlation between holdings, cash dividends
+  (recorded, or suggested from the dividend history × shares held before the ex-date and
+  confirmed by you) and the calendar of the stocks you hold.
+- **Morning brief** (`#/brief`, Terminal `BRIEF`): every morning at about 07:30 WIB — Wall Street
+  and Asian closes, IHSG, movers, Rupiah and gold, today's corporate events (watchlist and
+  portfolio first), latest macro data, the 5 most important headlines and the forward-test
+  status; optionally sent to Telegram and as a push notification.
+- **Antam gold bar** (gold page): links to the official Logam Mulia and Pegadaian price pages and
+  the buyback price per gram you record there (no scraping); physical gold in the portfolio is
+  valued at a recent buyback price.
+- **Backtest** (`#/backtest`): your own entry/exit rules (moving-average cross, price vs MA, RSI,
+  N-day breakout, stop-loss/take-profit) on up to 5 years of daily prices, IDX costs and lots,
+  equity vs buy & hold, statistics, first half vs second half and over-fitting warnings. Past
+  results do not guarantee future results.
 
 ## AI Advisor (scientific approach)
 
@@ -208,6 +247,10 @@ Bahasa Indonesia.
 | US Treasury yields | Yahoo Finance `^IRX`, `^FVX`, `^TNX`, `^TYX` |
 | News | Google News RSS (Indonesian and English) and publisher RSS feeds |
 | Charts & economic calendar | Official TradingView widgets |
+| Daily price history (Compare, Backtest, portfolio performance) | Yahoo Finance `1d/5y`; crypto Indodax daily candles |
+| Antam / Pegadaian gold-bar prices | Typed in by the owner from logammulia.com / pegadaian.co.id (no official feed) |
+| Sync and server data (optional) | Supabase (Postgres REST), only through this server |
+| Notifications (optional) | Web push (VAPID, `web-push`); Telegram Bot API for the morning brief |
 
 Crude palm oil and coal are not listed: there is no free live source, and stale prices are
 never shown. A failing source shows "Data unavailable" with a "Try again" button.
@@ -231,6 +274,12 @@ Known limits of the free sources:
   reports); news and daily technicals have no stored history and are not back-tested.
 - IDX stock and index quotes are delayed (free data); the BI-Rate history in the AI Advisor uses
   the overnight interbank rate as a proxy.
+- Screener: the full statement scan of ±960 stocks takes 10–20 minutes and is refreshed daily;
+  ratios use Yahoo figures (latest annual report or trailing 12 months).
+- Gold bars: no official Antam/Pegadaian feed the server may use, so prices are entered by hand.
+- Cloud Run sleeps without visitors: server alerts and daily jobs run while it is awake — use the
+  daily scheduler below (and, for alerts while the app is closed, a 5–15 minute ping or a minimum
+  instance).
 
 ### Updating the list of IDX stocks
 
@@ -250,11 +299,12 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment and AI summaries;
-`FINNHUB_API_KEY` (free at finnhub.io) for real-time US stock trades; `BPS_API_KEY` (free, register
-at https://webapi.bps.go.id/developer/) for core, administered-price and volatile-food inflation on
-the macro page. Keys are used on the server only, never logged or sent to the browser. Without
-them everything else still works. Never commit `.env`.
+Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment, AI summaries and the
+morning brief; `FINNHUB_API_KEY` (free at finnhub.io) for real-time US stock trades; `BPS_API_KEY`
+(free, register at https://webapi.bps.go.id/developer/) for core, administered-price and
+volatile-food inflation on the macro page; and the stage 3 keys described in "Optional setup"
+(sync, cron, web push, Telegram). All are used on the server only, never logged or sent to the
+browser. Without them everything else still works. Never commit `.env`.
 
 Checks that must pass after every change:
 
@@ -264,11 +314,72 @@ npm run lint && npm test && npm run build
 
 Production: `npm run build`, then `NODE_ENV=production npm start`.
 
+## Optional setup (stage 3)
+
+Every feature works without these keys in a limited, local-only form. Put the values in `.env`
+locally or in the Secrets panel of AI Studio / Secret Manager on Cloud Run — never in the code.
+
+### Sync between devices (database + passphrase)
+
+1. Create a free project at [supabase.com](https://supabase.com) (free plan: 500 MB database;
+   inactive free projects are paused after a week — the daily scheduler below keeps it active).
+2. In the SQL editor run:
+
+   ```sql
+   create table if not exists assetradar_kv (
+     key text primary key,
+     value jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+   alter table assetradar_kv enable row level security; -- no policies: only the server key can read/write
+   ```
+
+3. Settings → API: copy the project URL to `SUPABASE_URL` and the **service_role** key to
+   `SUPABASE_SERVICE_ROLE_KEY` (server only — never put it in the browser).
+4. Choose a passphrase of at least 8 characters and set `SYNC_PASSPHRASE`. Optional:
+   `SYNC_SESSION_SECRET` to sign sessions with a separate secret. Changing the passphrase logs
+   every device out.
+5. Open Settings → Sync on each device and log in. The first login merges this device with the
+   server and shows what was combined.
+
+To try sync locally without a database: `SYNC_PASSPHRASE='at least 8 chars' SYNC_DEV_MEMORY_DB=1 npm run dev`
+(data lives in server memory and is lost on restart).
+
+### Daily jobs (forward test 16:15 WIB, morning brief 07:30 WIB)
+
+The server runs them on the first request after their time. To run them even when nobody opens
+the app, set `CRON_TOKEN` to a long random string and schedule a daily HTTP call, e.g. with Google
+Cloud Scheduler or cron-job.org:
+
+```
+POST https://<your-app>/api/cron/daily
+Authorization: Bearer <CRON_TOKEN>
+```
+
+Schedule it at 07:35 and 16:20 WIB (00:35 and 09:20 UTC); the call runs whatever is due.
+
+### Web push for alerts and the brief
+
+1. `npx web-push generate-vapid-keys` → set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and
+   `VAPID_SUBJECT` (e.g. `mailto:you@example.com`).
+2. Sync (database + passphrase) must be set up too: alerts and push subscriptions are stored there.
+3. On each phone/PC: log in under Settings → Sync, then Alerts → "Enable server push on this
+   device" → "Send test notification". iPhone/iPad: install the app first (Share → Add to Home
+   Screen, iOS 16.4+).
+
+### Morning brief to Telegram
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) → `TELEGRAM_BOT_TOKEN`.
+2. Send the bot a message, then get your chat id (e.g. from @userinfobot) → `TELEGRAM_CHAT_ID`.
+3. Optional `APP_URL` adds a link to the brief page in the message.
+
 ## Deploy
 
 The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
-runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY`, `FINNHUB_API_KEY` and/or `BPS_API_KEY` in the Secrets
-panel if you want them. Do not push from AI Studio back to GitHub; import the latest version
+runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY`, `FINNHUB_API_KEY`, `BPS_API_KEY` and the optional
+stage 3 keys (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SYNC_PASSPHRASE`, `CRON_TOKEN`,
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
+in the Secrets panel if you want them. Do not push from AI Studio back to GitHub; import the latest version
 instead (as a new app), then Publish.
 
 ## Files
@@ -278,6 +389,9 @@ instead (as a new app), then Publish.
 | File | Description |
 |---|---|
 | `server.ts` | Express server: serves the app and all `/api/*` endpoints with in-memory caching. |
+| `server/store.ts` | Durable key/value storage: Supabase (REST) or an in-memory fallback. |
+| `server/sync.ts` | Owner login (passphrase → signed token) and the `/api/sync/*` endpoints. |
+| `server/push.ts` | Web push (VAPID keys, subscriptions, sending) and `/api/push/*`. |
 | `index.html` | HTML shell: title, favicon (radar logo), fonts, and the React mount point. |
 | `vite.config.ts` | Vite build config: React + Tailwind plugins and the `@` alias. |
 | `package.json` / `package-lock.json` | Dependencies and npm scripts (`dev`, `lint`, `test`, `build`, `start`). |
@@ -322,6 +436,17 @@ instead (as a new app), then Publish.
 | `utils/corporateCalendar.ts` | Corporate events (earnings, dividends, splits) parsing and merging. |
 | `utils/macro.ts` | FRED / Bank Indonesia / World Bank / BPS parsers, release-date shifting, 10-year z-scores, staleness, Macro Pulse. |
 | `ai/forwardTest.ts` | AI Advisor live track record (daily snapshots, scoring, hit rate). |
+| `utils/sync.ts` | Sync merge per item (edit times, deletions), deltas, daily job schedule (WIB). |
+| `utils/syncAuth.ts` | Server-only passphrase check, session tokens, login limiter. |
+| `utils/alerts.ts` | Alert evaluation (crossing, daily move, calendar, news, geo), quiet hours, throttle. |
+| `utils/screener.ts` | Screener fields, filters, sorting, presets, CSV and ratios from statements. |
+| `utils/compare.ts` | Compare URL parameter and the rebased (start = 100) series. |
+| `utils/portfolioAnalytics.ts` | Daily value, time-weighted return, dividends, drawdown, volatility, correlation. |
+| `utils/morningBrief.ts` | Morning brief assembly, headline selection, schedule, Telegram text. |
+| `utils/goldBar.ts` | Gold-bar sizes, buyback prices and the gold valuation for the portfolio. |
+| `utils/backtest.ts` | Rule backtester (next-open fills, costs, lots, stops, stats, split test). |
+| `services/syncService.ts` | Browser sync: login, delta sync, automatic syncing. |
+| `services/alertService.ts` | Browser alerts: list, notifications, push subscription, local checker. |
 | `services/newsStream.ts` | Shared live news store (SSE stream with polling fallback). |
 | `hooks/useLiveNews.ts` | React hooks for the live news store. |
 | `hooks/usePriceFlash.ts` | Price-change flash state for tables. |
@@ -329,8 +454,8 @@ instead (as a new app), then Publish.
 | `utils/marketHours.ts` | Trading hours per exchange and "updated X ago" labels. |
 | `utils/movers.ts` | Live price buffer (5-minute window) and movers ranking. |
 | `utils/sentiment.ts` | Headline tone and the RSS parser. |
-| `utils/storage.ts` | All localStorage access (theme, timeframe, watchlist, snapshot, options, sidebar). |
-| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/idx`, `#/watchlist`, `#/portfolio`, `#/calendar`, `#/macro`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`, `#/crypto`, `#/crypto/<PAIR>`). |
+| `utils/storage.ts` | All localStorage access (theme, language, number format, timeframe, watchlist, snapshot, options, sidebar, synced collections and their change tracking). |
+| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/idx`, `#/watchlist`, `#/portfolio`, `#/calendar`, `#/macro`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`, `#/crypto`, `#/crypto/<PAIR>`, `#/alerts`, `#/screener`, `#/compare?s=`, `#/brief`, `#/backtest`). |
 | `utils/candles.ts` | 4-hour candle aggregation and WIB chart data. |
 | `utils/correlation.ts` | Pearson correlation of daily returns. |
 | `utils/terminalCommands.ts` | Terminal command parser, autocomplete and HELP list. |
@@ -358,6 +483,14 @@ instead (as a new app), then Publish.
 | `KeyIndicesStrip.tsx` | Key indices strip on the Radar (IHSG first). |
 | `IndonesianStocksView.tsx` | All IDX stocks with filters, sorting and movers (`#/idx`). |
 | `PortfolioView.tsx` | Personal portfolio (lazy-loaded). |
+| `PortfolioAnalytics.tsx` | Performance vs IHSG, risk, dividends and calendar of the portfolio (lazy-loaded). |
+| `SyncCard.tsx` | Sync card in Settings (login, status, Sync now, first-merge summary). |
+| `AlertsView.tsx` / `AlertEditor.tsx` | Alerts page, alert form and the dialog on asset pages. |
+| `ScreenerView.tsx` | IDX stock screener (lazy-loaded). |
+| `CompareView.tsx` | Compare page (lazy-loaded). |
+| `BriefView.tsx` | Morning brief page (lazy-loaded). |
+| `AntamGoldCard.tsx` | Antam gold-bar card (official links, recorded buyback prices). |
+| `BacktestView.tsx` | Strategy backtester (lazy-loaded). |
 | `LiveTrackRecord.tsx` | AI Advisor live (forward-test) track record. |
 | `CorporateCalendarPanel.tsx` | Corporate calendar on a stock's detail page. |
 | `IdxCalendarView.tsx` | IDX corporate calendar page. |
@@ -395,7 +528,7 @@ instead (as a new app), then Publish.
 | `TickerTape.tsx` | Scrolling price tape. |
 | `CommandLine.tsx` | Command line with autocomplete and HELP. |
 | `MarketPanels.tsx` | MONITOR table, HEATMAP and the market filter tabs. |
-| `MarketFunctionPanels.tsx` | MOVERS, WORLD INDICES, FX CROSS, US YIELD CURVE and ID MACRO panels. |
+| `MarketFunctionPanels.tsx` | MOVERS, WORLD INDICES, FX CROSS, US YIELD CURVE, ID MACRO and MORNING BRIEF panels. |
 | `AnalysisPanels.tsx` | INTEL, HISTORICAL PRICES and CALENDAR panels. |
 | `IntelligencePanels.tsx` | SENTIMENT and NEWS panels and the shared news row. |
 | `DataPanels.tsx` | CHART, ECONOMIC CALENDAR, CORRELATION 30D and NEWS FEED panels. |

@@ -4,8 +4,10 @@
  * (Indodax, Yahoo Finance, gold-api.com), sentiment + news (Google News, optional Gemini),
  * OHLC history for the alternative chart, 30-day correlation, the combined news feed, a
  * server-push price stream (SSE, optional Finnhub real-time trades), financial statements,
- * the IDX calendar, Indonesia macro data and the AI Advisor.
- * All upstream data is cached in memory; API keys stay on the server.
+ * the IDX calendar, Indonesia macro data and the AI Advisor; plus owner sync (/api/sync/*,
+ * server/sync.ts), the daily server AI forward test and the protected cron endpoint.
+ * All upstream data is cached in memory; durable data goes to the optional database
+ * (server/store.ts). API keys stay on the server.
  */
 import 'dotenv/config';
 import express from 'express';
@@ -153,6 +155,38 @@ import {
   type QuantFactorsPayload,
   type QuantUniverse,
 } from './src/ai/factorPortfolio.ts';
+import {
+  emptyLog,
+  evaluateSnapshots,
+  parseForwardLog,
+  pendingSymbols,
+  recordSnapshots,
+  trackRecord,
+  type DailyClose,
+  type ForwardLog,
+} from './src/ai/forwardTest.ts';
+import { dailyJobDue, wibDate } from './src/utils/sync.ts';
+import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
+import { createStore } from './server/store.ts';
+import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
+import { loadSubscriptions, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
+import {
+  addHistory,
+  afterFire,
+  evaluateAlert,
+  HOLDINGS_CALENDAR_ID,
+  inQuietHours,
+  parseAlertSettings,
+  parseAlerts,
+  throttle,
+  type AlertHistoryEntry,
+  type AlertSettings,
+  type AlertState,
+  type UserAlert,
+} from './src/utils/alerts.ts';
+import { formatAssetPrice } from './src/utils/format.ts';
+import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
+import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -984,11 +1018,15 @@ function streamFeeds() {
 }
 
 async function streamTick(): Promise<void> {
-  if (priceStream.running || priceStream.clients.size === 0) return;
+  // The loop also runs without viewers while the server checks alerts for web push
+  if (priceStream.running || (priceStream.clients.size === 0 && !serverAlerts.active)) return;
+  if (priceStream.clients.size === 0 && Date.now() - serverAlerts.lastCheckAt < 15_000) return;
   priceStream.running = true;
   try {
     recomputePriority();
-    pushPrices(await buildStreamTicks());
+    const ticks = await buildStreamTicks();
+    pushPrices(ticks);
+    if (serverAlerts.active) await checkServerAlerts(ticks);
   } catch (err) {
     console.warn('[Stream] tick failed:', err instanceof Error ? err.message : err);
   } finally {
@@ -1767,6 +1805,86 @@ function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
     : [...bars, { date, close: live.price }];
 }
 
+
+// ---- Daily OHLC history (~5 years) for Compare, Backtest and portfolio performance ----------------
+
+interface DailyOhlc {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+const dailyOhlcCache = new Map<string, CacheEntry<DailyOhlc[]>>();
+const dailyOhlcPending = new Map<string, Promise<DailyOhlc[]>>();
+
+async function fetchYahooDailyOhlc(yahooSymbol: string): Promise<DailyOhlc[]> {
+  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
+  const ts: number[] = result.timestamp || [];
+  const q = result.indicators?.quote?.[0] ?? {};
+  const offsetSec = Number(result.meta?.gmtoffset) || 0;
+  const bars: DailyOhlc[] = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = Number(q.close?.[i]);
+    if (!Number.isFinite(c) || c <= 0 || q.close?.[i] === null) continue;
+    const pick = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 && v !== null ? Number(v) : c);
+    const date = new Date((Number(ts[i]) + offsetSec) * 1000).toISOString().slice(0, 10);
+    const bar: DailyOhlc = { date, open: pick(q.open?.[i]), high: pick(q.high?.[i]), low: pick(q.low?.[i]), close: c };
+    if (Number.isFinite(Number(q.volume?.[i]))) bar.volume = Number(q.volume[i]);
+    bar.high = Math.max(bar.high, bar.open, bar.close);
+    bar.low = Math.min(bar.low, bar.open, bar.close);
+    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1] = bar;
+    else bars.push(bar);
+  }
+  return bars;
+}
+
+async function fetchIndodaxDailyOhlc(pair: string): Promise<DailyOhlc[]> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
+  const res = await fetchWithTimeout(url, {}, 10_000);
+  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
+  const rows = await res.json();
+  const bars: DailyOhlc[] = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const t = Number(row?.Time);
+    const c = Number(row?.Close);
+    if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) continue;
+    const o = Number(row?.Open) || c;
+    const bar: DailyOhlc = { date: localDate(t * 1000, 'CRYPTO'), open: o, high: Math.max(Number(row?.High) || c, o, c), low: Math.min(Number(row?.Low) || c, o, c), close: c };
+    if (Number.isFinite(Number(row?.Volume))) bar.volume = Number(row.Volume);
+    if (bars.length && bars[bars.length - 1].date === bar.date) bars[bars.length - 1] = bar;
+    else bars.push(bar);
+  }
+  return bars;
+}
+
+/** About 5 years of daily OHLC per asset (cached 6 h): Indodax for crypto, Yahoo for the rest. */
+async function dailyOhlcFor(asset: Asset): Promise<DailyOhlc[]> {
+  const cached = dailyOhlcCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  let pending = dailyOhlcPending.get(asset.symbol);
+  if (!pending) {
+    pending = (async () => {
+      if (asset.indodaxPair) return fetchIndodaxDailyOhlc(asset.indodaxPair);
+      if (asset.symbol === 'XAU/USD') return fetchYahooDailyOhlc('GC=F');
+      if (asset.symbol === 'SAR/IDR') {
+        return (await fetchYahooDailyOhlc('IDR=X')).map((b) => ({ ...b, open: b.open / SAR_PER_USD, high: b.high / SAR_PER_USD, low: b.low / SAR_PER_USD, close: b.close / SAR_PER_USD }));
+      }
+      if (!asset.yahooSymbol) return [];
+      return fetchYahooDailyOhlc(asset.yahooSymbol);
+    })()
+      .then((data) => {
+        dailyOhlcCache.set(asset.symbol, { data, expiresAt: Date.now() + (data.length ? AI_HISTORY_TTL_MS : 10 * 60_000) });
+        return data;
+      })
+      .finally(() => dailyOhlcPending.delete(asset.symbol));
+    dailyOhlcPending.set(asset.symbol, pending);
+  }
+  return pending;
+}
 
 // ---- Asset analysis: technical scorecard + chart patterns + fundamentals + news drivers ----
 
@@ -2775,6 +2893,82 @@ setInterval(() => {
   if (!calendarScan.running && now - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
 }, 60_000);
 
+// ---- IDX screener: slow scan of the statements of every listed stock (24 h) -----------------------
+
+const SCREENER_TTL_MS = 24 * 3600_000;
+const SCREENER_STORE_KEY = 'screener:fundamentals';
+const screenerFund = new Map<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>();
+const screenerScan = { running: null as Promise<void> | null, lastDemandAt: 0, startedAt: 0, finishedAt: 0, done: 0, loaded: false };
+
+/** Ratios from the latest annual / trailing-12-month statements, valued at today's price. */
+async function screenerFundamentalsFor(asset: Asset): Promise<{ f: ScreenerFundamentals | null; price: number | null }> {
+  const raw = await rawStatementsFor(asset);
+  const live = idxSweep.ticks.get(asset.symbol)?.price ?? yahooCache.get(asset.symbol)?.data.price;
+  const price = typeof live === 'number' && live > 0 ? live : null;
+  if (!raw) return { f: null, price };
+  const fyEnd = fiscalYearEndMonth(raw.annual);
+  const quarters = fillQuartersFromAnnual(raw.quarterly, raw.annual, fyEnd);
+  const opts = { sameCurrency: !raw.currency || raw.currency === asset.currency, livePrice: price ?? undefined };
+  const annual = buildStatementRows(fillMissingPeriods(fiscalYears(raw.annual, fyEnd)), fyEnd, opts);
+  const quarterly = buildStatementRows(fillMissingPeriods(quarters), fyEnd, opts);
+  const fund = await fundamentalsFor(asset).catch(() => null);
+  const f = fund ? piotroski([...fund.years].sort((a, b) => a.fiscalYearEnd.localeCompare(b.fiscalYearEnd))) : null;
+  return { f: fundamentalsFromRows(annual, quarterly, raw.currency || asset.currency, f), price };
+}
+
+async function loadScreenerFromStore(): Promise<void> {
+  if (screenerScan.loaded) return;
+  screenerScan.loaded = true;
+  try {
+    const saved = await store.get<Record<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>>(SCREENER_STORE_KEY);
+    for (const [sym, v] of Object.entries(saved ?? {})) if (v && typeof v.fetchedAt === 'number') screenerFund.set(sym, v);
+  } catch (err) {
+    console.warn('[Screener] could not load saved data:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** Two stocks at a time with a pause; stocks fetched in the last 24 h are skipped; stops without viewers. */
+function runScreenerScan(): Promise<void> {
+  if (screenerScan.running) return screenerScan.running;
+  screenerScan.done = 0;
+  screenerScan.startedAt = Date.now();
+  screenerScan.running = (async () => {
+    // A fresh price sweep first, so P/E and P/B use today's prices
+    if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+    await mapLimit(IDX_ALL, 2, async (a) => {
+      const prev = screenerFund.get(a.symbol);
+      if (prev && Date.now() - prev.fetchedAt < SCREENER_TTL_MS) {
+        screenerScan.done += 1;
+        return;
+      }
+      if (Date.now() - screenerScan.lastDemandAt > 60 * 60_000) return; // nobody is looking any more
+      try {
+        const { f, price } = await screenerFundamentalsFor(a);
+        // Nothing found may also be a failed request: try again after 2 hours instead of 24
+        screenerFund.set(a.symbol, { f, price, fetchedAt: f ? Date.now() : Date.now() - SCREENER_TTL_MS + 2 * 3600_000 });
+      } catch {
+        // Left for the next scan
+      }
+      screenerScan.done += 1;
+      // Save progress now and then so a restart does not start over
+      if (screenerScan.done % 50 === 0) await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+    screenerScan.finishedAt = Date.now();
+  })().finally(() => {
+    screenerScan.running = null;
+  });
+  return screenerScan.running;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  if (now - screenerScan.lastDemandAt > 60 * 60_000 || screenerScan.running) return;
+  const stale = IDX_ALL.some((a) => now - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS);
+  if (stale) runScreenerScan().catch(() => {});
+}, 5 * 60_000);
+
 // ---- Indonesia macro (Bank Indonesia pages, FRED, World Bank) -----------------------------
 
 const MACRO_TTL_MS = 6 * 3600_000;
@@ -3314,9 +3508,585 @@ DATA: ${JSON.stringify(facts)}`;
   }
 }
 
+// ---- Durable storage, owner login and the daily server jobs -------------------------------------
+
+const store = createStore();
+const ownerAuth = createOwnerAuth();
+const FORWARD_PREFIX = 'forward:';
+const FORWARD_TIME = '16:15'; // WIB, after the IDX close
+
+/** Last run date (WIB) of each daily job; persisted so a restart does not repeat a job. */
+const jobs = {
+  state: { forward: null as string | null, brief: null as string | null } as Record<string, string | null>,
+  loaded: false,
+  running: new Map<string, Promise<unknown>>(),
+  retryAfter: new Map<string, number>(),
+};
+
+async function loadJobState(): Promise<void> {
+  if (jobs.loaded) return;
+  try {
+    const saved = await store.get<Record<string, string | null>>('jobs:state');
+    if (saved) Object.assign(jobs.state, saved);
+    jobs.loaded = true;
+  } catch (err) {
+    console.warn('[Jobs] state load failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+async function markJobDone(name: string, date: string): Promise<void> {
+  jobs.state[name] = date;
+  await store.set('jobs:state', jobs.state).catch((err) => console.warn('[Jobs] state save failed:', err instanceof Error ? err.message : err));
+}
+
+/** Runs a job once at a time; failures wait 30 minutes before the next automatic attempt. */
+function runJob<T>(name: string, job: () => Promise<T>): Promise<T> {
+  const running = jobs.running.get(name) as Promise<T> | undefined;
+  if (running) return running;
+  const p = job()
+    .catch((err) => {
+      jobs.retryAfter.set(name, Date.now() + 30 * 60_000);
+      console.warn(`[Jobs] ${name} failed:`, err instanceof Error ? err.message : err);
+      throw err;
+    })
+    .finally(() => jobs.running.delete(name));
+  jobs.running.set(name, p);
+  return p;
+}
+
+async function loadForwardMonths(): Promise<Array<{ key: string; log: ForwardLog }>> {
+  const keys = await store.keys(FORWARD_PREFIX);
+  const out: Array<{ key: string; log: ForwardLog }> = [];
+  for (const key of keys) out.push({ key, log: parseForwardLog(await store.get(key)) ?? emptyLog() });
+  return out;
+}
+
+/**
+ * Server forward test: today's AI verdicts for both horizons and all three risk profiles
+ * (stored per month), then scores every snapshot whose horizon has passed with real daily closes.
+ */
+async function runServerForwardTest(): Promise<{ date: string; saved: number; scored: number }> {
+  const date = wibDate(Date.now());
+  const key = `${FORWARD_PREFIX}${date.slice(0, 7)}`;
+  let log = parseForwardLog(await store.get(key)) ?? emptyLog();
+  const before = log.snapshots.length;
+  for (const horizon of AI_HORIZONS) {
+    const payload = await getAiOutlook(horizon);
+    if (payload.assets.length === 0) throw new Error('AI outlook unavailable (no market data)');
+    for (const profile of Object.keys(RISK_PROFILES) as RiskProfile[]) {
+      const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
+      log = recordSnapshots(
+        log,
+        date,
+        horizon,
+        profile,
+        ranked.map((o) => {
+          const asset = getAssetBySymbol(o.symbol);
+          return { symbol: o.symbol, verdict: o.verdict, chance: o.adjustedProbability, price: asset ? livePriceFor(asset)?.price : undefined };
+        })
+      );
+    }
+  }
+  const saved = log.snapshots.length - before;
+  if (saved > 0) await store.set(key, log);
+  // Score due snapshots (the last 6 months cover the 60-day horizon with room to spare)
+  let scored = 0;
+  const months = (await loadForwardMonths()).slice(-6);
+  const history = new Map<string, DailyClose[]>();
+  for (const m of months) {
+    const pending = pendingSymbols(m.log, date);
+    if (pending.length === 0) continue;
+    for (const sym of pending) {
+      if (history.has(sym)) continue;
+      const asset = getAssetBySymbol(sym);
+      history.set(sym, asset ? await dailyHistoryFor(asset).catch(() => []) : []);
+    }
+    const next = evaluateSnapshots(m.log, history);
+    if (next !== m.log) {
+      scored += next.snapshots.filter((s) => s.outcome).length - m.log.snapshots.filter((s) => s.outcome).length;
+      await store.set(m.key, next);
+    }
+  }
+  forwardTrackCache.clear();
+  await markJobDone('forward', date);
+  console.log(`[Forward] ${date}: ${saved} verdicts saved, ${scored} results scored`);
+  return { date, saved, scored };
+}
+
+const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
+
+// ---- Morning brief (±07:30 WIB; optional Telegram and web push) ----------------------------------
+
+const BRIEF_PREFIX = 'brief:';
+const briefMemo = new Map<string, MorningBrief>();
+
+function telegramConfigured(): boolean {
+  return Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
+}
+
+/** Sends a plain-text message to the owner's Telegram chat (the token is never logged). */
+async function sendTelegram(text: string): Promise<boolean> {
+  if (!telegramConfigured()) return false;
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN?.trim()}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID?.trim(), text, disable_web_page_preview: true }),
+      },
+      10_000
+    );
+    if (!res.ok) console.warn(`[Telegram] send failed (HTTP ${res.status})`);
+    return res.ok;
+  } catch {
+    console.warn('[Telegram] send failed (network)');
+    return false;
+  }
+}
+
+function briefQuote(asset: Asset | undefined, tick: PriceTick | undefined): BriefQuote | null {
+  if (!asset || !tick || tick.status === 'error' || !Number.isFinite(tick.price)) return null;
+  return {
+    code: asset.code,
+    name: asset.shortName,
+    group: asset.group,
+    price: tick.price,
+    changePct: typeof tick.changePct24h === 'number' && Number.isFinite(tick.changePct24h) ? tick.changePct24h : null,
+    display: formatAssetPrice(tick.price, asset),
+  };
+}
+
+/** Builds the brief for a WIB date from the caches (prices, calendar, macro, news, forward test). */
+async function generateBrief(date: string): Promise<MorningBrief> {
+  const now = Date.now();
+  const [yahoo, indodax] = await Promise.all([getYahooTicks().catch(() => ({}) as Record<string, PriceTick>), getIndodaxPrices().catch(() => ({}) as Record<string, PriceTick>)]);
+  const ticks: Record<string, PriceTick> = { ...yahoo, ...indodax };
+  try {
+    const usd = ticks['USD/IDR']?.price;
+    ticks['XAU/USD'] = await getGoldTick(Number.isFinite(usd) ? usd : 0);
+  } catch {
+    // Gold left out
+  }
+  const q = (code: string) => {
+    const asset = ASSETS.find((a) => a.code === code);
+    return asset ? briefQuote(asset, ticks[asset.symbol]) : null;
+  };
+  const list = (codes: string[]) => codes.map(q).filter((x): x is BriefQuote => x !== null);
+
+  // Watchlist + portfolio from synced data come first in the calendar
+  let priority: string[] = [];
+  if (syncStorageReady(store)) {
+    const data = await loadSyncData(store);
+    priority = [...new Set([...liveValues<boolean>(data, 'watchlist').map((x) => x.id), ...liveValues<{ symbol?: string }>(data, 'portfolio').map((x) => x.value.symbol ?? '')])].filter(Boolean);
+  }
+  for (const sym of priority.slice(0, 30)) {
+    const a = getAssetBySymbol(sym);
+    if (a?.yahooSymbol && STOCK_GROUPS.includes(a.group)) await getCalendarFor(a).catch(() => []);
+  }
+  const events: CalendarEvent[] = [];
+  for (const [sym, entry] of calendarCache) {
+    for (const e of entry.data) if (e.date === date && e.type !== 'dividend' && e.symbol === sym) events.push(e);
+  }
+
+  const macro: Array<{ label: string; value: string; date: string }> = [];
+  try {
+    const m = await Promise.race([getIndonesiaMacro(), new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
+    if (m) {
+      const bi = m.biRate[0];
+      if (bi) macro.push({ label: 'BI-Rate', value: `${bi.value.toFixed(2)}%`, date: bi.date });
+      for (const sr of m.series.slice(0, 5)) {
+        const lastPoint = sr.points[sr.points.length - 1];
+        if (lastPoint) macro.push({ label: sr.label, value: `${Number(lastPoint.value.toFixed(2)).toLocaleString('en-US')}${sr.unit === '%' ? '%' : ` ${sr.unit}`}`, date: lastPoint.date });
+      }
+    }
+  } catch {
+    // Macro left out
+  }
+
+  await ensureNewsFresh().catch(() => {});
+  let forward: { saved: number; evaluated: number; lastRunDate: string | null } | null = null;
+  try {
+    const snaps = (await loadForwardMonths()).flatMap((m) => m.log.snapshots);
+    forward = { saved: snaps.length, evaluated: snaps.filter((x) => x.outcome).length, lastRunDate: jobs.state.forward ?? null };
+  } catch {
+    forward = null;
+  }
+
+  const brief = buildBrief({
+    date,
+    generatedAt: now,
+    wallStreet: list(['SPX', 'NDX', 'DJI']),
+    asia: list(['N225', 'HSI', 'KOSPI', 'SSE', 'STI']),
+    ihsg: q('JCI'),
+    movers: ASSETS.filter((a) => a.group !== 'index' && a.group !== 'forex').map((a) => briefQuote(a, ticks[a.symbol])).filter((x): x is BriefQuote => x !== null),
+    rates: list(['USD', 'EUR', 'SGD', 'JPY', 'CNY']),
+    gold: q('GOLD'),
+    events,
+    priority,
+    codeOf: (sym) => getAssetBySymbol(sym)?.code.replace(/\.JK$/, '') ?? sym,
+    macro,
+    news: newsHub.items,
+    forward,
+  });
+
+  // Optional: Gemini rewrites the overview in plain English from the same facts
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && brief.sections.length > 1) {
+    try {
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      const facts = brief.sections.filter((x) => x.id !== 'overview').map((x) => `${x.title}: ${x.lines.join('; ')}`).join('\n');
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: `Write 3-4 plain-English sentences summarizing this morning's market mood for an Indonesian investor, using ONLY these facts. No predictions, no buy/sell advice.\n${facts}`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+        }),
+        new Promise<null>((r) => setTimeout(() => r(null), 12_000)),
+      ]);
+      const text = response?.text?.trim();
+      if (text) {
+        brief.sections[0] = { ...brief.sections[0], lines: [text] };
+        brief.aiPolished = true;
+      }
+    } catch (err) {
+      console.warn('[Brief] Gemini failed:', err instanceof Error ? err.message : err);
+    }
+  }
+  return brief;
+}
+
+async function storedBrief(date: string): Promise<MorningBrief | null> {
+  const memo = briefMemo.get(date);
+  if (memo) return memo;
+  const saved = await store.get<MorningBrief>(`${BRIEF_PREFIX}${date}`).catch(() => null);
+  if (saved) briefMemo.set(date, saved);
+  return saved;
+}
+
+/** Today's brief: generate, store, and send to Telegram / web push when configured. */
+async function runMorningBrief(): Promise<{ date: string; telegram: boolean; push: number }> {
+  const { date } = briefDateFor(Date.now());
+  const brief = await generateBrief(date);
+  // Without any market data the brief is not worth sending; try again later
+  if (!brief.sections.some((x) => x.id === 'global' || x.id === 'ihsg')) throw new Error('Market data unavailable for the brief');
+  briefMemo.set(date, brief);
+  await store.set(`${BRIEF_PREFIX}${date}`, brief).catch((err) => console.warn('[Brief] save failed:', err instanceof Error ? err.message : err));
+  const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
+  let push = 0;
+  if (vapidConfigured() && syncStorageReady(store)) {
+    const overview = brief.sections[0]?.lines[0] ?? '';
+    push = (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: overview.slice(0, 180), url: '#/brief', tag: `brief-${date}` }).catch(() => ({ sent: 0 }))).sent;
+  }
+  await markJobDone('brief', date);
+  console.log(`[Brief] ${date} ready (telegram: ${telegram ? 'sent' : 'off'}, push: ${push})`);
+  return { date, telegram, push };
+}
+
+/** Runs the daily jobs that are due (called on API requests and by POST /api/cron/daily). */
+async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, unknown>> {
+  await loadJobState();
+  const now = Date.now();
+  const results: Record<string, unknown> = {};
+  const allowed = (name: string) => trigger === 'cron' || (jobs.retryAfter.get(name) ?? 0) <= now;
+  if (dailyJobDue(now, jobs.state.forward ?? null, FORWARD_TIME, true) && allowed('forward')) {
+    const job = runJob('forward', runServerForwardTest);
+    results.forward = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') job.catch(() => {});
+  } else {
+    results.forward = { skipped: jobs.state.forward === wibDate(now) ? 'already ran today' : `not due (weekdays after ${FORWARD_TIME} WIB)` };
+  }
+  if (dailyJobDue(now, jobs.state.brief ?? null, BRIEF_TIME) && allowed('brief')) {
+    const job = runJob('brief', runMorningBrief);
+    results.brief = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') job.catch(() => {});
+  } else {
+    results.brief = { skipped: jobs.state.brief === wibDate(now) ? 'already ran today' : `not due (after ${BRIEF_TIME} WIB)` };
+  }
+  return results;
+}
+
+let lastDueCheck = 0;
+/** Cheap check on API traffic: the first request after the scheduled time starts the job. */
+function checkDueJobsSoon(): void {
+  const now = Date.now();
+  if (now - lastDueCheck < 60_000) return;
+  lastDueCheck = now;
+  runDueJobs('request').catch(() => {});
+}
+
+// ---- Server-side alerts (web push; needs a database, VAPID keys and the owner login) ------------
+
+const serverAlerts = {
+  active: false,
+  alerts: [] as UserAlert[],
+  settings: parseAlertSettings(null) as AlertSettings,
+  holdings: [] as string[],
+  states: {} as Record<string, AlertState>,
+  statesLoaded: false,
+  statesDirty: false,
+  history: [] as AlertHistoryEntry[],
+  sentAt: [] as number[],
+  lastCheckAt: 0,
+  lastSavedAt: 0,
+};
+
+function serverAlertsReady(): boolean {
+  return vapidConfigured() && ownerAuth.configured && syncStorageReady(store);
+}
+
+/** Reloads the synced alert definitions every minute (alerts are edited on the devices). */
+async function refreshServerAlerts(): Promise<void> {
+  if (!serverAlertsReady()) {
+    serverAlerts.active = false;
+    priceStream.focus.delete('server-alerts');
+    return;
+  }
+  try {
+    const [data, subs] = await Promise.all([loadSyncData(store), loadSubscriptions(store)]);
+    serverAlerts.alerts = parseAlerts(liveValues<UserAlert>(data, 'alerts').map((x) => x.value));
+    serverAlerts.settings = parseAlertSettings(data.settings?.alertSettings?.v ?? null);
+    serverAlerts.holdings = [
+      ...new Set([
+        ...liveValues<boolean>(data, 'watchlist').map((x) => x.id),
+        ...liveValues<{ symbol?: string }>(data, 'portfolio').map((x) => x.value.symbol ?? ''),
+      ]),
+    ].filter((sym) => STOCK_GROUPS.includes(getAssetBySymbol(sym)?.group as AssetGroup));
+    if (!serverAlerts.statesLoaded) {
+      serverAlerts.states = (await store.get<Record<string, AlertState>>('alerts:state')) ?? {};
+      serverAlerts.history = (await store.get<AlertHistoryEntry[]>('alerts:history')) ?? [];
+      serverAlerts.statesLoaded = true;
+    }
+    const enabled = serverAlerts.alerts.filter((a) => a.active);
+    serverAlerts.active = subs.length > 0 && (enabled.length > 0 || serverAlerts.settings.holdingsCalendar);
+    const symbols = [...new Set(enabled.map((a) => a.symbol).filter((x): x is string => Boolean(x)))];
+    if (serverAlerts.active && symbols.length) priceStream.focus.set('server-alerts', { symbols, at: Date.now() });
+    else priceStream.focus.delete('server-alerts');
+    // News and geopolitical alerts need the news hub running
+    if (serverAlerts.active && enabled.some((a) => a.kind === 'news' || a.kind === 'geo')) {
+      newsHub.lastDemandAt = Date.now();
+      ensureNewsFresh().catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[Alerts] refresh failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+setInterval(() => refreshServerAlerts().catch(() => {}), 60_000);
+setTimeout(() => refreshServerAlerts().catch(() => {}), 5_000);
+
+const calendarCheckedAt = new Map<string, number>();
+/** Corporate events for alert symbols, fetched at most once per hour per stock (12 h cache behind it). */
+async function alertCalendar(symbols: string[]): Promise<CalendarEvent[]> {
+  const out: CalendarEvent[] = [];
+  for (const sym of symbols.slice(0, 60)) {
+    const asset = getAssetBySymbol(sym);
+    if (!asset?.yahooSymbol || !STOCK_GROUPS.includes(asset.group)) continue;
+    const cached = calendarCache.get(sym)?.data;
+    if (cached && Date.now() - (calendarCheckedAt.get(sym) ?? 0) < 3600_000) {
+      out.push(...cached);
+      continue;
+    }
+    calendarCheckedAt.set(sym, Date.now());
+    out.push(...(await getCalendarFor(asset).catch(() => cached ?? [])));
+  }
+  return out;
+}
+
+async function deliverServerAlert(alert: UserAlert, fire: { title: string; body: string; url?: string }, now: number): Promise<void> {
+  const quiet = inQuietHours(now, serverAlerts.settings.quiet);
+  let delivery: AlertHistoryEntry['delivery'] = 'silenced';
+  if (!quiet) {
+    const t = throttle(serverAlerts.sentAt, now);
+    serverAlerts.sentAt = t.sentAt;
+    if (!t.allowed) delivery = 'throttled';
+    else {
+      const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
+      const r = await sendPushToAll(store, { title: fire.title, body: fire.body, url: fire.url ?? (asset ? `#/asset/${asset.id}` : '#/alerts'), tag: alert.id });
+      delivery = r.sent > 0 ? 'push' : 'failed';
+    }
+  }
+  serverAlerts.history = addHistory(serverAlerts.history, {
+    id: `${alert.id}-${now}`,
+    alertId: alert.id,
+    symbol: alert.symbol,
+    title: fire.title,
+    body: fire.body,
+    at: now,
+    delivery,
+  });
+  await store.set('alerts:history', serverAlerts.history).catch(() => {});
+  // One-time alerts switch off for every device (stamped like an edit, so it syncs back)
+  if (!alert.repeat && alert.id !== HOLDINGS_CALENDAR_ID) {
+    await updateSyncData(store, (data, t) => {
+      const item = data.alerts?.[alert.id];
+      if (!item || item.v === null) return null;
+      data.alerts = { ...data.alerts, [alert.id]: { v: afterFire(item.v as UserAlert), t, s: t } };
+      return data;
+    }).catch((err) => console.warn('[Alerts] could not switch off a one-time alert:', err instanceof Error ? err.message : err));
+    serverAlerts.alerts = serverAlerts.alerts.map((a) => (a.id === alert.id ? afterFire(a) : a));
+  }
+}
+
+/** Runs every price-loop round (at most every 15 s without viewers) against the loop's own prices. */
+async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void> {
+  const now = Date.now();
+  serverAlerts.lastCheckAt = now;
+  const list: UserAlert[] = serverAlerts.alerts.filter((a) => a.active);
+  if (serverAlerts.settings.holdingsCalendar && serverAlerts.holdings.length) {
+    list.push({ id: HOLDINGS_CALENDAR_ID, kind: 'calendar', repeat: true, cooldownMin: 60, active: true, createdAt: 0 });
+  }
+  const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
+  const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
+  for (const alert of list) {
+    const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
+    const tick = alert.symbol ? ticks[alert.symbol] : undefined;
+    const usable = tick && tick.status !== 'error' && Number.isFinite(tick.price);
+    const { fire, state } = evaluateAlert(alert, serverAlerts.states[alert.id] ?? {}, {
+      now,
+      price: usable ? tick.price : undefined,
+      changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
+      events: alert.symbol ? events.filter((e) => e.symbol === alert.symbol) : events,
+      news: newsHub.items,
+      code: asset?.code,
+      name: alert.id === HOLDINGS_CALENDAR_ID ? 'Your stocks' : asset ? `${asset.shortName}` : undefined,
+      formatPrice: asset ? (v) => formatAssetPrice(v, asset) : undefined,
+    });
+    if (JSON.stringify(state) !== JSON.stringify(serverAlerts.states[alert.id] ?? {})) {
+      serverAlerts.states[alert.id] = state;
+      serverAlerts.statesDirty = true;
+    }
+    if (fire) await deliverServerAlert(alert, fire, now);
+  }
+  if (serverAlerts.statesDirty && now - serverAlerts.lastSavedAt > 30_000) {
+    serverAlerts.statesDirty = false;
+    serverAlerts.lastSavedAt = now;
+    await store.set('alerts:state', serverAlerts.states).catch(() => {});
+  }
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  // Small JSON bodies everywhere; the sync endpoint parses its own (larger) body after the login check
+  const smallJson = express.json();
+  app.use((req, res, next) => (req.path === '/api/sync/merge' ? next() : smallJson(req, res, next)));
+  app.use('/api', (_req, _res, next) => {
+    checkDueJobsSoon();
+    next();
+  });
+
+  registerSyncRoutes(app, store, ownerAuth);
+  registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
+
+  // Alerts the server checked and sent (owner only)
+  app.get('/api/alerts/history', ownerAuth.requireOwner, async (_req, res) => {
+    if (!serverAlerts.statesLoaded) await refreshServerAlerts();
+    res.json({ history: serverAlerts.history, active: serverAlerts.active, ready: serverAlertsReady() });
+  });
+
+  // Daily jobs for an external scheduler (Cloud Scheduler, cron-job.org): Authorization: Bearer CRON_TOKEN
+  app.post('/api/cron/daily', async (req, res) => {
+    const expected = process.env.CRON_TOKEN?.trim();
+    if (!expected) {
+      res.status(503).json({ error: 'CRON_TOKEN is not configured; daily jobs run on the first request after their time instead' });
+      return;
+    }
+    if (!passphraseMatches(bearerToken(req.headers.authorization) ?? '', expected)) {
+      res.status(401).json({ error: 'Invalid cron token' });
+      return;
+    }
+    try {
+      res.json({ ok: true, ranAt: Date.now(), results: await runDueJobs('cron') });
+    } catch (err) {
+      res.status(502).json({ ok: false, error: err instanceof Error ? err.message : 'Job failed' });
+    }
+  });
+
+  // Morning brief: today's from 07:30 WIB (made on the first request if the scheduler has not run),
+  // before that yesterday's; ?date=YYYY-MM-DD for a stored one
+  app.get('/api/brief', async (req, res) => {
+    try {
+      await loadJobState();
+      const asked = String(req.query.date || '');
+      if (asked) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(asked)) {
+          res.status(400).json({ error: 'Invalid date' });
+          return;
+        }
+        const b = await storedBrief(asked);
+        if (!b) {
+          res.status(404).json({ error: 'No brief saved for that date' });
+          return;
+        }
+        res.json({ brief: b, preview: false });
+        return;
+      }
+      const { date, ready } = briefDateFor(Date.now());
+      let brief = await storedBrief(date);
+      if (!brief && ready) {
+        await runJob('brief', runMorningBrief).catch(() => {});
+        brief = await storedBrief(date);
+      }
+      if (brief) {
+        res.json({ brief, preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+        return;
+      }
+      // Nothing saved yet (e.g. before 07:30 after a restart): a live preview, not stored
+      res.json({ brief: await generateBrief(date), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+    } catch (err) {
+      console.warn('[Brief] failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Brief unavailable' });
+    }
+  });
+
+  app.get('/api/brief/dates', async (_req, res) => {
+    const keys = await store.keys(BRIEF_PREFIX).catch(() => [] as string[]);
+    res.json({ dates: keys.map((k) => k.slice(BRIEF_PREFIX.length)).sort().reverse().slice(0, 60) });
+  });
+
+  // Owner: send the current brief to Telegram / push now (to test the setup)
+  app.post('/api/brief/send-test', ownerAuth.requireOwner, async (_req, res) => {
+    if (!telegramConfigured() && !vapidConfigured()) {
+      res.status(503).json({ error: 'Neither Telegram nor web push is configured on the server' });
+      return;
+    }
+    const { date } = briefDateFor(Date.now());
+    const brief = (await storedBrief(date)) ?? (await generateBrief(date));
+    const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
+    const push = vapidConfigured() ? (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: (brief.sections[0]?.lines[0] ?? '').slice(0, 180), url: '#/brief', tag: 'brief-test' })).sent : 0;
+    res.json({ telegram, push });
+  });
+
+  // Server forward test: track record of the daily AI verdict snapshots
+  app.get('/api/ai/forward-track', async (req, res) => {
+    const horizon = Number(req.query.horizon) === 60 ? 60 : 20;
+    const profileParam = String(req.query.profile || 'moderate');
+    const profile: RiskProfile = profileParam in RISK_PROFILES ? (profileParam as RiskProfile) : 'moderate';
+    const cacheKey = `${horizon}|${profile}`;
+    try {
+      await loadJobState();
+      const cached = forwardTrackCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        res.json(cached.data);
+        return;
+      }
+      const months = await loadForwardMonths();
+      const all: ForwardLog = { version: 1, startedAt: null, snapshots: months.flatMap((m) => m.log.snapshots) };
+      const data = {
+        record: trackRecord(all, horizon, profile),
+        lastRunDate: jobs.state.forward ?? null,
+        scheduleWib: `${FORWARD_TIME} on weekdays`,
+        persistent: store.persistent,
+        database: store.provider,
+        cronConfigured: Boolean(process.env.CRON_TOKEN?.trim()),
+      };
+      forwardTrackCache.set(cacheKey, { data, expiresAt: Date.now() + 10 * 60_000 });
+      res.json(data);
+    } catch (err) {
+      console.warn('[Forward] track failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Forward-test record unavailable' });
+    }
+  });
 
   // Headline translation (Gemini, only with GEMINI_API_KEY; cached 24 h). Without a key: 503 and
   // the browser opens Google Translate instead.
@@ -3607,6 +4377,53 @@ async function startServer() {
     }
   });
 
+  // 5g2. IDX screener: prices from the sweep + ratios from the slow statements scan
+  app.get('/api/screener/idx', async (_req, res) => {
+    screenerScan.lastDemandAt = Date.now();
+    idxSweep.lastDemandAt = Date.now();
+    try {
+      await loadScreenerFromStore();
+      if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) runIdxSweep().catch(() => {});
+      if (!screenerScan.running && IDX_ALL.some((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS)) {
+        runScreenerScan().catch(() => {});
+      }
+      const rows: ScreenerRow[] = IDX_ALL.map((a) => {
+        const t = idxSweep.ticks.get(a.symbol);
+        const price = t && Number.isFinite(t.price) ? t.price : null;
+        const fund = screenerFund.get(a.symbol);
+        return {
+          symbol: a.symbol,
+          code: a.code.replace(/\.JK$/, ''),
+          name: a.name,
+          sector: a.sector ?? 'Other',
+          board: a.board ?? 'Other',
+          price,
+          chg1d: t?.changePct24h ?? null,
+          chg1w: t?.changePct7d ?? null,
+          valueTraded: t?.valueTraded ?? null,
+          marketCap: price !== null && a.supply ? price * a.supply : null,
+          f: fund ? (fund.f ? rescaleForPrice(fund.f, fund.price, price) : null) : undefined,
+          fetchedAt: fund?.fetchedAt ?? null,
+        };
+      });
+      res.json({
+        rows,
+        scan: {
+          scanned: IDX_ALL.filter((a) => screenerFund.has(a.symbol)).length,
+          withData: IDX_ALL.filter((a) => screenerFund.get(a.symbol)?.f).length,
+          total: IDX_ALL.length,
+          scanning: Boolean(screenerScan.running),
+          finishedAt: screenerScan.finishedAt || null,
+        },
+        pricesAt: idxSweep.lastRunAt || null,
+        source: 'Yahoo Finance (prices, financial statements)',
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Screener data unavailable' });
+    }
+  });
+
   // 5g. Corporate calendar: one stock (?symbol=) or every IDX stock in a date window
   app.get('/api/idx/calendar', async (req, res) => {
     const symbol = String(req.query.symbol || '');
@@ -3679,6 +4496,31 @@ async function startServer() {
       res.status(502).json({
         error: err instanceof Error ? err.message : 'Failed to load chart data',
       });
+    }
+  });
+
+  // 6b. ~5 years of daily OHLC (Compare, Backtest, portfolio performance)
+  app.get('/api/market/daily', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {
+      res.status(400).json({ error: 'Unsupported symbol' });
+      return;
+    }
+    try {
+      const bars = await dailyOhlcFor(asset);
+      if (bars.length === 0) {
+        res.status(502).json({ error: 'History unavailable' });
+        return;
+      }
+      res.json({
+        symbol: asset.symbol,
+        currency: asset.currency,
+        source: asset.indodaxPair ? 'Indodax' : asset.symbol === 'XAU/USD' ? 'Yahoo Finance (gold futures GC=F)' : 'Yahoo Finance',
+        bars,
+      });
+    } catch (err) {
+      console.warn(`[Daily] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'History unavailable' });
     }
   });
 

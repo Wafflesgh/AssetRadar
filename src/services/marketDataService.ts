@@ -809,3 +809,70 @@ export async function fetchIndonesiaMacro(): Promise<IndonesiaMacro> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
+export interface ScreenerResponse {
+  rows: import('../utils/screener.ts').ScreenerRow[];
+  scan: { scanned: number; withData: number; total: number; scanning: boolean; finishedAt: number | null };
+  pricesAt: number | null;
+  source: string;
+}
+
+/** Every IDX stock with prices and statement ratios (the server scans statements slowly, 24 h cache). */
+export async function fetchScreener(): Promise<ScreenerResponse> {
+  const res = await fetch('/api/screener/idx');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export interface DailyBarOhlc {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+export interface DailyHistory {
+  symbol: string;
+  currency: string;
+  source: string;
+  bars: DailyBarOhlc[];
+}
+
+const dailyMemo = new Map<string, { at: number; data: Promise<DailyHistory> }>();
+
+/** About 5 years of daily OHLC bars (cached in this tab for 30 min). */
+export function fetchDailyHistory(symbol: string): Promise<DailyHistory> {
+  const memo = dailyMemo.get(symbol);
+  if (memo && Date.now() - memo.at < 30 * 60_000) return memo.data;
+  const data = fetch(`/api/market/daily?symbol=${encodeURIComponent(symbol)}`).then(async (res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as DailyHistory;
+  });
+  data.catch(() => dailyMemo.delete(symbol));
+  dailyMemo.set(symbol, { at: Date.now(), data });
+  return data;
+}
+
+export interface BriefResponse {
+  brief: import('../utils/morningBrief.ts').MorningBrief;
+  /** Generated on the fly (nothing saved for that date yet). */
+  preview: boolean;
+  nextAt?: string;
+  telegram?: boolean;
+  persistent?: boolean;
+}
+
+/** Today's morning brief (from 07:30 WIB; before that yesterday's), or a saved one by date. */
+export async function fetchMorningBrief(date?: string): Promise<BriefResponse> {
+  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}` : '/api/brief');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function fetchBriefDates(): Promise<string[]> {
+  const res = await fetch('/api/brief/dates');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).dates ?? [];
+}

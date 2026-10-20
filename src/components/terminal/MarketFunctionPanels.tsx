@@ -2,12 +2,12 @@
  * MarketFunctionPanels.tsx — Terminal market functions: MOV (biggest movers over the live
  * 5-minute window, 1H, 24H and 7D), WEI (world equity indices with session status and local
  * time), FXC (currency cross-rate matrix built from the Rupiah pairs), CURV (US Treasury
- * yield curve with the 10Y–3M spread) and IDMACRO (Indonesia macro snapshot).
+ * yield curve with the 10Y–3M spread), IDMACRO (Indonesia macro snapshot) and BRIEF (morning brief).
  */
 import { t as tr, tOr, type TranslationKey } from '../../i18n/index.ts';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
-import { fetchIndonesiaMacro, fetchYieldCurve, type IndonesiaMacro, type YieldCurve } from '../../services/marketDataService.ts';
+import { fetchIndonesiaMacro, fetchMorningBrief, fetchYieldCurve, type BriefResponse, type IndonesiaMacro, type YieldCurve } from '../../services/marketDataService.ts';
 import { latest } from '../../utils/macro.ts';
 import { EXCHANGE_HOURS, isExchangeOpen } from '../../utils/marketHours.ts';
 import { MOVER_WINDOWS, MoverWindow, changeForWindow, liveHistory, rankMovers } from '../../utils/movers.ts';
@@ -365,6 +365,50 @@ export function IdMacroPanel({ highlighted, className }: { highlighted?: boolean
               })}
           </tbody>
         </table>
+      )}
+    </TerminalPanel>
+  );
+}
+
+// ---- BRIEF ----------------------------------------------------------------------------------
+
+export function BriefPanel({ highlighted, className }: { highlighted?: boolean; className?: string }) {
+  const [data, setData] = useState<BriefResponse | null>(null);
+  const [error, setError] = useState(false);
+  const load = () =>
+    fetchMorningBrief()
+      .then((d) => {
+        setData(d);
+        setError(false);
+      })
+      .catch(() => setError(true));
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30 * 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <TerminalPanel id="panel-brief" className={className} title="Morning Brief" subtitle={`BRIEF · ${data?.brief.date ?? ''}${data?.preview ? ' · preview' : ''}`} highlighted={highlighted}>
+      {error && !data ? (
+        <PanelMessage kind="error" onRetry={load} />
+      ) : !data ? (
+        <PanelMessage kind="loading" />
+      ) : (
+        <div className="px-2 py-1.5 space-y-1.5 text-[11px]">
+          {data.brief.sections
+            .filter((s) => s.id !== 'forward')
+            .map((s) => (
+              <div key={s.id}>
+                <div className="font-bold" style={{ color: 'var(--t-amber)' }}>{s.title.toUpperCase()}</div>
+                {s.lines.slice(0, 6).map((l, i) => (
+                  <div key={i} style={{ color: 'var(--t-text)' }}>
+                    {l}
+                  </div>
+                ))}
+              </div>
+            ))}
+          <div style={{ color: 'var(--t-muted)' }}>{data.brief.disclaimer}</div>
+        </div>
       )}
     </TerminalPanel>
   );
