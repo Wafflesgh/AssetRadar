@@ -74,6 +74,7 @@ import { newsByHorizon, HORIZONS, type Horizon } from './src/sentiment/newsHoriz
 import { derivativesScore, scoreHorizon, shortTechnical, trendScore, tsMomentumScore, type HorizonScore } from './src/sentiment/horizons.ts';
 import { nextCatalyst, type Catalyst } from './src/sentiment/cadence.ts';
 import { isMacroLinked, macroSignal } from './src/sentiment/macroSignal.ts';
+import { validateMarket, validatePanel, type MarketValidation } from './src/sentiment/validation.ts';
 import { annualVol, atr as atrOf, likelyRange, patternTargets, supportResistance, upsideDownside, type RangeBand } from './src/sentiment/projections.ts';
 import type { StockInput } from './src/sentiment/factors.ts';
 import {
@@ -2470,7 +2471,9 @@ async function computeSentimentV2(asset: Asset) {
   if (asset.group === 'crypto') noteBinanceDemand();
   const news = newsByHorizon(driverNewsFor(asset), asset.group, asset.symbol, now);
   const lastBar = bars.length ? bars[bars.length - 1].date : null;
-  const horizons = {} as Record<Horizon, HorizonScore & { nextCatalyst: ReturnType<typeof nextCatalyst> }>;
+  const horizons = {} as Record<Horizon, HorizonScore & { cadenceReason: string | null; nextCatalyst: ReturnType<typeof nextCatalyst> }>;
+  const vKey = market ?? (asset.group === 'crypto' ? 'crypto' : null);
+  if (vKey && !validationCache.get(vKey)) runValidation(vKey as 'idx' | 'us' | 'crypto');
   const events = catalystsFor(asset);
   for (const h of HORIZONS) {
     const r = scoreHorizon(h, {
@@ -2495,7 +2498,9 @@ async function computeSentimentV2(asset: Asset) {
         macro: macro?.dataDate ?? null,
       },
     });
-    horizons[h] = { ...r, nextCatalyst: nextCatalyst(events, h, today) };
+    // Cadence from the measured information decay when the back-test has run
+    const vc = (validationCache.get(market ?? '')?.data as MarketValidation | undefined)?.cadence?.[h];
+    horizons[h] = { ...r, cadence: vc?.cadence ?? r.cadence, cadenceReason: vc?.reason ?? null, nextCatalyst: nextCatalyst(events, h, today) };
   }
   const cs = market ? crossSections[market] : null;
   return {
@@ -2619,6 +2624,66 @@ async function getProjections(asset: Asset, fibonacci: boolean) {
   const data = await computeProjections(asset, fibonacci);
   projectionsCache.set(key, { data, expiresAt: Date.now() + 10 * 60_000 });
   return data;
+}
+
+
+// ---- Validation of the sentiment scores (point-in-time back-tests, cache 24 h) -----------------
+
+const validationCache = new Map<string, CacheEntry<unknown>>();
+const validationRunning = new Set<string>();
+/** When a run last found too little data (retry after 10 minutes). */
+const validationNoData = new Map<string, number>();
+
+function storeValidation(market: string, horizons: Partial<Record<Horizon, { meanIC: number | null; significant: boolean } | undefined>>): void {
+  validationStore.set(
+    market,
+    Object.fromEntries(
+      (Object.entries(horizons) as Array<[Horizon, { meanIC: number | null; significant: boolean } | undefined]>).map(([h, e]) => [
+        h,
+        e && e.meanIC !== null ? { ic: e.meanIC, significant: e.significant } : null,
+      ])
+    )
+  );
+}
+
+function runValidation(market: 'idx' | 'us' | 'crypto'): void {
+  if (validationRunning.has(market) || Date.now() - (validationNoData.get(market) ?? 0) < 10 * 60_000) return;
+  validationRunning.add(market);
+  setTimeout(() => {
+    try {
+      let data: unknown = null;
+      if (market === 'crypto') {
+        const series = binanceUniverse()
+          .map((p) => ({ symbol: p.symbol, closes: cachedClosedKlines(p.symbol, '1d').map((k) => k.close) }))
+          .filter((s) => s.closes.length >= 300);
+        const panel =
+          series.length >= 20
+            ? validatePanel(series, (c, h) =>
+                scoreHorizon(h, { group: 'crypto', technicalShort: shortTechnical(c)?.score ?? null, tsMomentum: tsMomentumScore(c, 365), trend: trendScore(c) }).score
+              )
+            : null;
+        if (panel) {
+          storeValidation('crypto', panel);
+          data = { market, generatedAt: Date.now(), pairs: series.length, horizons: panel, scope: ['Binance top-100 USDT pairs, closed daily candles (about 500 days); funding and news have no stored history.'] };
+        }
+      } else {
+        const assets = market === 'idx' ? ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol) : ASSETS.filter((a) => a.group === 'usStock');
+        const inputs = stockInputs(crossSections[market], assets, market);
+        const lastMonth = new Date(new Date().setUTCDate(0)).toISOString().slice(0, 7);
+        const v: MarketValidation | null = inputs.length >= 20 ? validateMarket(inputs, market, lastMonth) : null;
+        if (v) {
+          storeValidation(market, v.horizons);
+          data = { ...v, stocks: inputs.length };
+        }
+      }
+      if (data) validationCache.set(market, { data, expiresAt: Date.now() + 24 * 3600_000 });
+      else validationNoData.set(market, Date.now());
+    } catch (err) {
+      console.warn(`[Validation] ${market} failed:`, err instanceof Error ? err.message : err);
+    } finally {
+      validationRunning.delete(market);
+    }
+  }, 50);
 }
 
 /** Ranking rows of a market for one horizon (stocks from the cross-section; crypto from Binance). */
@@ -3514,6 +3579,23 @@ async function startServer() {
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Projections unavailable' });
     }
+  });
+
+
+  // Evidence: point-in-time back-test of the sentiment scores per market (IC, hit rate, spread)
+  app.get('/api/sentiment/validation', (req, res) => {
+    const market = req.query.market === 'us' ? 'us' : req.query.market === 'crypto' ? 'crypto' : 'idx';
+    if (market === 'crypto') noteBinanceDemand();
+    else crossSections[market].touch();
+    const cached = validationCache.get(market);
+    if (!cached || cached.expiresAt <= Date.now()) runValidation(market);
+    res.json({
+      market,
+      status: cached ? 'ready' : validationNoData.has(market) && !validationRunning.has(market) ? 'waiting-for-data' : 'computing',
+      result: cached?.data ?? null,
+      scans: market === 'crypto' ? binanceStatus() : crossSections[market].status(),
+      disclaimer: SENTIMENT_DISCLAIMER,
+    });
   });
 
   // ---- Binance (public market data only; no API key) ----------------------------------------

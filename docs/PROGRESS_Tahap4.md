@@ -38,7 +38,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 2. Lapisan data (cross-section, fundamental tambahan, estimasi analis, Binance, 50 crypto)
 - [x] 3. Pilar & horizon sentimen
 - [x] 4. Proyeksi teknikal & kalkulator posisi
-- [ ] 5. Validasi & cadence
+- [x] 5. Validasi & cadence
 - [ ] 6. Tampilan
 - [ ] 7. Makro Indonesia diperluas
 - [ ] 8. Penutup
@@ -83,6 +83,14 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 
 - `src/sentiment/projections.ts` (+ test): **kisaran statistik** 68% & 90% dari kuantil empiris return h-hari aset itu sendiri (saham ≥ 2 tahun harian; crypto ≥ 1 tahun; 4 jam crypto ≥ 500 candle karena riwayat 4 jam gratis hanya beberapa bulan — ditulis), diskalakan volatilitas EWMA (λ 0,94) ÷ volatilitas historis (dibatasi 0,5–2,5×); **kalibrasi** point-in-time setiap 5 bar (tiap kisaran masa lalu hanya memakai data sebelumnya; test membuktikan crash setelah tanggal itu tidak mengubah hasil) + peringatan bila meleset > 5 poin dari 68/90. ATR(14) Wilder dan level ±1/±2/±3 ATR. **Support/resistance**: pivot swing, MA20/50/200, high/low 52 minggu, pivot klasik harian & mingguan (P, R1–R3, S1–S3), high-volume node dari profil volume; level berjarak ≤ 0,5 ATR digabung, kekuatan = jumlah sumber + sentuhan. Fibonacci hanya opsi (`?fib=1`, label "low evidence"). **Target pola** (measured move double top/bottom, H&S, segitiga/wedge/kanal) dengan hit rate historis di aset itu bila ≥ 20 kasus, selain itu "too few past cases". Upside/downside ke level terdekat + reward/risk. **Kalkulator posisi** (edukasi): volatility targeting AMP (bobot maks = target vol ÷ vol aset; default target 10%/tahun; vol 3 tahun, crypto EWMA) dan risiko per transaksi (modal × risiko% ÷ (entry − stop), dibulatkan ke lot 100 untuk BEI, tidak melebihi modal). Tidak ada angka entry yang disarankan.
 - `GET /api/projections?symbol=[&fib=1]` (cache 10 mnt): kisaran per horizon (saham 1D/1W/1M/3M; crypto 4h/1D/1W/1M), ATR, level, terdekat, pola, volatilitas & metodenya, ukuran lot, disclaimer. Candle harian terakhir yang belum selesai tidak dipakai untuk level.
+
+## Fase 5 — Validasi & cadence
+
+- `src/sentiment/validation.ts` (+ test): back-test **point-in-time** per pasar — setiap akhir bulan pilar & skor horizon dihitung ulang hanya dari data yang sudah terbit saat itu (jeda laporan, tanpa konsensus analis), lalu dibandingkan dengan return sesudahnya (Short 1 bulan, Medium 3 bulan, Long 12 bulan; harga bulanan). Ukuran per horizon & per pilar: **IC** (Spearman, rata-rata per bulan, t-stat dikoreksi untuk jendela return yang tumpang-tindih), hit rate kuintil teratas vs base rate, persentase bulan kuintil teratas mengalahkan base rate, spread kuintil atas − bawah (juga per tahun), jumlah sampel & periode; **60% awal = validasi, 40% akhir = holdout**. Varian jendela D_Up/D_Down (jurnal t−12…t−7 vs 6 bulan terakhir) hanya dipakai bila IC validasinya lebih baik; holdout dilaporkan.
+- **Cadence otomatis**: IC skor Medium diukur pada jeda 1/2/3/6/12 bulan → half-life (bulan × 21 hari bursa) → Daily (< 5 hari), Weekly (< 30), selain itu Monthly, beserta alasannya ("score information halves in about N trading days"); Short tetap harian (data harian tidak ada di back-test bulanan).
+- Crypto: `validatePanel` untuk 100 pasangan Binance (candle harian tertutup ±500 hari, skor Short/Medium tiap 7 hari vs return 7/30 hari).
+- `GET /api/sentiment/validation?market=idx|us|crypto` (dihitung di latar belakang saat data pemindaian cukup, cache 24 jam; status `computing` / `waiting-for-data` / `ready`). Hasil IC dipakai untuk **confidence** di `/api/sentiment/v2` (High hanya bila IC positif & signifikan) dan cadence horizon.
+- Keterbatasan jujur: berita & teknikal harian tidak punya riwayat tersimpan → tidak ikut back-test (ditulis di `scope`); fundamental BEI dari Yahoo hanya ±4 tahun tahunan / ±5 kuartal → validasi fundamental BEI pendek (`fundamentalYears`); FEPS tidak divalidasi (tidak ada riwayat konsensus).
 
 ## Butuh keputusan pemilik
 
