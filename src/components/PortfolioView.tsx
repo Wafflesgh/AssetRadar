@@ -6,6 +6,9 @@
  * saved Risk Profile, and each position's evidence score / F-score as information. Data stays on
  * this device (localStorage) with JSON export/import for backups. Not investment advice.
  */
+import { t, t as tr, useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+import { assetName } from '../i18n/assetNames.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Trash2, Upload, Wallet, X } from 'lucide-react';
 import { Cell, Pie, PieChart } from 'recharts';
@@ -31,11 +34,29 @@ import {
 import { getPortfolioTxs, getSavedRiskResult, savePortfolioTxs } from '../utils/storage.ts';
 import { AssetSearch } from './AssetSearch.tsx';
 
-const CLASS_META: Record<AssetClass, { label: string; color: string }> = {
-  stocks: { label: 'Stocks', color: INSTRUMENTS.find((i) => i.id === 'stocks')?.color ?? '#3B82F6' },
-  gold: { label: 'Gold', color: INSTRUMENTS.find((i) => i.id === 'gold')?.color ?? '#F59E0B' },
-  crypto: { label: 'Crypto', color: INSTRUMENTS.find((i) => i.id === 'crypto')?.color ?? '#A855F7' },
-  other: { label: 'Other (commodities, currencies)', color: '#94A3B8' },
+const CLASS_META: Record<AssetClass, { color: string }> = {
+  stocks: { color: INSTRUMENTS.find((i) => i.id === 'stocks')?.color ?? '#3B82F6' },
+  gold: { color: INSTRUMENTS.find((i) => i.id === 'gold')?.color ?? '#F59E0B' },
+  crypto: { color: INSTRUMENTS.find((i) => i.id === 'crypto')?.color ?? '#A855F7' },
+  other: { color: '#94A3B8' },
+};
+const classLabel = (c: AssetClass) => t(`pf.class.${c}` as TranslationKey);
+
+/** Quantity unit in the current language ("lots" → "lot"). */
+const unitText = (label: string) => t(`pf.unit.${label}` as TranslationKey);
+
+/** Price field label in the current language. */
+function priceLabelText(asset: AssetConfig): string {
+  if (asset.symbol === 'XAU/USD') return t('pf.priceGram');
+  if (asset.group === 'idStock') return t('pf.priceShare');
+  const cur = asset.currency === 'IDR' ? 'Rp' : asset.currency === 'USX' ? 'USD' : asset.currency;
+  return asset.group === 'crypto' ? t('pf.priceCoin', { cur }) : t('pf.priceUnit', { cur });
+}
+
+const trError = (e: string) => {
+  const key = `pf.err.${e}` as TranslationKey;
+  const out = t(key);
+  return out === key ? e : out;
 };
 
 function todayWib(): string {
@@ -78,6 +99,7 @@ interface PortfolioViewProps {
 
 export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const [txs, setTxs] = useState<PortfolioTx[]>(() => getPortfolioTxs<PortfolioTx>());
+  useT();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -175,8 +197,8 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
     // Deleting a buy must not leave a later sell without shares
     const rest = txs.filter((x) => x.id !== t.id);
     const broken = buildPositionsCheck(rest);
-    if (broken) return setNotice(`Delete the later sells of ${getAssetBySymbol(t.symbol)?.shortName ?? t.symbol} first.`);
-    if (window.confirm('Delete this transaction?')) persist(rest);
+    if (broken) return setNotice(tr('pf.deleteSellsFirst', { name: getAssetBySymbol(t.symbol)?.shortName ?? t.symbol }));
+    if (window.confirm(tr('pf.confirmDelete'))) persist(rest);
   };
 
   const doExport = () => {
@@ -192,11 +214,11 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const doImport = async (file: File) => {
     try {
       const list = parsePortfolioImport(await file.text(), (s) => Boolean(getAssetBySymbol(s)));
-      if (txs.length && !window.confirm(`Replace your ${txs.length} transactions with the ${list.length} in this file?`)) return;
+      if (txs.length && !window.confirm(tr('pf.confirmReplace', { old: txs.length, new: list.length }))) return;
       persist(list);
-      setNotice(`Imported ${list.length} transactions.`);
+      setNotice(tr('pf.imported', { count: list.length }));
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Import failed.');
+      setNotice(err instanceof Error ? err.message : tr('pf.importFailed'));
     }
   };
 
@@ -209,22 +231,21 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-              <Wallet className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> My Portfolio
+              <Wallet className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> {tr('pf.title')}
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              Your holdings at live prices (average-cost method). The data is stored <strong>only on this device</strong> — export a
-              backup to move it to another phone or browser.
+              <Rich text={tr('pf.intro')} />
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => startEdit()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-              <Plus className="w-4 h-4" /> Add transaction
+              <Plus className="w-4 h-4" /> {tr('pf.add')}
             </button>
             <button type="button" onClick={doExport} disabled={!txs.length} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--border-subtle)' }}>
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4" /> {tr('pf.export')}
             </button>
             <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border cursor-pointer" style={{ borderColor: 'var(--border-subtle)' }}>
-              <Upload className="w-4 h-4" /> Import
+              <Upload className="w-4 h-4" /> {tr('pf.import')}
               <input
                 type="file"
                 accept="application/json,.json"
@@ -241,7 +262,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         {notice && (
           <p role="status" className="text-xs flex items-center justify-between gap-2 p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
             {notice}
-            <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+            <button type="button" aria-label={tr('pf.dismiss')} onClick={() => setNotice(null)}>
               <X className="w-3.5 h-3.5" />
             </button>
           </p>
@@ -254,43 +275,43 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
 
       {txs.length === 0 && !draft ? (
         <section className="p-8 rounded-xl border text-center space-y-2" style={card}>
-          <p className="font-semibold">No transactions yet</p>
+          <p className="font-semibold">{tr('pf.emptyTitle')}</p>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Add your first buy — for example 10 lots of BBCA, 0.01 BTC or 5 grams of gold.
+            {tr('pf.emptyText')}
           </p>
         </section>
       ) : (
         <>
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Portfolio summary">
-            <Stat label="Market value" value={formatRupiah(total, 0)} />
-            <Stat label="Cost" value={formatRupiah(cost, 0)} />
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label={tr('pf.summary')}>
+            <Stat label={tr('pf.value')} value={formatRupiah(total, 0)} />
+            <Stat label={tr('pf.cost')} value={formatRupiah(cost, 0)} />
             <Stat
-              label="Unrealized P/L"
+              label={tr('pf.unrealized')}
               value={signedRupiah(unrealized)}
               sub={cost > 0 ? formatPercent((unrealized / cost) * 100) : undefined}
               color={unrealized >= 0 ? 'var(--color-up)' : 'var(--color-down)'}
             />
-            <Stat label="Realized P/L" value={signedRupiah(realized)} color={realized >= 0 ? 'var(--color-up)' : 'var(--color-down)'} />
+            <Stat label={tr('pf.realized')} value={signedRupiah(realized)} color={realized >= 0 ? 'var(--color-up)' : 'var(--color-down)'} />
           </section>
           {unpriced.length > 0 && (
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Not in the Rupiah totals (no live price or exchange rate right now): {unpriced.map((x) => x.asset.shortName).join(', ')}.
+              {tr('pf.unpriced', { list: unpriced.map((x) => x.asset.shortName).join(', ') })}
             </p>
           )}
 
           <section className="rounded-xl border overflow-x-auto" style={card} aria-labelledby="positions-heading">
             <h2 id="positions-heading" className="text-base font-bold px-4 pt-4">
-              Positions
+              {tr('pf.positions')}
             </h2>
             <table className="w-full text-sm mt-2">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-left" style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-subtle)' }}>
-                  <th className="px-3 py-2 font-semibold">Asset</th>
-                  <th className="px-3 py-2 font-semibold text-right">Holding</th>
-                  <th className="px-3 py-2 font-semibold text-right hidden sm:table-cell">Avg / Live</th>
-                  <th className="px-3 py-2 font-semibold text-right">Value (Rp)</th>
-                  <th className="px-3 py-2 font-semibold text-right">P/L</th>
-                  <th className="px-3 py-2 font-semibold hidden lg:table-cell">Evidence</th>
+                  <th className="px-3 py-2 font-semibold">{tr('pf.asset')}</th>
+                  <th className="px-3 py-2 font-semibold text-right">{tr('pf.holding')}</th>
+                  <th className="px-3 py-2 font-semibold text-right hidden sm:table-cell">{tr('pf.avgLive')}</th>
+                  <th className="px-3 py-2 font-semibold text-right">{tr('pf.valueRp')}</th>
+                  <th className="px-3 py-2 font-semibold text-right">{tr('pf.pl')}</th>
+                  <th className="px-3 py-2 font-semibold hidden lg:table-cell">{tr('pf.evidence')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,11 +323,11 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                       <td className="px-3 py-2">
                         <span className="font-bold font-mono-num block">{asset.shortName}</span>
                         <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                          {asset.name}
+                          {assetName(asset)}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num text-xs whitespace-nowrap">
-                        {v.quantity > 0 ? `${formatNumber(v.quantity / unit.perInput, unit.perInput > 1 ? 0 : 4)} ${unit.inputLabel}` : 'Closed'}
+                        {v.quantity > 0 ? `${formatNumber(v.quantity / unit.perInput, unit.perInput > 1 ? 0 : 4)} ${unitText(unit.inputLabel)}` : tr('pf.closed')}
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num text-xs hidden sm:table-cell whitespace-nowrap">
                         {money(v.avgCost || undefined, v.currency)}
@@ -315,17 +336,17 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num text-xs whitespace-nowrap">
-                        {v.quantity > 0 ? (v.marketValueIdr !== undefined ? formatRupiah(v.marketValueIdr, 0) : 'Data unavailable') : '—'}
+                        {v.quantity > 0 ? (v.marketValueIdr !== undefined ? formatRupiah(v.marketValueIdr, 0) : tr('common.dataUnavailable')) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num text-xs whitespace-nowrap" style={{ color: (v.unrealizedIdr ?? v.realizedIdr ?? 0) >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                         {v.quantity > 0 ? signedRupiah(v.unrealizedIdr) : signedRupiah(v.realizedIdr)}
                         <span className="block text-[10px]">
-                          {v.quantity > 0 ? formatPercent(v.unrealizedPct) : 'realized'}
-                          {v.quantity > 0 && v.realized !== 0 ? ` · realized ${signedRupiah(v.realizedIdr)}` : ''}
+                          {v.quantity > 0 ? formatPercent(v.unrealizedPct) : tr('pf.realizedShort')}
+                          {v.quantity > 0 && v.realized !== 0 ? tr('pf.realizedPart', { v: signedRupiah(v.realizedIdr) }) : ''}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs hidden lg:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                        {ev ? `${ev.score}/100 ${ev.label}${ev.f ? ` · F-score ${ev.f}` : ''}` : v.quantity > 0 ? '…' : ''}
+                        {ev ? `${ev.score}/100 ${tr(`sentiment.${ev.label}` as TranslationKey)}${ev.f ? ` · F-score ${ev.f}` : ''}` : v.quantity > 0 ? '…' : ''}
                       </td>
                     </tr>
                   );
@@ -333,19 +354,19 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
               </tbody>
             </table>
             <p className="text-[10px] px-4 pb-3" style={{ color: 'var(--text-secondary)' }}>
-              Evidence score and F-score are information from the analysis, not buy or sell signals.
+              {tr('pf.evidenceNote')}
             </p>
           </section>
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl border" style={card}>
-              <h2 className="text-base font-bold mb-2">Allocation</h2>
+              <h2 className="text-base font-bold mb-2">{tr('pf.allocation')}</h2>
               {byClass.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No priced open positions.</p>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{tr('pf.noPriced')}</p>
               ) : (
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                   <PieChart width={180} height={180}>
-                    <Pie data={byClass.map((x) => ({ name: CLASS_META[x.c].label, value: x.value }))} dataKey="value" innerRadius={55} outerRadius={85} stroke="none" isAnimationActive={false}>
+                    <Pie data={byClass.map((x) => ({ name: classLabel(x.c), value: x.value }))} dataKey="value" innerRadius={55} outerRadius={85} stroke="none" isAnimationActive={false}>
                       {byClass.map((x) => (
                         <Cell key={x.c} fill={CLASS_META[x.c].color} />
                       ))}
@@ -356,9 +377,9 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                       <li key={x.c} className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CLASS_META[x.c].color }} />
-                          {CLASS_META[x.c].label}
+                          {classLabel(x.c)}
                         </span>
-                        <span className="font-mono-num text-xs">{((x.value / total) * 100).toFixed(1)}%</span>
+                        <span className="font-mono-num text-xs">{formatNumber((x.value / total) * 100, 1)}%</span>
                       </li>
                     ))}
                   </ul>
@@ -366,21 +387,21 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
               )}
             </div>
             <div className="p-4 rounded-xl border text-sm" style={card}>
-              <h2 className="text-base font-bold mb-2">Compared with your Risk Profile</h2>
+              <h2 className="text-base font-bold mb-2">{tr('pf.vsProfile')}</h2>
               {!target || !profile ? (
-                <p style={{ color: 'var(--text-secondary)' }}>Take the Risk Profile questionnaire to compare your portfolio with a sample allocation.</p>
+                <p style={{ color: 'var(--text-secondary)' }}>{tr('pf.takeQuiz')}</p>
               ) : (
                 <>
                   <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    {saved?.customAllocation ? 'Your custom allocation' : `${PROFILE_INFO[profile].label} sample allocation`} (education, not a
-                    recommendation). Your shares are of the assets recorded here only.
+                    {saved?.customAllocation ? tr('pf.customAlloc') : tr('pf.sampleAlloc', { profile: tr(`risk.profile.${profile}` as TranslationKey) })}{' '}
+                    {tr('pf.allocNote')}
                   </p>
                   <table className="w-full text-xs">
                     <thead>
                       <tr style={{ color: 'var(--text-secondary)' }}>
-                        <th className="text-left py-1 font-semibold">Class</th>
-                        <th className="text-right py-1 font-semibold">Yours</th>
-                        <th className="text-right py-1 font-semibold">Profile</th>
+                        <th className="text-left py-1 font-semibold">{tr('pf.class')}</th>
+                        <th className="text-right py-1 font-semibold">{tr('pf.yours')}</th>
+                        <th className="text-right py-1 font-semibold">{tr('pf.profile')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -388,16 +409,16 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                         const mine = total > 0 ? ((byClass.find((x) => x.c === c)?.value ?? 0) / total) * 100 : 0;
                         return (
                           <tr key={c} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                            <td className="py-1">{CLASS_META[c].label}</td>
-                            <td className="py-1 text-right font-mono-num">{mine.toFixed(1)}%</td>
+                            <td className="py-1">{classLabel(c)}</td>
+                            <td className="py-1 text-right font-mono-num">{formatNumber(mine, 1)}%</td>
                             <td className="py-1 text-right font-mono-num">{target[c]}%</td>
                           </tr>
                         );
                       })}
                       <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                        <td className="py-1">Money market & bonds</td>
+                        <td className="py-1">{tr('pf.mmBonds')}</td>
                         <td className="py-1 text-right" style={{ color: 'var(--text-secondary)' }}>
-                          not tracked
+                          {tr('pf.notTracked')}
                         </td>
                         <td className="py-1 text-right font-mono-num">{target.moneyMarket + target.bonds}%</td>
                       </tr>
@@ -410,18 +431,18 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
 
           <section className="rounded-xl border overflow-x-auto" style={card} aria-labelledby="tx-heading">
             <h2 id="tx-heading" className="text-base font-bold px-4 pt-4">
-              Transactions
+              {tr('pf.transactions')}
             </h2>
             <table className="w-full text-xs mt-2">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-left" style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-subtle)' }}>
-                  <th className="px-3 py-2 font-semibold">Date</th>
-                  <th className="px-3 py-2 font-semibold">Asset</th>
-                  <th className="px-3 py-2 font-semibold text-right">Quantity</th>
-                  <th className="px-3 py-2 font-semibold text-right hidden sm:table-cell">Price</th>
-                  <th className="px-3 py-2 font-semibold text-right hidden md:table-cell">Fee</th>
+                  <th className="px-3 py-2 font-semibold">{tr('pf.date')}</th>
+                  <th className="px-3 py-2 font-semibold">{tr('pf.asset')}</th>
+                  <th className="px-3 py-2 font-semibold text-right">{tr('pf.quantity')}</th>
+                  <th className="px-3 py-2 font-semibold text-right hidden sm:table-cell">{tr('table.price')}</th>
+                  <th className="px-3 py-2 font-semibold text-right hidden md:table-cell">{tr('pf.fee')}</th>
                   <th className="px-3 py-2">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{tr('pf.actions')}</span>
                   </th>
                 </tr>
               </thead>
@@ -434,21 +455,21 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                       <td className="px-3 py-2 font-mono-num whitespace-nowrap">{t.date}</td>
                       <td className="px-3 py-2">
                         <span className="font-semibold" style={{ color: t.side === 'buy' ? 'var(--color-up)' : 'var(--color-down)' }}>
-                          {t.side === 'buy' ? 'Buy' : 'Sell'}
+                          {t.side === 'buy' ? tr('pf.buy') : tr('pf.sell')}
                         </span>{' '}
                         {asset?.shortName ?? t.symbol}
                         {t.note && <span className="block text-[10px]" style={{ color: 'var(--text-secondary)' }}>{t.note}</span>}
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num whitespace-nowrap">
-                        {unit ? `${formatNumber(t.quantity / unit.perInput, unit.perInput > 1 ? 0 : 4)} ${unit.inputLabel}` : t.quantity}
+                        {unit ? `${formatNumber(t.quantity / unit.perInput, unit.perInput > 1 ? 0 : 4)} ${unitText(unit.inputLabel)}` : t.quantity}
                       </td>
                       <td className="px-3 py-2 text-right font-mono-num hidden sm:table-cell">{money(t.price, unit?.currency ?? 'IDR')}</td>
                       <td className="px-3 py-2 text-right font-mono-num hidden md:table-cell">{t.fee ? money(t.fee, unit?.currency ?? 'IDR') : '—'}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button type="button" aria-label="Edit transaction" onClick={() => startEdit(t)} className="p-1">
+                        <button type="button" aria-label={tr('pf.editLabel')} onClick={() => startEdit(t)} className="p-1">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button type="button" aria-label="Delete transaction" onClick={() => remove(t)} className="p-1" style={{ color: 'var(--color-down)' }}>
+                        <button type="button" aria-label={tr('pf.deleteLabel')} onClick={() => remove(t)} className="p-1" style={{ color: 'var(--color-down)' }}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
@@ -462,8 +483,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
       )}
 
       <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-        For your own records. Values use delayed or live market prices and may differ from your broker's statement (fees, taxes,
-        corporate actions). Not investment advice.
+        {tr('pf.footer')}
       </p>
     </div>
   );
@@ -505,6 +525,7 @@ function TxForm({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  useT();
   const asset = draft.symbol ? getAssetBySymbol(draft.symbol) : undefined;
   const unit = asset ? tradeUnitOf(asset) : null;
   const live = asset && unit ? unit.livePrice(ticks[asset.symbol]) : undefined;
@@ -514,28 +535,28 @@ function TxForm({
   return (
     <section className="p-5 rounded-xl border space-y-4" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--accent-radar)' }} aria-labelledby="tx-form-heading">
       <h2 id="tx-form-heading" className="text-base font-bold">
-        {draft.id ? 'Edit transaction' : 'Add transaction'}
+        {draft.id ? tr('pf.edit') : tr('pf.add')}
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Asset</span>
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{tr('pf.asset')}</span>
           <AssetSearch
             ticks={ticks}
             selected={asset}
             onSelect={(a) => (isHoldable(a) ? setDraft({ ...draft, symbol: a.symbol }) : undefined)}
-            label="Choose the asset"
-            placeholder="Search: BBCA, BTC, gold, NVDA…"
+            label={tr('pf.chooseAsset')}
+            placeholder={tr('pf.searchPh')}
           />
           {asset && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-              {asset.shortName} · {asset.name}
-              {live !== undefined && ` · live ${money(live, unit?.currency ?? 'IDR')}`}
+              {asset.shortName} · {assetName(asset)}
+              {live !== undefined && tr('pf.live', { price: money(live, unit?.currency ?? 'IDR') })}
             </p>
           )}
         </div>
         <div>
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Type</span>
-          <div className="flex gap-2" role="radiogroup" aria-label="Buy or sell">
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{tr('pf.type')}</span>
+          <div className="flex gap-2" role="radiogroup" aria-label={tr('pf.buyOrSell')}>
             {(['buy', 'sell'] as TxSide[]).map((s) => (
               <button
                 key={s}
@@ -549,54 +570,55 @@ function TxForm({
                   color: draft.side === s ? (s === 'buy' ? 'var(--color-up)' : 'var(--color-down)') : 'var(--text-secondary)',
                 }}
               >
-                {s === 'buy' ? 'Buy' : 'Sell'}
+                {s === 'buy' ? tr('pf.buy') : tr('pf.sell')}
               </button>
             ))}
           </div>
         </div>
         <label className="block">
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Date</span>
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{tr('pf.date')}</span>
           <input type="date" value={draft.date} max={todayWib()} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={field} style={fieldStyle} />
         </label>
         <label className="block">
           <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-            Quantity ({unit?.inputLabel ?? 'units'}){unit && unit.perInput > 1 ? ` — 1 lot = ${unit.perInput} shares` : ''}
+            {tr('pf.qtyLabel', { unit: unit ? unitText(unit.inputLabel) : tr('pf.unitsDefault') })}
+            {unit && unit.perInput > 1 ? tr('pf.lotNote', { n: unit.perInput }) : ''}
           </span>
-          <input inputMode="decimal" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} placeholder={unit?.perInput && unit.perInput > 1 ? 'e.g. 10' : 'e.g. 0.01'} className={field} style={fieldStyle} />
+          <input inputMode="decimal" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} placeholder={unit?.perInput && unit.perInput > 1 ? tr('pf.qtyPhLots') : tr('pf.qtyPhUnits')} className={field} style={fieldStyle} />
         </label>
         <label className="block">
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{unit?.priceLabel ?? 'Price per unit'}</span>
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{asset ? priceLabelText(asset) : tr('pf.priceDefault')}</span>
           <div className="flex gap-2">
-            <input inputMode="decimal" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} placeholder="e.g. 9,250 or 150.25" className={field} style={fieldStyle} />
+            <input inputMode="decimal" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} placeholder={tr('pf.pricePh')} className={field} style={fieldStyle} />
             {live !== undefined && (
               <button type="button" onClick={() => setDraft({ ...draft, price: String(Number(live.toFixed(live < 1 ? 6 : 2))) })} className="px-2.5 rounded-lg border text-xs font-semibold whitespace-nowrap" style={{ borderColor: 'var(--border-subtle)' }}>
-                Use live
+                {tr('pf.useLive')}
               </button>
             )}
           </div>
         </label>
         <label className="block">
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Fee (optional, total)</span>
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{tr('pf.feeLabel')}</span>
           <input inputMode="decimal" value={draft.fee} onChange={(e) => setDraft({ ...draft, fee: e.target.value })} placeholder="0" className={field} style={fieldStyle} />
         </label>
         <label className="block md:col-span-2">
-          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Note (optional)</span>
+          <span className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{tr('pf.noteLabel')}</span>
           <input value={draft.note} maxLength={120} onChange={(e) => setDraft({ ...draft, note: e.target.value })} className={field} style={fieldStyle} />
         </label>
       </div>
       {errors.length > 0 && (
         <ul role="alert" className="text-xs space-y-0.5" style={{ color: 'var(--color-down)' }}>
           {errors.map((e) => (
-            <li key={e}>• {e}</li>
+            <li key={e}>• {trError(e)}</li>
           ))}
         </ul>
       )}
       <div className="flex gap-2">
         <button type="button" onClick={onSave} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}>
-          Save
+          {tr('common.save')}
         </button>
         <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: 'var(--border-subtle)' }}>
-          Cancel
+          {tr('common.cancel')}
         </button>
       </div>
     </section>
