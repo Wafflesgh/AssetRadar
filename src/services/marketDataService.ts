@@ -9,6 +9,7 @@
  * Views register symbols they show (IDX universe stocks, watchlist, portfolio, detail page) with
  * trackSymbols(); the stream refreshes those first.
  */
+import type { ProbeResult, SetupItem } from '../utils/diagnostics.ts';
 import type { StatementPeriod, StatementRow } from '../utils/statements.ts';
 import {
   PriceTick,
@@ -875,4 +876,19 @@ export async function fetchBriefDates(): Promise<string[]> {
   const res = await fetch('/api/brief/dates');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()).dates ?? [];
+}
+
+export type DiagnosticsReport = {
+  checkedAt: number;
+  region: string | null;
+  runtime: { node: string; cloudRun: boolean };
+  probes: ProbeResult[];
+  setup: SetupItem[];
+};
+
+/** Server diagnostics: which sources the server reaches and which optional features are on. */
+export async function fetchDiagnostics(refresh = false): Promise<DiagnosticsReport> {
+  const res = await fetch(refresh ? '/api/diagnostics?refresh=1' : '/api/diagnostics');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
 }

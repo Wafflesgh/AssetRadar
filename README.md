@@ -243,6 +243,8 @@ backtester. The interface is available in English and Bahasa Indonesia.
 | Financial statements | SEC EDGAR company facts (28 US companies, 10-K/10-Q) and Yahoo Finance fundamentals |
 | Corporate calendar | Yahoo Finance calendar events, dividends and splits |
 | Indonesia macro | Bank Indonesia (bi.go.id), FRED (OECD/IMF/BIS series), World Bank, Yahoo Finance (LQ45, EIDO, regional FX, commodities, global markets), BPS API (optional key) |
+| CPO, Newcastle coal, nickel, tin, rubber, cocoa, robusta coffee, Thai rice (monthly) | World Bank "Pink Sheet" (CMO historical data, monthly xlsx), read on the server without extra packages |
+| US peer group for the sentiment percentiles | S&P 500 constituents with GICS sector / sub-industry from Wikipedia (CC BY-SA), `src/config/sp500.json` |
 | Spot gold (XAU/USD) | gold-api.com; change and history from Yahoo `GC=F` futures |
 | US Treasury yields | Yahoo Finance `^IRX`, `^FVX`, `^TNX`, `^TYX` |
 | News | Google News RSS (Indonesian and English) and publisher RSS feeds |
@@ -252,8 +254,8 @@ backtester. The interface is available in English and Bahasa Indonesia.
 | Sync and server data (optional) | Supabase (Postgres REST), only through this server |
 | Notifications (optional) | Web push (VAPID, `web-push`); Telegram Bot API for the morning brief |
 
-Crude palm oil and coal are not listed: there is no free live source, and stale prices are
-never shown. A failing source shows "Data unavailable" with a "Try again" button.
+Crude palm oil and coal are not listed as live assets: there is no free live source, and stale
+prices are never shown (their monthly World Bank averages are on the macro page). A failing source shows "Data unavailable" with a "Try again" button.
 
 Known limits of the free sources:
 
@@ -265,8 +267,8 @@ Known limits of the free sources:
 - Calendar: AGM (RUPS), cum and recording dates and rights issues have no free source.
 - Macro: no free current source for the 10-year SBN yield, the manufacturing PMI, IndONIA /
   JIBOR / JISDOR, daily food prices, external debt, the budget deficit, M2, or car / motorcycle /
-  cement sales; the World Bank Pink Sheet (CPO, nickel, tin, rubber) is an xlsx file and is not
-  read yet. Core / administered / volatile-food inflation need the free `BPS_API_KEY`. Free CPI
+  cement sales. CPO, nickel, tin, rubber and Newcastle coal are monthly averages (World Bank,
+  updated early each month), not live prices. Core / administered / volatile-food inflation need the free `BPS_API_KEY`. Free CPI
   month-on-month data ends in April 2025.
 - Binance may answer 451 (region blocked) from some server regions; the Crypto Binance page then
   says so. Futures positioning statistics cover only the last 30 days.
@@ -276,7 +278,10 @@ Known limits of the free sources:
   the overnight interbank rate as a proxy.
 - Screener: the full statement scan of ±960 stocks takes 10–20 minutes and is refreshed daily;
   ratios use Yahoo figures (latest annual report or trailing 12 months).
-- Gold bars: no official Antam/Pegadaian feed the server may use, so prices are entered by hand.
+- Gold bars: no official Antam/Pegadaian feed the server may use (logammulia.com answers HTTP 403 to
+  scripts, pegadaian.co.id sits behind Cloudflare), so prices are entered by hand.
+- US sentiment percentiles compare the app's US stocks with the whole S&P 500; the background scan
+  of ±500 peers (prices, Yahoo statements, analyst data) takes about 20–30 minutes after a restart.
 - Cloud Run sleeps without visitors: server alerts and daily jobs run while it is awake — use the
   daily scheduler below (and, for alerts while the app is closed, a 5–15 minute ping or a minimum
   instance).
@@ -288,6 +293,13 @@ script (steps in the header of `scripts/update-idx-stocks.mjs`):
 
 ```bash
 node scripts/update-idx-stocks.mjs securities.json profiles.json
+```
+
+### Updating the other lists
+
+```bash
+node scripts/update-sp500.mjs             # S&P 500 peer group (Wikipedia API)
+node scripts/update-crypto-universe.mjs 50 # top 50 crypto with Binance / Indodax pairs
 ```
 
 ## Run locally
@@ -318,6 +330,14 @@ Production: `npm run build`, then `NODE_ENV=production npm start`.
 
 Every feature works without these keys in a limited, local-only form. Put the values in `.env`
 locally or in the Secrets panel of AI Studio / Secret Manager on Cloud Run — never in the code.
+Step-by-step guide in Indonesian: `docs/SETUP_Online.md`.
+
+- `node scripts/generate-secrets.mjs` fills the self-made secrets in `.env` (`CRON_TOKEN`,
+  `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET`, a VAPID key pair) without printing them.
+- The table for Supabase is in `supabase/schema.sql`.
+- After publishing, **Settings → Server diagnostics** shows which data sources the server can
+  reach from its region (e.g. Binance 451 from the US) and which optional features are on —
+  secret names only, never values (`GET /api/diagnostics`).
 
 ### Sync between devices (database + passphrase)
 
@@ -356,7 +376,9 @@ POST https://<your-app>/api/cron/daily
 Authorization: Bearer <CRON_TOKEN>
 ```
 
-Schedule it at 07:35 and 16:20 WIB (00:35 and 09:20 UTC); the call runs whatever is due.
+Schedule it at 07:35 and 16:20 WIB (00:35 and 09:20 UTC); the call runs whatever is due. The repo
+includes a ready GitHub Actions workflow (`.github/workflows/daily-jobs.yml`) that does this for
+free — add the repository secrets `APP_URL` and `CRON_TOKEN` (same value as the app's).
 
 ### Web push for alerts and the brief
 
@@ -405,6 +427,12 @@ instead (as a new app), then Publish.
 | `scripts/generate-icons.mjs` | Draws the PNG app icons from the radar logo. |
 | `scripts/update-idx-stocks.mjs` | Rebuilds `src/config/idxStocks.json` from idx.co.id exports. |
 | `scripts/update-crypto-universe.mjs` | Rebuilds `src/config/cryptoUniverse.json` (top 50 crypto with Binance pairs). |
+| `scripts/update-sp500.mjs` | Rebuilds `src/config/sp500.json` (S&P 500 peer group, Wikipedia API). |
+| `scripts/generate-secrets.mjs` | Fills self-made secrets (cron token, sync passphrase, VAPID keys) in the local `.env` without printing them. |
+| `supabase/schema.sql` | The single table needed in Supabase. |
+| `.github/workflows/daily-jobs.yml` | Free daily scheduler: calls `POST /api/cron/daily` at 07:35 and 16:20 WIB. |
+| `server/diagnostics.ts` | `GET /api/diagnostics`: source reachability, Cloud Run region, optional-feature status. |
+| `server/xlsx.ts` | Minimal .xlsx reader (node:zlib) for the World Bank Pink Sheet. |
 | `scripts/check-i18n.mjs` | Finds UI text that bypasses the translation system (must report 0). |
 | `server/binanceFeed.ts` | Server-side Binance feed: universe, quotes, klines, derivatives, demand-driven polling. |
 | `server/crossSection.ts` | Paced market scans (IDX / US) that feed the sentiment pillars and validation. |
@@ -418,6 +446,9 @@ instead (as a new app), then Publish.
 | `index.css` | Global styles, light/dark tokens, Terminal tokens, animations. |
 | `pwa.ts` | Service worker registration (production only) and the install prompt. |
 | `config/assets.ts` | Shared types, the 117 core assets plus the crypto universe (147), the IDX universe, groups, search. |
+| `config/sp500.json`, `config/usPeers.ts` | S&P 500 constituents (GICS) and the US peer assets for the sentiment cross-section (not app assets). |
+| `utils/diagnostics.ts` | Probe list, status classification and optional-setup summary for the diagnostics page. |
+| `utils/pinkSheet.ts`, `utils/xlsxSheet.ts` | World Bank Pink Sheet link finder and parser; worksheet XML reader. |
 | `config/cryptoUniverse.json` | The 50 largest crypto coins with their Binance pairs (built by `scripts/update-crypto-universe.mjs`). |
 | `i18n/` | English source texts (`en.ts`), Indonesian translations (`id.ts`), `useT`/`t`, rich text, server text parts. |
 | `crypto/binance.ts` | Binance public-data parsers, weight governor (20% budget, 429/418/451), client with backup hosts. |

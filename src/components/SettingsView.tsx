@@ -11,6 +11,7 @@ import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference, getVolTarget, saveVolTarget } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
 import { SyncCard } from './SyncCard.tsx';
+import { DiagnosticsCard } from './DiagnosticsCard.tsx';
 
 interface SettingsViewProps {
   themePreference: ThemePreference;
@@ -61,6 +62,7 @@ export function SettingsView({
       <InstallAppCard />
 
       <SyncCard />
+      <DiagnosticsCard />
       {/* Language and number format */}
       <section
         aria-labelledby="settings-lang-heading"

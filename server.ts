@@ -108,6 +108,7 @@ import {
   type StatementPeriod,
 } from './src/utils/statements.ts';
 import { secCikFor } from './src/config/secCik.ts';
+import { SP500_GICS, usPeerAssets } from './src/config/usPeers.ts';
 import {
   applyTrade,
   Backoff,
@@ -170,6 +171,9 @@ import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore } from './server/store.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
+import { registerDiagnosticsRoute } from './server/diagnostics.ts';
+import { readXlsxSheet } from './server/xlsx.ts';
+import { findPinkSheetLink, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
   addHistory,
   afterFire,
@@ -2485,9 +2489,14 @@ function crossLoaders() {
   };
 }
 
+/** The app's US stocks plus the rest of the S&P 500 as their peer group (peers are not app assets). */
+const US_CORE = ASSETS.filter((a) => a.group === 'usStock' && a.yahooSymbol);
+const US_UNIVERSE: Asset[] = [...US_CORE, ...(usPeerAssets(US_CORE) as Asset[])];
+const IDX_UNIVERSE_STOCKS = () => ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol);
+
 const crossSections: Record<CrossMarket, CrossSection<Asset>> = {
-  idx: new CrossSection('idx', () => ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol), crossLoaders()),
-  us: new CrossSection('us', () => ASSETS.filter((a) => a.group === 'usStock' && a.yahooSymbol), crossLoaders()),
+  idx: new CrossSection('idx', IDX_UNIVERSE_STOCKS, crossLoaders()),
+  us: new CrossSection('us', () => US_UNIVERSE, crossLoaders()),
 };
 
 /** The cross-section a stock belongs to (null for other asset classes). */
@@ -2519,7 +2528,8 @@ function stockInputs(cs: CrossSection<Asset>, assets: Asset[], market: 'idx' | '
     if (!monthly || monthly.length < 14) continue;
     const st = cs.statementsOf(a.symbol);
     const an = cs.analystOf(a.symbol);
-    const industry = a.industry ?? an?.industry ?? null;
+    // US: GICS sub-industry for every stock (core and peers), so industry medians compare like with like
+    const industry = (market === 'us' ? SP500_GICS.get(a.yahooSymbol ?? '')?.subIndustry : undefined) ?? a.industry ?? an?.industry ?? null;
     const tick = idxSweep.ticks.get(a.symbol) ?? yahooCache.get(a.symbol)?.data;
     rows.push({
       symbol: a.symbol,
@@ -2544,7 +2554,7 @@ function currentPillars(market: 'idx' | 'us'): MarketPillars | null {
   const key = market;
   const cached = pillarsCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const assets = market === 'idx' ? ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol) : ASSETS.filter((a) => a.group === 'usStock');
+  const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
   const inputs = stockInputs(cs, assets, market);
   if (inputs.length < 5) return null;
   const month = new Date().toISOString().slice(0, 7);
@@ -2794,7 +2804,7 @@ function runValidation(market: 'idx' | 'us' | 'crypto'): void {
           data = { market, generatedAt: Date.now(), pairs: series.length, horizons: panel, scope: ['Binance top-100 USDT pairs, closed daily candles (about 500 days); funding and news have no stored history.'] };
         }
       } else {
-        const assets = market === 'idx' ? ALL_ASSETS.filter((a) => a.group === 'idStock' && a.yahooSymbol) : ASSETS.filter((a) => a.group === 'usStock');
+        const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
         const inputs = stockInputs(crossSections[market], assets, market);
         const lastMonth = new Date(new Date().setUTCDate(0)).toISOString().slice(0, 7);
         const v: MarketValidation | null = inputs.length >= 20 ? validateMarket(inputs, market, lastMonth) : null;
@@ -2817,7 +2827,8 @@ function runValidation(market: 'idx' | 'us' | 'crypto'): void {
 function rankingsFor(market: 'idx' | 'us', h: Horizon) {
   const mp = currentPillars(market);
   if (!mp) return { rows: [], n: 0 };
-  const rows = [...mp.stocks.values()].map((sp) => {
+  // Only the app's own stocks are listed; S&P 500 peers only shape the percentiles
+  const rows = [...mp.stocks.values()].filter((sp) => getAssetBySymbol(sp.symbol)).map((sp) => {
     const asset = getAssetBySymbol(sp.symbol);
     const r = scoreHorizon(h, {
       group: asset?.group ?? 'idStock',
@@ -3009,6 +3020,24 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
+/** World Bank Pink Sheet (monthly commodity prices; xlsx of ±600 KB, updated early each month). Cache 24 h. */
+const pinkCache: { entry: CacheEntry<PinkSheet> | null } = { entry: null };
+async function getPinkSheet(): Promise<PinkSheet> {
+  if (pinkCache.entry && pinkCache.entry.expiresAt > Date.now()) return pinkCache.entry.data;
+  const page = await fetchWithTimeout(PINK_SHEET_PAGE, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 15_000);
+  if (!page.ok) throw new Error(`page HTTP ${page.status}`);
+  const link = findPinkSheetLink(await page.text());
+  if (!link) throw new Error('download link not found');
+  const file = await fetchWithTimeout(link, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 30_000);
+  if (!file.ok) throw new Error(`file HTTP ${file.status}`);
+  const rows = readXlsxSheet(Buffer.from(await file.arrayBuffer()), 'Monthly Prices');
+  if (!rows) throw new Error('"Monthly Prices" sheet not found');
+  const data = parsePinkSheet(rows);
+  if (!data.series.size) throw new Error('no commodity columns found');
+  pinkCache.entry = { data, expiresAt: Date.now() + 24 * 3600_000 };
+  return data;
+}
+
 async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   const failed: string[] = [];
   const get = async <T,>(id: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -3104,6 +3133,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     fred('QIDN628BIS'),
     fred('CSCICP03IDM665S'),
   ]);
+  const pink = await get('pinksheet', getPinkSheet, { updated: null, series: new Map() } as PinkSheet);
   const yahooIds = ['MTF=F', 'HG=F', 'ALI=F', 'BZ=F', 'GC=F', '^VIX', '000001.SS', '^HSI', 'EIDO', '^JKLQ45', 'DX-Y.NYB', '^TNX', 'THBIDR=X', 'PHPIDR=X', 'INRIDR=X', 'MYRIDR=X', 'CNYIDR=X', 'SGDIDR=X'];
   const yahoo = new Map<string, MacroPoint[]>();
   for (let i = 0; i < yahooIds.length; i += 6) {
@@ -3192,6 +3222,17 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   add(ser('aluminium', 'Aluminium futures', 'US$/t', 'monthly', 'Yahoo Finance', yUrl('ALI=F'), yahoo.get('ALI=F') ?? []), 'commodities', true);
   add(ser('brent', 'Brent crude oil', 'US$/bbl', 'monthly', 'Yahoo Finance', yUrl('BZ=F'), yahoo.get('BZ=F') ?? []), 'commodities', false);
   add(ser('goldMonthly', 'Gold futures', 'US$/oz', 'monthly', 'Yahoo Finance', yUrl('GC=F'), yahoo.get('GC=F') ?? []), 'commodities', null);
+  // World Bank Pink Sheet (monthly averages): CPO, Newcastle coal, nickel, tin, rubber, cocoa, coffee, rice
+  for (const def of PINK_SERIES) {
+    const pts = pink.series.get(def.id);
+    if (pts?.length) {
+      add(
+        ser(def.id, def.label, def.unit, 'monthly', 'World Bank Pink Sheet', PINK_SHEET_PAGE, pts),
+        'commodities',
+        def.higherIsBetter
+      );
+    }
+  }
   // Global
   add(ser('fedFunds', 'Fed funds target (upper bound)', '%', 'monthly', 'FRED', FRED_PAGE('DFEDTARU'), fedMonthly), 'global', false);
   add(ser('ust10', 'US 10-year Treasury yield', '%', 'monthly', 'Yahoo Finance', yUrl('^TNX'), yahoo.get('^TNX') ?? []), 'global', false);
@@ -3209,7 +3250,6 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
       { id: 'pmi', label: 'Manufacturing PMI', reason: 'PMI data is licensed (S&P Global) and not free.' },
       { id: 'indonia', label: 'IndONIA / JIBOR, JISDOR', reason: 'bi.go.id pages not yet parsed reliably; to be checked from the laptop.' },
       { id: 'food', label: 'Daily food prices (Badan Pangan)', reason: 'The official data endpoint could not be confirmed from the server.' },
-      { id: 'pinksheet', label: 'CPO, nickel, tin, rubber (World Bank Pink Sheet)', reason: 'Monthly xlsx file; a spreadsheet parser package is needed (owner decision).' },
       { id: 'debt', label: 'External debt, budget deficit, M2', reason: 'Only PDF/xls releases or series that stopped (FRED M2 ends 2018).' },
       { id: 'sales', label: 'Car, motorcycle and cement sales', reason: 'No free API (Gaikindo, AISI, ASI).' },
       { id: 'calendar', label: 'BI board meeting and BPS release calendar', reason: 'Published as documents, not data; the FOMC date is shown instead.' },
@@ -4015,6 +4055,7 @@ async function startServer() {
 
   registerSyncRoutes(app, store, ownerAuth);
   registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
+  registerDiagnosticsRoute(app);
 
   // Alerts the server checked and sent (owner only)
   app.get('/api/alerts/history', ownerAuth.requireOwner, async (_req, res) => {
