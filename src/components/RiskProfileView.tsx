@@ -42,6 +42,18 @@ import {
   saveRiskResult,
   type SavedRiskResult,
 } from '../utils/storage.ts';
+import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
+import { Rich } from '../i18n/Rich.tsx';
+
+// Translated texts for the data in config/riskProfiles.ts (English there is the source)
+const k = (key: string) => tr(key as TranslationKey);
+const instName = (i: InstrumentInfo) => k(`rp.inst.${i.id}.name`);
+const instRisk = (i: InstrumentInfo) => k(`rp.inst.${i.id}.risk`);
+const instExpl = (i: InstrumentInfo) => k(`rp.inst.${i.id}.expl`);
+const instPrice = (i: InstrumentInfo) => k(`rp.inst.${i.id}.price`);
+const profLabel = (id: RiskProfileId) => k(`risk.profile.${id}`);
+const profHorizon = (id: RiskProfileId) => k(`rp.prof.${id}.horizon`);
+const profDesc = (id: RiskProfileId) => k(`rp.prof.${id}.desc`);
 
 interface RiskProfileViewProps {
   onSelectAsset: (symbol: string) => void;
@@ -50,12 +62,7 @@ interface RiskProfileViewProps {
 
 type ResultTab = 'allocation' | 'compare' | 'simulator' | 'customize';
 
-const RESULT_TABS: { id: ResultTab; label: string }[] = [
-  { id: 'allocation', label: 'Allocation' },
-  { id: 'compare', label: 'Compare' },
-  { id: 'simulator', label: 'Simulator' },
-  { id: 'customize', label: 'Customize' },
-];
+const RESULT_TABS: ResultTab[] = ['allocation', 'compare', 'simulator', 'customize'];
 
 interface ValidResult {
   answers: number[];
@@ -96,6 +103,8 @@ function prefersReducedMotion(): boolean {
 }
 
 export function RiskProfileView({ onSelectAsset, onGoToAdvisor }: RiskProfileViewProps) {
+  // Re-renders the whole page (all sections below read `tr`) on a language switch
+  useT();
   const [result, setResult] = useState<ValidResult | null>(() => toValidResult(getSavedRiskResult()));
   const [mode, setMode] = useState<'intro' | 'quiz' | 'result'>(() => (result ? 'result' : 'intro'));
 
@@ -145,7 +154,7 @@ function Disclaimer() {
   return (
     <div
       role="note"
-      aria-label="Investment education disclaimer"
+      aria-label={tr('rp.disclaimerLabel')}
       className="p-4 rounded-xl border flex items-start gap-3 text-xs md:text-sm leading-relaxed"
       style={{
         backgroundColor: 'var(--color-gold-soft)',
@@ -155,9 +164,7 @@ function Disclaimer() {
     >
       <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--color-gold)' }} />
       <p>
-        These sample allocations are general and educational, not personal investment
-        recommendations. Past performance does not guarantee future results. Make sure investment
-        products are registered with/supervised by OJK or Bappebti.
+        {tr('rp.disclaimer')}
       </p>
     </div>
   );
@@ -172,13 +179,11 @@ function Intro({ onStart }: { onStart: () => void }) {
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
           <ShieldCheck className="w-4 h-4" style={{ color: 'var(--accent-radar)' }} />
-          <span>Asset allocation education · 7 questions · about 1 minute</span>
+          <span>{tr('rp.introKicker')}</span>
         </div>
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Find your investment risk profile</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">{tr('rp.introTitle')}</h1>
         <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-          Answer 7 short questions about your age, goals, experience and how you react to losses.
-          You will see which profile fits you best, a sample allocation, and how it compares with
-          the other profiles. Your answers stay on this device.
+          {tr('rp.introText')}
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -188,10 +193,9 @@ function Intro({ onStart }: { onStart: () => void }) {
             className="p-3 rounded-lg border"
             style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}
           >
-            <div className="text-sm font-bold">{PROFILE_INFO[id].label}</div>
+            <div className="text-sm font-bold">{profLabel(id)}</div>
             <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Score {PROFILE_INFO[id].scoreRange[0]}–{PROFILE_INFO[id].scoreRange[1]} ·{' '}
-              {PROFILE_INFO[id].horizon}
+              {tr('rp.scoreRange', { from: PROFILE_INFO[id].scoreRange[0], to: PROFILE_INFO[id].scoreRange[1], horizon: profHorizon(id) })}
             </div>
           </div>
         ))}
@@ -202,7 +206,7 @@ function Intro({ onStart }: { onStart: () => void }) {
         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold"
         style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
       >
-        Start questionnaire
+        {tr('rp.start')}
         <ArrowRight className="w-4 h-4" />
       </button>
     </section>
@@ -234,15 +238,13 @@ function Questionnaire({ onFinish, onCancel }: { onFinish: (answers: number[]) =
 
   return (
     <section
-      aria-label="Risk profile questionnaire"
+      aria-label={tr('rp.quizLabel')}
       className="p-5 md:p-8 rounded-xl border space-y-6 max-w-2xl"
       style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
     >
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-          <span>
-            Question {step + 1} of {QUESTION_COUNT}
-          </span>
+          <span>{tr('rp.questionOf', { n: step + 1, total: QUESTION_COUNT })}</span>
           <span className="font-mono-num">{Math.round(progress)}%</span>
         </div>
         <div
@@ -250,7 +252,7 @@ function Questionnaire({ onFinish, onCancel }: { onFinish: (answers: number[]) =
           aria-valuemin={1}
           aria-valuemax={QUESTION_COUNT}
           aria-valuenow={step + 1}
-          aria-label="Questionnaire progress"
+          aria-label={tr('rp.progress')}
           className="h-2 rounded-full overflow-hidden"
           style={{ backgroundColor: 'var(--bg-surface-subtle)' }}
         >
@@ -262,13 +264,14 @@ function Questionnaire({ onFinish, onCancel }: { onFinish: (answers: number[]) =
       </div>
 
       <fieldset className="space-y-3">
-        <legend className="text-lg md:text-xl font-bold mb-4">{question.question}</legend>
-        {question.options.map((label, i) => {
+        <legend className="text-lg md:text-xl font-bold mb-4">{k(`rp.q.${question.id}`)}</legend>
+        {question.options.map((_, i) => {
           const score = i + 1;
+          const label = k(`rp.q.${question.id}.${score}`);
           const checked = selected === score;
           return (
             <label
-              key={label}
+              key={score}
               className="flex items-center gap-3 p-3.5 rounded-lg border cursor-pointer text-sm font-medium"
               style={{
                 borderColor: checked ? 'var(--accent-radar)' : 'var(--border-subtle)',
@@ -298,7 +301,7 @@ function Questionnaire({ onFinish, onCancel }: { onFinish: (answers: number[]) =
           style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
         >
           <ArrowLeft className="w-4 h-4" />
-          Back
+          {tr('rp.back')}
         </button>
         <button
           type="button"
@@ -307,7 +310,7 @@ function Questionnaire({ onFinish, onCancel }: { onFinish: (answers: number[]) =
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
         >
-          {isLast ? 'See my result' : 'Next'}
+          {isLast ? tr('rp.seeResult') : tr('rp.next')}
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -338,14 +341,14 @@ function ResultView({ result, onChange, onRetake, onSelectAsset, onGoToAdvisor }
       >
         <div className="space-y-1">
           <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-            Your risk profile · score <span className="font-mono-num">{result.score}</span> of 28
+            <Rich text={tr('rp.yourProfile', { score: result.score })} />
           </div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: 'var(--accent-radar)' }}>
-            {info.label}
+            {profLabel(info.id)}
           </h1>
-          <p className="text-sm max-w-3xl leading-relaxed">{info.description}</p>
+          <p className="text-sm max-w-3xl leading-relaxed">{profDesc(info.id)}</p>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Suitable horizon: {info.horizon}
+            {tr('rp.suitableHorizon', { horizon: profHorizon(info.id) })}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -356,7 +359,7 @@ function ResultView({ result, onChange, onRetake, onSelectAsset, onGoToAdvisor }
             style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
           >
             <BrainCircuit className="w-4 h-4" />
-            See AI Advisor suggestions for this profile
+            {tr('rp.seeAdvisor')}
           </button>
           <button
             type="button"
@@ -365,34 +368,34 @@ function ResultView({ result, onChange, onRetake, onSelectAsset, onGoToAdvisor }
             style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
           >
             <RotateCcw className="w-4 h-4" />
-            Retake questionnaire
+            {tr('rp.retake')}
           </button>
         </div>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          The AI Advisor now uses the {info.label} profile. You can still change it there.
+          {tr('rp.advisorUses', { profile: profLabel(info.id) })}
         </p>
       </section>
 
       <div
         role="tablist"
-        aria-label="Risk profile result"
+        aria-label={tr('rp.resultTabs')}
         className="grid grid-cols-4 rounded-lg border overflow-hidden"
         style={{ borderColor: 'var(--border-subtle)' }}
       >
-        {RESULT_TABS.map((t) => (
+        {RESULT_TABS.map((id) => (
           <button
-            key={t.id}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
             className="px-1 py-2.5 text-xs sm:text-sm font-semibold"
             style={{
-              backgroundColor: tab === t.id ? 'var(--accent-radar)' : 'var(--bg-surface)',
-              color: tab === t.id ? '#0B1220' : 'var(--text-primary)',
+              backgroundColor: tab === id ? 'var(--accent-radar)' : 'var(--bg-surface)',
+              color: tab === id ? '#0B1220' : 'var(--text-primary)',
             }}
           >
-            {t.label}
+            {k(`rp.tab.${id}`)}
           </button>
         ))}
       </div>
@@ -400,19 +403,19 @@ function ResultView({ result, onChange, onRetake, onSelectAsset, onGoToAdvisor }
       {tab === 'allocation' && (
         <AllocationTab
           allocation={current}
-          title={isCustom ? 'Your custom allocation' : `Sample ${info.label} allocation`}
-          centerLabel={isCustom ? 'Custom' : info.label}
+          title={isCustom ? tr('rp.customTitle') : tr('rp.sampleTitle', { profile: profLabel(info.id) })}
+          centerLabel={isCustom ? tr('rp.custom') : profLabel(info.id)}
           onSelectAsset={onSelectAsset}
           onResetCustom={isCustom ? () => onChange({ ...result, customAllocation: null }) : undefined}
         />
       )}
       {tab === 'compare' && <CompareTab current={result.profile} />}
-      {tab === 'simulator' && <SimulatorTab allocation={current} isCustom={isCustom} profileLabel={info.label} />}
+      {tab === 'simulator' && <SimulatorTab allocation={current} isCustom={isCustom} profileLabel={profLabel(info.id)} />}
       {tab === 'customize' && (
         <CustomizeTab
           sample={sample}
           current={current}
-          profileLabel={info.label}
+          profileLabel={profLabel(info.id)}
           onSave={(alloc) => onChange({ ...result, customAllocation: alloc })}
           onReset={() => onChange({ ...result, customAllocation: null })}
         />
@@ -425,11 +428,12 @@ function AllocationDonut({ allocation, size, centerLabel }: { allocation: Alloca
   const data = useMemo(
     () =>
       INSTRUMENTS.filter((i) => allocation[i.id] > 0).map((i) => ({
-        name: i.name,
+        name: instName(i),
         value: allocation[i.id],
         fill: i.color,
       })),
-    [allocation]
+    // Names follow the language at render time
+    [allocation, instName(INSTRUMENTS[0])]
   );
   const [animate] = useState(() => !prefersReducedMotion());
   return (
@@ -471,7 +475,7 @@ function RiskBadge({ instrument }: { instrument: InstrumentInfo }) {
       className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
       style={{ backgroundColor: tone.bg, color: tone.fg }}
     >
-      Risk: {instrument.riskLabel}
+      {tr('rp.risk', { label: instRisk(instrument) })}
     </span>
   );
 }
@@ -504,17 +508,17 @@ function AllocationTab({ allocation, title, centerLabel, onSelectAsset, onResetC
               className="text-xs font-semibold hover:underline"
               style={{ color: 'var(--accent-radar)' }}
             >
-              Back to sample allocation
+              {tr('rp.backToSample')}
             </button>
           )}
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <AllocationDonut allocation={allocation} size={200} centerLabel={centerLabel} />
-          <ul className="w-full sm:max-w-md space-y-2" aria-label="Allocation">
+          <ul className="w-full sm:max-w-md space-y-2" aria-label={tr('rp.allocation')}>
             {INSTRUMENTS.map((i) => (
               <li key={i.id} className="flex items-center gap-3 text-sm">
                 <ColorDot color={i.color} />
-                <span className="flex-1 min-w-0">{i.name}</span>
+                <span className="flex-1 min-w-0">{instName(i)}</span>
                 <span className="font-mono-num font-semibold">{allocation[i.id]}%</span>
               </li>
             ))}
@@ -522,7 +526,7 @@ function AllocationTab({ allocation, title, centerLabel, onSelectAsset, onResetC
         </div>
       </section>
 
-      <section aria-label="Instruments" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section aria-label={tr('rp.instruments')} className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {INSTRUMENTS.map((i) => (
           <article
             key={i.id}
@@ -532,13 +536,13 @@ function AllocationTab({ allocation, title, centerLabel, onSelectAsset, onResetC
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <ColorDot color={i.color} />
-                <h3 className="text-sm font-bold">{i.name}</h3>
+                <h3 className="text-sm font-bold">{instName(i)}</h3>
               </div>
               <span className="font-mono-num text-sm font-bold">{allocation[i.id]}%</span>
             </div>
             <RiskBadge instrument={i} />
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              {i.explanation}
+              {instExpl(i)}
             </p>
             {i.priceSymbol ? (
               <button
@@ -547,13 +551,12 @@ function AllocationTab({ allocation, title, centerLabel, onSelectAsset, onResetC
                 className="inline-flex items-center gap-1 text-xs font-semibold hover:underline"
                 style={{ color: 'var(--accent-radar)' }}
               >
-                {i.priceLabel}
+                {instPrice(i)}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : (
               <p className="text-xs italic" style={{ color: 'var(--text-secondary)' }}>
-                {i.id === 'moneyMarket' ? 'Bank product' : 'Government / corporate securities'} — no live price
-                in AssetRadar.
+                {i.id === 'moneyMarket' ? tr('rp.bankProduct') : tr('rp.govProduct')}
               </p>
             )}
           </article>
@@ -574,7 +577,7 @@ function CompareTab({ current }: { current: RiskProfileId }) {
           return (
             <section
               key={id}
-              aria-label={`${info.label} profile`}
+              aria-label={tr('rp.profileAria', { profile: profLabel(id) })}
               className="p-4 rounded-xl border space-y-3"
               style={{
                 backgroundColor: 'var(--bg-surface)',
@@ -583,27 +586,27 @@ function CompareTab({ current }: { current: RiskProfileId }) {
               }}
             >
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base font-bold">{info.label}</h2>
+                <h2 className="text-base font-bold">{profLabel(id)}</h2>
                 {mine && (
                   <span
                     className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
                     style={{ backgroundColor: 'var(--accent-radar-soft)', color: 'var(--accent-radar)' }}
                   >
-                    Your profile
+                    {tr('rp.yourBadge')}
                   </span>
                 )}
               </div>
               <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Score {info.scoreRange[0]}–{info.scoreRange[1]} · {info.horizon}
+                {tr('rp.scoreRange', { from: info.scoreRange[0], to: info.scoreRange[1], horizon: profHorizon(id) })}
               </div>
               <div className="flex justify-center">
-                <AllocationDonut allocation={alloc} size={160} centerLabel={info.label} />
+                <AllocationDonut allocation={alloc} size={160} centerLabel={profLabel(id)} />
               </div>
               <ul className="space-y-1.5">
                 {INSTRUMENTS.map((i) => (
                   <li key={i.id} className="flex items-center gap-2 text-xs">
                     <ColorDot color={i.color} />
-                    <span className="flex-1 min-w-0">{i.name}</span>
+                    <span className="flex-1 min-w-0">{instName(i)}</span>
                     <span className="font-mono-num font-semibold">{alloc[i.id]}%</span>
                   </li>
                 ))}
@@ -614,18 +617,18 @@ function CompareTab({ current }: { current: RiskProfileId }) {
       </div>
 
       <section
-        aria-label="Allocation comparison table"
+        aria-label={tr('rp.compareTable')}
         className="p-4 md:p-5 rounded-xl border"
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
       >
         <table className="w-full text-left text-xs md:text-sm border-collapse">
           <thead>
             <tr style={{ color: 'var(--text-secondary)' }}>
-              <th className="py-2 pr-2 font-semibold">Instrument</th>
+              <th className="py-2 pr-2 font-semibold">{tr('rp.instrument')}</th>
               {PROFILE_IDS.map((id) => (
                 <th key={id} className="py-2 px-1 font-semibold text-right">
-                  <span className="sm:hidden">{PROFILE_INFO[id].label.slice(0, 4)}.</span>
-                  <span className="hidden sm:inline">{PROFILE_INFO[id].label}</span>
+                  <span className="sm:hidden">{profLabel(id).slice(0, 4)}.</span>
+                  <span className="hidden sm:inline">{profLabel(id)}</span>
                 </th>
               ))}
             </tr>
@@ -634,9 +637,9 @@ function CompareTab({ current }: { current: RiskProfileId }) {
             {INSTRUMENTS.map((i) => (
               <tr key={i.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                 <td className="py-2 pr-2">
-                  <div className="font-medium">{i.name}</div>
+                  <div className="font-medium">{instName(i)}</div>
                   <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    Risk: {i.riskLabel}
+                    {tr('rp.risk', { label: instRisk(i) })}
                   </div>
                 </td>
                 {PROFILE_IDS.map((id) => (
@@ -663,20 +666,18 @@ function SimulatorTab({ allocation, isCustom, profileLabel }: { allocation: Allo
 
   return (
     <section
-      aria-label="Capital simulator"
+      aria-label={tr('rp.simLabel')}
       className="p-5 md:p-6 rounded-xl border space-y-5"
       style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
     >
       <div className="space-y-1">
-        <h2 className="text-base font-bold">Capital simulator</h2>
+        <h2 className="text-base font-bold">{tr('rp.simLabel')}</h2>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          See how a starting amount would be divided using{' '}
-          {isCustom ? 'your custom' : `the sample ${profileLabel}`} allocation. This only splits the
-          amount; it does not forecast any returns.
+          {isCustom ? tr('rp.simIntroCustom') : tr('rp.simIntroSample', { profile: profileLabel })}
         </p>
       </div>
       <label className="block space-y-1.5 max-w-sm">
-        <span className="text-xs font-semibold">Starting capital</span>
+        <span className="text-xs font-semibold">{tr('rp.capital')}</span>
         <div
           className="flex items-center rounded-lg border px-3"
           style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}
@@ -702,7 +703,7 @@ function SimulatorTab({ allocation, isCustom, profileLabel }: { allocation: Allo
           <li key={i.id} className="flex items-center gap-3 py-2.5 text-sm" style={{ borderColor: 'var(--border-subtle)' }}>
             <ColorDot color={i.color} />
             <span className="flex-1 min-w-0">
-              {i.name}
+              {instName(i)}
               <span className="ml-1 font-mono-num text-xs" style={{ color: 'var(--text-secondary)' }}>
                 ({allocation[i.id]}%)
               </span>
@@ -711,7 +712,7 @@ function SimulatorTab({ allocation, isCustom, profileLabel }: { allocation: Allo
           </li>
         ))}
         <li className="flex items-center gap-3 py-2.5 text-sm font-bold" style={{ borderColor: 'var(--border-subtle)' }}>
-          <span className="flex-1">Total</span>
+          <span className="flex-1">{tr('rp.total')}</span>
           <span className="font-mono-num">{formatRupiah(capital, 0)}</span>
         </li>
       </ul>
@@ -742,15 +743,14 @@ function CustomizeTab({ sample, current, profileLabel, onSave, onReset }: Custom
 
   return (
     <section
-      aria-label="Customize allocation"
+      aria-label={tr('rp.customLabel')}
       className="p-5 md:p-6 rounded-xl border space-y-5"
       style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
     >
       <div className="space-y-1">
-        <h2 className="text-base font-bold">Customize your allocation</h2>
+        <h2 className="text-base font-bold">{tr('rp.customHeading')}</h2>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          Start from the sample {profileLabel} allocation and adjust each instrument. The total must
-          be exactly 100%.
+          {tr('rp.customIntro', { profile: profileLabel })}
         </p>
       </div>
 
@@ -760,7 +760,7 @@ function CustomizeTab({ sample, current, profileLabel, onSave, onReset }: Custom
             <div className="flex items-center gap-2 text-sm">
               <ColorDot color={i.color} />
               <label htmlFor={`alloc-${i.id}`} className="flex-1 min-w-0 font-medium">
-                {i.name}
+                {instName(i)}
               </label>
               <span className="font-mono-num font-semibold w-12 text-right">{draft[i.id]}%</span>
             </div>
@@ -783,15 +783,14 @@ function CustomizeTab({ sample, current, profileLabel, onSave, onReset }: Custom
         className="flex items-center justify-between gap-3 pt-3 border-t text-sm font-semibold"
         style={{ borderColor: 'var(--border-subtle)' }}
       >
-        <span>Total</span>
+        <span>{tr('rp.total')}</span>
         <span className="font-mono-num" style={{ color: valid ? 'var(--color-up)' : 'var(--color-down)' }}>
           {total}%
         </span>
       </div>
       {!valid && (
         <p role="alert" className="text-sm font-semibold" style={{ color: 'var(--color-down)' }}>
-          Total is {total}% — it must be exactly 100% before you can save (
-          {total > 100 ? `remove ${total - 100}%` : `add ${100 - total}%`}).
+          {tr('rp.totalBad', { total, fix: total > 100 ? tr('rp.remove', { n: total - 100 }) : tr('rp.add', { n: 100 - total }) })}
         </p>
       )}
 
@@ -807,7 +806,7 @@ function CustomizeTab({ sample, current, profileLabel, onSave, onReset }: Custom
           style={{ backgroundColor: 'var(--accent-radar)', color: '#0B1220' }}
         >
           <Check className="w-4 h-4" />
-          Save allocation
+          {tr('rp.save')}
         </button>
         <button
           type="button"
@@ -819,12 +818,12 @@ function CustomizeTab({ sample, current, profileLabel, onSave, onReset }: Custom
           style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
         >
           <RotateCcw className="w-4 h-4" />
-          Reset to sample
+          {tr('rp.reset')}
         </button>
       </div>
       {savedFlash && (
         <p role="status" className="text-xs font-semibold" style={{ color: 'var(--color-up)' }}>
-          Saved. The Allocation and Simulator tabs now use your custom allocation.
+          {tr('rp.saved')}
         </p>
       )}
     </section>
