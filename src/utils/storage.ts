@@ -33,6 +33,8 @@ const STORAGE_KEYS = {
   ALERT_HISTORY: 'assetradar_alert_history_v1',
   ALERT_SETTINGS: 'assetradar_alert_settings_v1',
   SCREENS: 'assetradar_screens_v1',
+  DIVIDENDS: 'assetradar_dividends_v1',
+  DIVIDENDS_DISMISSED: 'assetradar_dividend_dismissed_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -603,4 +605,25 @@ export function getScreensRaw(): unknown {
 
 export function saveScreens(screens: unknown[]): void {
   tracked('screens', () => safeSet(STORAGE_KEYS.SCREENS, JSON.stringify(screens)));
+}
+
+// ---- Dividends received (synced) and dismissed dividend suggestions (this device) ---------------------
+
+registerSyncAdapter('dividends', listAdapter(STORAGE_KEYS.DIVIDENDS));
+
+export function getDividendsRaw(): unknown {
+  return readJson(STORAGE_KEYS.DIVIDENDS);
+}
+
+export function saveDividends(list: unknown[]): void {
+  tracked('dividends', () => safeSet(STORAGE_KEYS.DIVIDENDS, JSON.stringify(list)));
+}
+
+export function getDismissedDividends(): string[] {
+  const raw = readJson(STORAGE_KEYS.DIVIDENDS_DISMISSED);
+  return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+}
+
+export function saveDismissedDividends(keys: string[]): void {
+  safeSet(STORAGE_KEYS.DIVIDENDS_DISMISSED, JSON.stringify(keys.slice(-500)));
 }

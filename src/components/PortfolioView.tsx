@@ -4,9 +4,10 @@
  * positions at live prices with the average-cost method: average price, cost, market value,
  * unrealized and realized profit/loss, the total in Rupiah, the split by asset class versus the
  * saved Risk Profile, and each position's evidence score / F-score as information. Data stays on
- * this device (localStorage) with JSON export/import for backups. Not investment advice.
+ * this device (localStorage, synced when logged in) with JSON export/import for backups; the
+ * analytics below (performance vs IHSG, risk, dividends, calendar) load lazily. Not investment advice.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Trash2, Upload, Wallet, X } from 'lucide-react';
 import { Cell, Pie, PieChart } from 'recharts';
 import { AssetConfig, PriceTick, getAssetBySymbol } from '../config/assets.ts';
@@ -30,6 +31,8 @@ import {
 } from '../utils/portfolio.ts';
 import { getPortfolioTxs, getSavedRiskResult, savePortfolioTxs } from '../utils/storage.ts';
 import { onSyncApplied } from '../services/syncService.ts';
+
+const PortfolioAnalytics = lazy(() => import('./PortfolioAnalytics.tsx').then((m) => ({ default: m.PortfolioAnalytics })));
 import { AssetSearch } from './AssetSearch.tsx';
 
 const CLASS_META: Record<AssetClass, { label: string; color: string }> = {
@@ -215,8 +218,8 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
               <Wallet className="w-5 h-5" style={{ color: 'var(--accent-radar)' }} /> My Portfolio
             </h1>
             <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-              Your holdings at live prices (average-cost method). The data is stored <strong>only on this device</strong> — export a
-              backup to move it to another phone or browser.
+              Your holdings at live prices (average-cost method). The data is stored <strong>on this device</strong> and synced to your
+              other devices when you log in under Settings → Sync; you can also export a backup.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -462,6 +465,12 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
             </table>
           </section>
         </>
+      )}
+
+      {txs.length > 0 && (
+        <Suspense fallback={<p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading analytics…</p>}>
+          <PortfolioAnalytics txs={txs} ticks={ticks} onSelectAsset={onSelectAsset} />
+        </Suspense>
       )}
 
       <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>

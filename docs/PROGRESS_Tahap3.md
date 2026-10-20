@@ -58,7 +58,15 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
   - Mata uang berbeda: kinerja dalam % mata uang masing-masing (tanpa konversi), angka laporan dalam mata uang aslinya.
   - Uji server (curl): simbol tidak dikenal 400, sumber gagal 502 "History unavailable" (UI: "Data unavailable" + "Try again").
   - Status verifikasi live: **belum** (Yahoo/Indodax diblokir jaringan cloud).
-- [ ] 5. Portofolio lanjutan
+- [x] 5. Portofolio lanjutan
+  - Rencana: logika murni (TWR, dividen, risiko) dengan test; bagian "Portfolio analytics" yang di-lazy-load di bawah halaman portofolio; data harga dari endpoint riwayat harian Fitur 4.
+  - Dibuat: `src/utils/portfolioAnalytics.ts` (+8 test: TWR dengan setoran/penarikan — beli/jual tidak dihitung sebagai kinerja, biaya & harga beli di atas close = rugi hari pertama, dividen dihitung pada tanggal bayar, harga hilang → harga transaksi terakhir + tanda "estimated", saham yang dimiliki sebelum ex-date — beli tepat di ex-date tidak berhak, usulan dividen, drawdown, volatilitas, korelasi). Komponen `PortfolioAnalytics.tsx` dengan 4 tab:
+    - **Performance**: nilai portofolio harian dalam Rupiah (harga asing × kurs hari itu, emas dari GC=F per gram), grafik TWR vs IHSG periode yang sama, TWR total & per tahun (≥1 tahun), metode dijelaskan di UI ("How is this calculated?").
+    - **Risk**: volatilitas tahunan & max drawdown portofolio vs IHSG, korelasi antar holding (±12 bulan). Porsi per kelas aset vs alokasi contoh profil risiko sudah ada di bagian alokasi (dirujuk).
+    - **Dividends**: catat dividen tunai manual (jumlah saham sebelum ex-date dihitung otomatis), usulan otomatis dari riwayat dividen × saham yang dimiliki pada ex-date → tombol Confirm/Dismiss (tidak masuk otomatis), total dividen; ikut sinkronisasi (koleksi `dividends`).
+    - **Calendar**: ex-date, pembayaran dividen dan jadwal laporan keuangan untuk saham yang dimiliki.
+  - Keterbatasan: aset tanpa kurs Rupiah historis (KRW, HKD) tidak masuk perhitungan (ditulis di UI); nilai harian memakai close (bukan harga live); pajak dividen harus diisi sendiri.
+  - Status verifikasi live: **belum** (riwayat harga & kalender dari Yahoo diblokir jaringan cloud).
 - [ ] 6. Ringkasan pagi (morning brief)
 - [ ] 7. Harga emas Antam / Pegadaian
 - [ ] 8. Backtest sederhana
