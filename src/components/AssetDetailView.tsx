@@ -6,6 +6,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { ArrowLeft, Star, Info, RefreshCw, Bell, GitCompare } from 'lucide-react';
 import { AlertDialog } from './AlertEditor.tsx';
+import { AntamGoldCard } from './AntamGoldCard.tsx';
 import {
   ASSETS,
   AssetConfig,
@@ -489,6 +490,8 @@ export function AssetDetailView({
       )}
 
       {isStock && <CorporateCalendarPanel asset={asset} />}
+
+      {asset.symbol === 'XAU/USD' && <AntamGoldCard tick={tick} />}
 
       {/* Sentiment Analysis & Market News Panel for Selected Asset */}
       <AssetIntelligencePanel

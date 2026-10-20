@@ -32,6 +32,9 @@ import {
 import { getPortfolioTxs, getSavedRiskResult, savePortfolioTxs } from '../utils/storage.ts';
 import { onSyncApplied } from '../services/syncService.ts';
 
+import { useGoldPrices } from './AntamGoldCard.tsx';
+import { goldValuation } from '../utils/goldBar.ts';
+
 const PortfolioAnalytics = lazy(() => import('./PortfolioAnalytics.tsx').then((m) => ({ default: m.PortfolioAnalytics })));
 import { AssetSearch } from './AssetSearch.tsx';
 
@@ -82,6 +85,7 @@ interface PortfolioViewProps {
 
 export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const [txs, setTxs] = useState<PortfolioTx[]>(() => getPortfolioTxs<PortfolioTx>());
+  const goldPrices = useGoldPrices();
   // Another device changed the portfolio (sync)
   useEffect(() => onSyncApplied(['portfolio'], () => setTxs(getPortfolioTxs<PortfolioTx>())), []);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -104,11 +108,18 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         .map((p) => {
           const asset = getAssetBySymbol(p.symbol);
           if (!asset) return null;
-          return { asset, v: valuePosition(p, tradeUnitOf(asset), ticks[p.symbol], ticks) };
+          // Physical gold is valued at the recorded buyback price when one is recent enough
+          const unit = tradeUnitOf(asset);
+          const gold = asset.symbol === 'XAU/USD' ? goldValuation(goldPrices, unit.livePrice(ticks[p.symbol]), todayWib()) : null;
+          const valued = gold?.basis === 'buyback' ? { ...unit, livePrice: () => gold.perGram ?? undefined } : unit;
+          return { asset, v: valuePosition(p, valued, ticks[p.symbol], ticks) };
         })
         .filter((x): x is { asset: AssetConfig; v: ValuedPosition } => x !== null),
-    [held, ticks]
+    [held, ticks, goldPrices]
   );
+  const goldBasis = held.some((p) => p.symbol === 'XAU/USD' && p.quantity > 0)
+    ? goldValuation(goldPrices, tradeUnitOf(getAssetBySymbol('XAU/USD') as AssetConfig).livePrice(ticks['XAU/USD']), todayWib())
+    : null;
 
   // Evidence score and F-score per open position (information, not a signal)
   const openSymbols = valued.filter((x) => x.v.quantity > 0).map((x) => x.asset.symbol).join(',');
@@ -465,6 +476,16 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
             </table>
           </section>
         </>
+      )}
+
+      {goldBasis && (
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          Physical gold is valued at{' '}
+          {goldBasis.basis === 'buyback'
+            ? `the ${goldBasis.entry?.source === 'pegadaian' ? 'Pegadaian' : 'Antam'} buyback price you recorded on ${goldBasis.entry?.date} (Rp${Math.round(goldBasis.perGram ?? 0).toLocaleString('en-US')}/g)`
+            : `the spot price per gram, because no buyback price from the last 30 days is recorded`}
+          . Record today's buyback price on the gold page (Antam gold bar card).
+        </p>
       )}
 
       {txs.length > 0 && (

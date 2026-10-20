@@ -35,6 +35,7 @@ const STORAGE_KEYS = {
   SCREENS: 'assetradar_screens_v1',
   DIVIDENDS: 'assetradar_dividends_v1',
   DIVIDENDS_DISMISSED: 'assetradar_dividend_dismissed_v1',
+  GOLD_PRICES: 'assetradar_gold_prices_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -626,4 +627,21 @@ export function getDismissedDividends(): string[] {
 
 export function saveDismissedDividends(keys: string[]): void {
   safeSet(STORAGE_KEYS.DIVIDENDS_DISMISSED, JSON.stringify(keys.slice(-500)));
+}
+
+// ---- Physical gold buyback prices typed in by the owner (synced) ------------------------------------
+
+registerSyncAdapter('goldPrices', listAdapter(STORAGE_KEYS.GOLD_PRICES));
+
+export function getGoldPricesRaw(): unknown {
+  return readJson(STORAGE_KEYS.GOLD_PRICES);
+}
+
+export function saveGoldPrices(list: unknown[]): void {
+  tracked('goldPrices', () => safeSet(STORAGE_KEYS.GOLD_PRICES, JSON.stringify(list)));
+  try {
+    window.dispatchEvent(new Event('assetradar:gold-prices-changed'));
+  } catch {
+    // No window (tests)
+  }
 }

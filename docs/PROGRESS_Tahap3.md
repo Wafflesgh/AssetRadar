@@ -74,12 +74,16 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
   - Tanpa kunci: hanya tampil di aplikasi (preview langsung bila belum ada yang tersimpan).
   - Uji server (curl): `/api/brief` → preview dengan bagian "Market data is unavailable right now." (sumber diblokir), tanggal salah 400, tanggal tanpa ringkasan 404, send-test tanpa login → 503/401, cron → brief gagal dengan pesan jelas lalu dicoba lagi.
   - Status verifikasi live: **belum** (sumber harga, berita dan Telegram diblokir jaringan cloud).
-- [ ] 7. Harga emas Antam / Pegadaian
+- [x] 7. Harga emas Antam / Pegadaian — **jalan cadangan** (tautan resmi + input manual)
+  - Pemeriksaan sumber: `www.logammulia.com`, `robots.txt`-nya, `www.pegadaian.co.id` dan `robots.txt`-nya **tidak bisa dibuka dari cloud** (diblokir kebijakan jaringan), jadi syarat penggunaan dan izin akses server tidak bisa diperiksa. Sepengetahuan saya kedua situs tidak menyediakan API/feed resmi untuk publik; harga hanya ditampilkan di halaman web. Sesuai aturan: **tidak ada scraping**.
+  - Dibuat: `src/utils/goldBar.ts` (+4 test: ukuran batangan Antam 0,5–1.000 g, konversi per gram ↔ per batang, validasi input (tanggal tidak di masa depan, angka per gram masuk akal), pemilihan harga untuk portofolio: buyback terbaru ≤30 hari, jika tidak harga spot per gram dengan label, jika tidak "none"; selisih buyback vs spot). Kartu **"Antam gold bar (Logam Mulia / Pegadaian)"** di halaman emas: tautan resmi, form harga buyback per gram (+ harga jual 1 g opsional, tanggal, sumber), harga terakhir vs spot, nilai per ukuran batangan, daftar harga yang dicatat (riwayat hanya dari yang benar-benar dimasukkan). Disimpan lokal + sinkronisasi (koleksi `goldPrices`). Portofolio: emas fisik dinilai dengan harga buyback yang dicatat (≤30 hari) dan diberi keterangan; jika tidak ada, harga spot per gram dengan keterangan.
+  - Status verifikasi live: tidak berlaku (tidak ada sumber otomatis); tautan resmi perlu dicek pemilik (tautan Pegadaian sengaja ke halaman utama karena alamat halaman harga tidak bisa diverifikasi dari cloud).
 - [ ] 8. Backtest sederhana
 
 ## Butuh keputusan pemilik
 
 - **Database sinkronisasi**: default Supabase (gratis). Perlu pemilik membuat proyek Supabase, menjalankan SQL di README, dan mengisi `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SYNC_PASSPHRASE` di Secrets. Alternatif Firestore bisa ditambahkan nanti bila diinginkan.
+- **Harga emas Antam/Pegadaian otomatis**: belum ada sumber resmi yang boleh diakses server. Pilihan: (a) tetap input manual (default, aman); (b) pemilik memeriksa syarat situs Logam Mulia/Pegadaian atau meminta izin/API resmi — bila ada, parser bisa ditambahkan; (c) layanan data berbayar yang berlisensi.
 - **Penjadwal harian**: Cloud Scheduler (Google Cloud, gratis 3 job/bulan) atau cron-job.org (gratis) memanggil `POST /api/cron/daily` dengan `CRON_TOKEN` tiap hari kerja ±16:20 WIB. Tanpa itu, forward test server hanya tercatat bila ada yang membuka aplikasi setelah 16:15 WIB.
 
 ## Laporan akhir
