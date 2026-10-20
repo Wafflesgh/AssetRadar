@@ -70,4 +70,6 @@ Untuk setiap fitur tulis: rencana singkat, apa yang dibuat, sumber data, keterba
 
 ## Laporan akhir
 
-_(diisi di akhir)_
+- Semua 9 fitur selesai, masing-masing di-commit & push ke `main` (3b27af1, 8829436, 7a5f215, f3f7a86, 6bac9a9, e55ef06, 63e8b9a, ee711ab, c41897e) + commit dokumen penutup.
+- Uji penutup (20 Okt 2026): 13 halaman tanpa scroll horizontal di 375px dan 1440px, mode gelap & terang; build produksi: service worker aktif, server dimatikan → aplikasi tetap terbuka dari cache dengan harga terakhir, tanpa crash. `npm run lint && npm test && npm run build` lulus (123 test).
+- CLAUDE.md dan README.md diperbarui (fitur, endpoint, sumber data & keterbatasan, cara memperbarui daftar emiten, kunci opsional `FINNHUB_API_KEY`).

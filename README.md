@@ -2,11 +2,14 @@
 
 **Track the world's largest assets, Indonesian stocks, crypto and global markets on one radar.**
 
-AssetRadar is a personal, non-commercial web app that follows 117 assets — US and world mega
-caps, Indonesian blue chips, 20 crypto coins, commodities, 17 stock indices and major
-currencies — in near real time. It works on desktop and mobile and offers TradingView-style
-charts, a Bloomberg-style Terminal, evidence-based sentiment with technical and fundamental
-analysis, an AI screen, a value/momentum portfolio simulator and risk-profile education.
+AssetRadar is a personal, non-commercial web app that follows 117 core assets — US and world
+mega caps, Indonesian blue chips, 20 crypto coins, commodities, 17 stock indices and major
+currencies — plus all ±960 stocks listed on the Indonesia Stock Exchange, with prices pushed
+from the server about every 5 seconds. It installs on phones and desktops (PWA) and offers
+TradingView-style charts, a Bloomberg-style Terminal, evidence-based sentiment with technical
+and fundamental analysis, company financial statements, a personal portfolio, the IDX corporate
+calendar, Indonesian macro data, an AI screen with a live track record, a value/momentum
+portfolio simulator and risk-profile education.
 
 > Data is for information only, not investment advice. Charts by TradingView.
 
@@ -48,6 +51,39 @@ analysis, an AI screen, a value/momentum portfolio simulator and risk-profile ed
   hypothetical scenarios are filtered out).
 - **Watchlist**, **light/dark theme**, a collapsible desktop sidebar, and an option to open the
   app in Terminal mode.
+- **Install as an app (PWA)**: manifest + icons, "Install app" in Settings and a dismissible
+  banner on the Radar (iPhone: Share → Add to Home Screen). The service worker caches the app
+  shell and the last API answers, so the app opens offline with the last prices marked
+  "Offline – last data" (registered in production builds only).
+- **IHSG first and every IDX stock** (`#/idx`): a key-indices strip (IHSG first) on the Radar,
+  IHSG first in Quick Chart, and a page with all listed Indonesian stocks — sector/board filters,
+  sorting, gainers/losers/most active, value traded — priced on demand (a background sweep
+  refreshes the whole list every 5 min while the IDX is open and someone is watching).
+- **Search in the header of every page**: by code, name, alias or sector, with recent searches;
+  `/` or Ctrl+K focuses it, and on phones it opens full-screen.
+- **Portfolio** (`#/portfolio`): buy/sell transactions (IDX stocks in lots of 100, gold in grams),
+  average-cost positions, live value and unrealized/realized P/L in Rupiah, allocation by asset
+  class, JSON export/import. Stored on this device only.
+- **AI Advisor live track record**: every verdict is saved once per day on this device and
+  scored when its horizon has passed, so the screen is also judged on real, after-the-fact
+  results (hit rate vs base rate, shown once there are ≥ 30 results).
+- **IDX corporate calendar** (`#/calendar`, Terminal `CAL`): upcoming earnings reports, ex-dividend
+  and payment dates, 5 years of dividends and splits, per stock and for the whole exchange
+  (all / watchlist / portfolio).
+- **Indonesia macro** (`#/macro`, Terminal `IDMACRO`): BI-Rate decisions, the policy-rate path,
+  inflation, GDP growth, FX reserves, trade balance and USD/IDR, each with its data date and
+  source. The AI Advisor tests the BI-Rate path and inflation as inputs for Indonesian assets
+  and keeps them only where they improved the validation period.
+- **Financial statements** on every stock page: annual, semester or quarterly income statement,
+  balance sheet and cash flow (up to 5 years), ratios (margins, ROE, ROA, DER, current ratio,
+  asset turnover, YoY / QoQ growth, EPS, P/E, P/B, dividend yield; quarters use trailing 12
+  months or are annualized), a revenue / net income chart, CSV download and the source of
+  every number.
+- **Prices pushed every ~5 seconds** (Server-Sent Events): the server fetches quotes once for all
+  viewers — about every 5 s for what you have open, 15 s for the rest, 5 min while a market is
+  closed — slows down automatically if Yahoo rate-limits, and pushes only changed quotes. The
+  header shows "Live (streaming)", or "Live · Polling" while the 10 s fallback is used.
+  Optional real-time US stock trades from Finnhub.
 
 ## AI Advisor (scientific approach)
 
@@ -90,7 +126,12 @@ analysis, an AI screen, a value/momentum portfolio simulator and risk-profile ed
 | Crypto (20 coins in IDR) | Indodax public WebSocket + REST; Indodax candles for charts and history |
 | Crypto market caps, 1h/7d change | CoinGecko |
 | Stocks, indices, commodities (futures), currencies | Yahoo Finance (batched quotes; exchange data is delayed) |
+| Real-time US stock trades (optional) | Finnhub WebSocket, free plan (personal use, 1 connection, ≤ 50 symbols) |
+| List of IDX stocks (code, name, shares, board, sector) | idx.co.id export, saved in `src/config/idxStocks.json` |
 | Annual reports (F-score, P/E, P/B) | Yahoo Finance fundamentals time series |
+| Financial statements | SEC EDGAR company facts (28 US companies, 10-K/10-Q) and Yahoo Finance fundamentals |
+| Corporate calendar | Yahoo Finance calendar events, dividends and splits |
+| Indonesia macro | Bank Indonesia (bi.go.id), FRED (OECD/IMF series), World Bank |
 | Spot gold (XAU/USD) | gold-api.com; change and history from Yahoo `GC=F` futures |
 | US Treasury yields | Yahoo Finance `^IRX`, `^FVX`, `^TNX`, `^TYX` |
 | News | Google News RSS (Indonesian and English) and publisher RSS feeds |
@@ -98,6 +139,28 @@ analysis, an AI screen, a value/momentum portfolio simulator and risk-profile ed
 
 Crude palm oil and coal are not listed: there is no free live source, and stale prices are
 never shown. A failing source shows "Data unavailable" with a "Try again" button.
+
+Known limits of the free sources:
+
+- Indonesian and other non-US stocks: Yahoo gives about 4 years of annual and only the last ~5
+  quarterly reports, so the 5-year quarterly / semester view is complete for US companies (SEC)
+  only. A quarter a source skipped is computed from the annual report where possible, otherwise
+  shown as "Not reported".
+- About 40 of the ±960 IDX stocks have no Yahoo quote and show "Data unavailable".
+- Calendar: AGM (RUPS), cum and recording dates and rights issues have no free source.
+- Macro: no free current source for the 10-year SBN yield or the manufacturing PMI; free CPI
+  month-on-month data ends in April 2025.
+- IDX stock and index quotes are delayed (free data); the BI-Rate history in the AI Advisor uses
+  the overnight interbank rate as a proxy.
+
+### Updating the list of IDX stocks
+
+idx.co.id blocks scripted downloads, so export the two lists from a normal browser and run the
+script (steps in the header of `scripts/update-idx-stocks.mjs`):
+
+```bash
+node scripts/update-idx-stocks.mjs securities.json profiles.json
+```
 
 ## Run locally
 
@@ -108,8 +171,9 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment and AI summaries.
-Never commit `.env`.
+Optional `.env` (see `.env.example`): `GEMINI_API_KEY` to word the sentiment and AI summaries;
+`FINNHUB_API_KEY` (free at finnhub.io) for real-time US stock trades — used on the server only,
+never sent to the browser. Without either key everything still works. Never commit `.env`.
 
 Checks that must pass after every change:
 
@@ -122,8 +186,9 @@ Production: `npm run build`, then `NODE_ENV=production npm start`.
 ## Deploy
 
 The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
-runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY` in the Secrets panel if you want AI wording.
-Do not push from AI Studio back to GitHub; import the latest version instead.
+runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY` and/or `FINNHUB_API_KEY` in the Secrets
+panel if you want them. Do not push from AI Studio back to GitHub; import the latest version
+instead (as a new app), then Publish.
 
 ## Files
 
@@ -139,7 +204,11 @@ Do not push from AI Studio back to GitHub; import the latest version instead.
 | `.env.example` | Example environment variables. |
 | `metadata.json` | App name/description for Google AI Studio. |
 | `CLAUDE.md` | Project notes for Claude Code. |
-| `docs/` | The original specification and follow-up prompts (Indonesian, historical). |
+| `docs/` | The original specification, follow-up prompts and progress log (Indonesian). |
+| `public/manifest.webmanifest`, `public/icons/` | PWA manifest and app icons. |
+| `public/sw.js` | Service worker (offline app shell and last API answers; filled in at build time). |
+| `scripts/generate-icons.mjs` | Draws the PNG app icons from the radar logo. |
+| `scripts/update-idx-stocks.mjs` | Rebuilds `src/config/idxStocks.json` from idx.co.id exports. |
 
 ### `src/`
 
@@ -148,9 +217,19 @@ Do not push from AI Studio back to GitHub; import the latest version instead.
 | `main.tsx` | Browser entry point that mounts `App`. |
 | `App.tsx` | Root component: global state, hash routing, layout, header and footer. |
 | `index.css` | Global styles, light/dark tokens, Terminal tokens, animations. |
-| `config/assets.ts` | Shared types, the 117 tracked assets (with share counts, keywords), groups, search. |
+| `pwa.ts` | Service worker registration (production only) and the install prompt. |
+| `config/assets.ts` | Shared types, the 117 core assets, the IDX universe, groups, search. |
+| `config/idxStocks.json` | Every IDX-listed stock (code, name, shares, board, sector, industry). |
+| `config/secCik.ts` | SEC EDGAR company numbers (CIK) of the US stocks. |
 | `config/riskProfiles.ts` | Risk questionnaire, scoring, sample allocations and instrument notes. |
-| `services/marketDataService.ts` | Live data manager (Indodax WebSocket, 10 s Yahoo polling, offline snapshot) and API helpers. |
+| `services/marketDataService.ts` | Live data manager (Indodax WebSocket, server price stream with polling fallback, offline snapshot) and API helpers. |
+| `hooks/useTrackedSymbols.ts` | Registers the symbols a view shows, so they are priced and refreshed first. |
+| `utils/priceStream.ts` | Price-stream scheduling, rate-limit backoff, tick diff, trade throttle, client watchdog. |
+| `utils/statements.ts` | Financial statements: Yahoo / SEC parsers, quarters, semesters, ratios, CSV. |
+| `utils/portfolio.ts` | Portfolio math: trade units, average-cost positions, P/L, import/export. |
+| `utils/corporateCalendar.ts` | Corporate events (earnings, dividends, splits) parsing and merging. |
+| `utils/macro.ts` | FRED / Bank Indonesia / World Bank parsers and release-date shifting. |
+| `ai/forwardTest.ts` | AI Advisor live track record (daily snapshots, scoring, hit rate). |
 | `services/newsStream.ts` | Shared live news store (SSE stream with polling fallback). |
 | `hooks/useLiveNews.ts` | React hooks for the live news store. |
 | `hooks/usePriceFlash.ts` | Price-change flash state for tables. |
@@ -159,7 +238,7 @@ Do not push from AI Studio back to GitHub; import the latest version instead.
 | `utils/movers.ts` | Live price buffer (5-minute window) and movers ranking. |
 | `utils/sentiment.ts` | Headline tone and the RSS parser. |
 | `utils/storage.ts` | All localStorage access (theme, timeframe, watchlist, snapshot, options, sidebar). |
-| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/watchlist`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`). |
+| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/idx`, `#/watchlist`, `#/portfolio`, `#/calendar`, `#/macro`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`). |
 | `utils/candles.ts` | 4-hour candle aggregation and WIB chart data. |
 | `utils/correlation.ts` | Pearson correlation of daily returns. |
 | `utils/terminalCommands.ts` | Terminal command parser, autocomplete and HELP list. |
@@ -182,7 +261,17 @@ Do not push from AI Studio back to GitHub; import the latest version instead.
 | `RadarView.tsx` | Radar: search, quick charts, movers, top 20 by market cap, market tables, sentiment. |
 | `MarketTable.tsx` | Compact ranked market table with flash, changes, market cap and mini chart. |
 | `MoversPanel.tsx` | Biggest movers (live 5m, 1H, 24H, 7D) with a market filter. |
-| `AssetSearch.tsx` | Keyboard-friendly asset search box. |
+| `AssetSearch.tsx` | Keyboard-friendly asset search box (results, recent searches). |
+| `HeaderSearch.tsx` | Search in the header of every page (full-screen on phones). |
+| `KeyIndicesStrip.tsx` | Key indices strip on the Radar (IHSG first). |
+| `IndonesianStocksView.tsx` | All IDX stocks with filters, sorting and movers (`#/idx`). |
+| `PortfolioView.tsx` | Personal portfolio (lazy-loaded). |
+| `LiveTrackRecord.tsx` | AI Advisor live (forward-test) track record. |
+| `CorporateCalendarPanel.tsx` | Corporate calendar on a stock's detail page. |
+| `IdxCalendarView.tsx` | IDX corporate calendar page. |
+| `IndonesiaMacroView.tsx` | Indonesia macro page (lazy-loaded). |
+| `FinancialStatementsPanel.tsx` | Financial statements and ratios on stock pages (lazy-loaded). |
+| `InstallApp.tsx` | "Install app" card and banner. |
 | `AssetDetailView.tsx` | Asset detail page with price, timeframes, chart and analysis. |
 | `AssetIntelligencePanel.tsx` | Sentiment score and live related news for one asset. |
 | `AssetAnalysisPanel.tsx` | Evidence breakdown, technical analysis and fundamental analysis. |
@@ -209,8 +298,8 @@ Do not push from AI Studio back to GitHub; import the latest version instead.
 | `TickerTape.tsx` | Scrolling price tape. |
 | `CommandLine.tsx` | Command line with autocomplete and HELP. |
 | `MarketPanels.tsx` | MONITOR table, HEATMAP and the market filter tabs. |
-| `MarketFunctionPanels.tsx` | MOVERS, WORLD INDICES, FX CROSS and US YIELD CURVE panels. |
-| `AnalysisPanels.tsx` | INTEL and HISTORICAL PRICES panels. |
+| `MarketFunctionPanels.tsx` | MOVERS, WORLD INDICES, FX CROSS, US YIELD CURVE and ID MACRO panels. |
+| `AnalysisPanels.tsx` | INTEL, HISTORICAL PRICES and CALENDAR panels. |
 | `IntelligencePanels.tsx` | SENTIMENT and NEWS panels and the shared news row. |
 | `DataPanels.tsx` | CHART, ECONOMIC CALENDAR, CORRELATION 30D and NEWS FEED panels. |
 | `TerminalPanel.tsx` | Shared panel frame, messages and formatting helpers. |
