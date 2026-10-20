@@ -179,7 +179,7 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
             symbols.some((s) => history[s]?.state === 'loading') && <p className="text-sm" style={muted}>Loading price history…</p>
           )}
           <p className="text-[11px]" style={muted}>
-            Daily closes ({[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')}). When one market is
+            Daily closes{ready.length ? ` (${[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')})` : ''}. When one market is
             closed (holiday, weekend) its last close is carried forward. Past performance does not predict future returns.
           </p>
         </section>

@@ -121,7 +121,7 @@ export function BacktestView({ ticks }: { ticks: Record<string, PriceTick> }) {
   const removeRule = (side: 'entry' | 'exit', i: number) => setStrategy((s) => ({ ...s, [side]: s[side].filter((_, k) => k !== i) }));
   const addRule = (side: 'entry' | 'exit') => setStrategy((s) => ({ ...s, [side]: [...s[side], { ...TEMPLATES.priceVsMa, dir: side === 'entry' ? 'above' : 'below' } as Condition] }));
   const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
-  const currency = asset?.currency === 'IDR' ? 'Rp' : asset?.currency === 'USX' ? 'US cents' : asset?.currency ?? '';
+  const currency = asset?.currency === 'IDR' ? 'Rp' : asset?.currency === 'USX' ? 'US cents' : asset?.currency === 'PTS' ? 'index points' : asset?.currency ?? '';
   const chartData = result?.full.equity.map((e) => ({ date: e.date, Strategy: Math.round(e.equity), 'Buy & hold': Math.round(e.buyHold) }));
 
   return (

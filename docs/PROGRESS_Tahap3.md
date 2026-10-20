@@ -93,4 +93,8 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
 
 ## Laporan akhir
 
-(diisi di akhir)
+- Semua 8 fitur selesai dan di-push ke branch `claude/ecstatic-fermat-nyv2f9` (PR https://github.com/Wafflesgh/AssetRadar/pull/1). `npm run lint && npm test && npm run build` lulus (190 test).
+- Uji tampilan dengan Chromium headless (tanpa paket baru): 12 halaman (termasuk semua halaman baru) di 375px dan 1440px, mode gelap dan terang → **tidak ada scroll horizontal**; tangkapan layar diperiksa (screener, alerts, backtest, compare, emas).
+- Build produksi: `/`, `/manifest.webmanifest`, `/sw.js` → 200; service worker tetap melewati stream SSE dan kini menangani push.
+- Sumber data: semua host luar diblokir jaringan cloud → **tidak ada yang diverifikasi dengan data live**; aplikasi tetap terbuka tanpa crash dengan "Data unavailable".
+- README ("Optional setup (stage 3)") dan CLAUDE.md diperbarui; kunci baru di `.env.example` tanpa nilai.
