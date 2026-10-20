@@ -115,11 +115,40 @@ Aset tanpa fundamental (crypto, indeks, kurs, komoditas): bobot pilar 2–3 diba
 
 ### 2.6 Crypto untuk trading aktif di Binance
 
-- Sumber (sudah dicek bisa diakses dari Indonesia, 20 Okt 2026): `https://data-api.binance.vision/api/v3/klines` (spot, 1h/4h/1d, tanpa kunci), `/api/v3/ticker/24hr`; futures `https://fapi.binance.com/fapi/v1/fundingRate`, `/futures/data/openInterestHist`, `/futures/data/globalLongShortAccountRatio`; Fear & Greed `https://api.alternative.me/fng/`.
-- **Risiko**: server produksi (Cloud Run AI Studio) mungkin berada di wilayah AS, dan Binance memblokir IP AS (HTTP 451), terutama `fapi`. Deteksi otomatis: bila diblokir, sembunyikan data futures dengan keterangan "Binance futures data not available from this server's region", dan coba `data-api.binance.vision` untuk spot. Jangan memakai proxy pihak ketiga.
-- Halaman baru `#/crypto` (Binance): tabel 100 pair (harga USDT, % 4h/24h/7d, volume, skor Short/Medium/Long, funding, perubahan OI 24 jam, long/short ratio), filter, klik → detail pair dengan timeframe 1h/4h/1D, level teknikal (bagian 3), dan kalkulator posisi.
-- Pair yang sama dengan aset IDR di Indodax (BTC, ETH, …) ditautkan dua arah.
-- Batas permintaan: hormati bobot rate limit Binance (header `X-MBX-USED-WEIGHT-1M`), cache klines 1 menit (1h/4h) dan 5 menit (1d), funding/OI 5 menit; hanya saat ada penonton.
+Ikuti dokumentasi resmi Binance Spot API (developers.binance.com; salinan resmi di GitHub `binance/binance-spot-api-docs`: `rest-api.md`, `web-socket-streams.md`, `faqs/market_data_only.md`). Fakta di bawah sudah dicek 20 Okt 2026:
+
+**Hanya data pasar publik — tanpa kunci API.**
+- Aplikasi **tidak pernah** meminta, menyimpan, atau memakai API key / secret Binance milik pemilik (HMAC/RSA/Ed25519) dan tidak memakai endpoint akun/order. Kalau suatu saat fitur akun diminta, itu keputusan pemilik terpisah.
+
+**Alamat (base endpoint)**
+- Utama untuk data publik: `https://data-api.binance.vision` (dianjurkan Binance untuk "market data only"). Endpoint yang tersedia di sana: `/api/v3/ping`, `/time`, `/exchangeInfo`, `/klines`, `/uiKlines`, `/ticker/24hr`, `/ticker` (rolling window), `/ticker/price`, `/ticker/bookTicker`, `/avgPrice`, `/depth`, `/trades`, `/aggTrades`.
+- Cadangan berurutan bila utama gagal: `https://api.binance.com` → `https://api-gcp.binance.com` → `https://api1…api4.binance.com` (api1–api4 lebih cepat tetapi kurang stabil). Semua 7 alamat membalas 200 dari Indonesia.
+- **Kuota weight dihitung per IP dan dipakai bersama oleh semua alamat itu** (dicek: angka `X-MBX-USED-WEIGHT-1M` terus bertambah saat berpindah alamat). Berpindah alamat **bukan** cara menghindari batas.
+- Live stream: WebSocket `wss://data-stream.binance.vision:443` (stream pasar publik; user data stream tidak tersedia di sini).
+- Futures (funding, open interest, long/short) ada di `https://fapi.binance.com` — bukan bagian dari dokumen spot ini; perlakukan sebagai opsional.
+
+**Batas & aturan (dari `rest-api.md` / `web-socket-streams.md`)**
+- `REQUEST_WEIGHT` 6000 per menit per IP (dari `exchangeInfo.rateLimits` — baca dari sana saat start, jangan di-hardcode). Batasi diri sendiri maksimal **20%** (±1200/menit) karena IP server bisa dipakai bersama.
+- Weight: `klines` 2; `ticker/24hr` 2 untuk 1–20 simbol, 40 untuk 21–100, 80 untuk >100 atau tanpa parameter; pakai `type=MINI` bila kolom lengkap tidak perlu.
+- Baca header `X-MBX-USED-WEIGHT-1M` di setiap respons; kalau mendekati batas → tunda antrean.
+- HTTP **429** = batas terlampaui → wajib berhenti sesuai header `Retry-After` (detik) dan pakai `Backoff` yang sudah ada. HTTP **418** = IP diblokir otomatis karena mengabaikan 429 → hentikan semua permintaan Binance sampai `Retry-After` lewat dan catat di log. HTTP **451** = wilayah diblokir.
+- Timeout permintaan Binance 10 detik: set timeout klien 10–12 detik; jangan mengulang terlalu cepat.
+- Data urut kronologis; tanpa `startTime`/`endTime` → item terbaru sampai `limit` (klines maks 1000). Waktu dalam **milidetik** (jangan kirim header mikrodetik). Kline unik menurut open time; candle terakhir **belum selesai** — tandai dan jangan dipakai di indikator yang butuh candle tertutup.
+- Hindari kata kunci SQL di parameter (bisa terkena WAF) — cukup gunakan simbol dari `exchangeInfo`.
+- **Nama simbol bisa non-ASCII** (dicek: mis. `币安人生USDT`, `牛来USDT`). Selalu `encodeURIComponent`, simpan sebagai string UTF-8, jangan membuat regex yang mengasumsikan A–Z saja, dan tampilkan apa adanya.
+- WebSocket: koneksi berlaku maks **24 jam** (sambung ulang terjadwal sebelum itu), server mengirim ping tiap 20 detik → balas pong (library/runtime biasanya otomatis), maks **5 pesan masuk per detik** dari klien, maks **1024 stream** per koneksi, maks 300 koneksi per 5 menit per IP.
+
+**Universe & data**
+- Universe: dari `exchangeInfo` (`permissions=SPOT&symbolStatus=TRADING`): pasangan `quoteAsset = USDT` (±511 saat dicek), buang stablecoin dan token leverage, ambil **100 teratas menurut volume 24 jam** (`ticker/24hr` sekali untuk semua: weight 80) untuk ranking & desil.
+- Harga live: **satu** koneksi WebSocket di server ke `!miniTicker@arr` (semua pasangan, update ±1 detik) lalu diteruskan ke browser lewat price stream SSE yang sudah ada (hanya pasangan yang dilihat/difokus, maks 1 update per pasangan per detik). Tanpa WebSocket (runtime tidak mendukung atau diblokir) → polling `ticker/24hr` per 20 simbol tiap 10 detik.
+- Candle: `klines` 1h/4h/1d hanya untuk pasangan yang sedang dibuka + 100 teratas (untuk skor), cache 1 menit (1h/4h) dan 5 menit (1d). Contoh anggaran: 100 pasangan × 3 timeframe × weight 2 = 600 per putaran → jadwalkan bertahap supaya tetap < 1200/menit.
+- Futures (opsional): `fapi` funding rate, `openInterestHist`, `globalLongShortAccountRatio` untuk pasangan yang dibuka, cache 5 menit. Sentimen pasar: Fear & Greed `https://api.alternative.me/fng/`.
+- **Risiko wilayah**: server produksi (Cloud Run AI Studio) mungkin di AS, dan Binance bisa membalas 451, terutama `fapi`. Deteksi otomatis: coba urutan alamat di atas; bila semua 451 → tampilkan "Binance data is not available from this server's region" (spot) atau sembunyikan blok futures dengan keterangan yang sama. Jangan memakai proxy pihak ketiga.
+
+**Tampilan**
+- Halaman `#/crypto` (Binance): tabel 100 pasangan (harga USDT live, % 1h/4h/24h/7d, volume, skor Short/Medium/Long, funding, perubahan OI 24 jam, long/short ratio), filter & cari (termasuk simbol non-ASCII), klik → detail pasangan dengan timeframe 1h/4h/1D, level teknikal (bagian 3), dan kalkulator posisi.
+- Pasangan yang sama dengan aset IDR di Indodax (BTC, ETH, …) ditautkan dua arah.
+- Test: parser `exchangeInfo`/`klines`/`ticker` (fixture), filter universe (stablecoin, leverage, non-ASCII), penghitung weight + reaksi 429/418/451 (`Retry-After`), candle belum selesai, penjadwal anggaran weight.
 
 ## 3. B — Proyeksi teknikal (naik sampai berapa, turun sampai berapa)
 
@@ -203,7 +232,7 @@ Ketentuan:
 
 - `src/sentiment/` — `types.ts`, `crossSection.ts` (percentile, desil, demean industri, rank AMP), `pillars.ts` (3 pilar), `horizons.ts` (bobot & komposisi horizon, label, confidence), `newsHorizon.ts`, `cadence.ts`, `validation.ts` (IC, hit rate, point-in-time), `hybridValue.ts` (regresi Bettman), `operational.ts` (Abarbanell & Bushee), `sue.ts`.
 - `src/sentiment/projections.ts` — kisaran empiris + kalibrasi, ATR, level S/R, pivot klasik, profil volume, target pola, kalkulator posisi.
-- `src/crypto/binance.ts` — parser klines/ticker/funding/OI/long-short, deteksi blokir wilayah, filter universe.
+- `src/crypto/binance.ts` — parser exchangeInfo/klines/ticker/funding/OI/long-short, urutan base endpoint, penghitung weight + reaksi 429/418/451, filter universe (termasuk simbol non-ASCII), klien WebSocket `!miniTicker@arr` dengan sambung ulang < 24 jam.
 - `src/i18n/` — bagian C. `src/utils/macro.ts` diperluas (parser baru + test).
 - Semua dengan test berbasis fixture kecil.
 
@@ -216,7 +245,7 @@ Ketentuan:
 | Fundamental universe IDX (F-score, GPA, B/M, AB) | `statements.ts` (Yahoo timeseries) — perluas tipe: Inventory, AccountsReceivable, SellingGeneralAndAdministration, CostOfRevenue, TaxRateForCalcs, CapitalExpenditure, StockholdersEquity, OrdinarySharesNumber | pindai pelan 2 paralel + jeda; cache 24 jam; progres ditampilkan | ±960 permintaan ≈ 15–20 menit; prioritaskan saham yang dilihat |
 | Estimasi analis & BVPS & sektor | Yahoo `quoteSummary` (`earningsTrend`, `earningsHistory`, `defaultKeyStatistics`, `assetProfile`) dengan sesi crumb yang sudah ada | pindai bersama fundamental; cache 24 jam | |
 | Saham AS (SEC) | companyfacts yang sudah ada + `submissions` (SIC) | cache 12–24 jam | UA `AssetRadar personal research app (non-commercial)` |
-| Binance | bagian 2.6 | 1–5 menit | |
+| Binance | bagian 2.6: 1 WebSocket `!miniTicker@arr` (data-stream.binance.vision) + REST `data-api.binance.vision` | live; klines 1–5 menit | anggaran weight ≤ 20% dari batas, hormati 429/418/`Retry-After` |
 | Berita | hub yang ada | real-time | |
 | Makro | bagian 6 | 6–24 jam per sumber | |
 | Skor sentimen | dihitung dari snapshot di atas | Short: setiap 5 menit + saat berita/harga berubah signifikan; Medium: harian; Long: harian + saat laporan baru | |
