@@ -56,6 +56,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const BacktestView = lazy(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
 const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
 const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
@@ -364,6 +365,7 @@ export default function App() {
               {activeTab === 'screener' && 'IDX Screener'}
               {activeTab === 'compare' && 'Compare'}
               {activeTab === 'brief' && 'Morning Brief'}
+              {activeTab === 'backtest' && 'Backtest'}
             </span>
           </div>
         </div>
@@ -514,6 +516,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'backtest' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <BacktestView ticks={ticks} />
           </Suspense>
         )}
         {activeTab === 'brief' && (

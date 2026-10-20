@@ -1,14 +1,14 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio, #/calendar, #/macro, #/alerts, #/screener, #/compare?s=BBCA,BBRI, #/brief.
+ * #/idx, #/portfolio, #/calendar, #/macro, #/alerts, #/screener, #/compare?s=BBCA,BBRI, #/brief, #/backtest.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
 import { buildCompareParam, parseCompareParam } from './compare.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare' | 'brief';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -35,6 +35,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (path === 'brief' || path === 'ringkasan') {
     return { tab: 'brief' };
+  }
+  if (path === 'backtest') {
+    return { tab: 'backtest' };
   }
   if (!cleaned || cleaned === 'radar') {
     return { tab: 'radar' };
@@ -101,6 +104,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?
       return '#/screener';
     case 'brief':
       return '#/brief';
+    case 'backtest':
+      return '#/backtest';
     case 'compare':
       return compare && compare.length ? `#/compare?s=${buildCompareParam(compare)}` : '#/compare';
     case 'radar':

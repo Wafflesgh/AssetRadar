@@ -24,6 +24,7 @@ import {
   Filter,
   GitCompare,
   Newspaper,
+  History,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -31,7 +32,7 @@ import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare' | 'brief';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -68,6 +69,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'calendar', label: 'IDX Calendar', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'macro', label: 'ID Macro', icon: Building2 },
   { id: 'quant', label: 'Quant Lab', shortLabel: 'Quant', icon: FlaskConical },
+  { id: 'backtest', label: 'Backtest', icon: History },
   { id: 'watchlist', label: 'Watchlist', shortLabel: 'Watch', icon: Star },
   { id: 'risk', label: 'Risk Profile', shortLabel: 'Risk', icon: ShieldAlert },
   { id: 'settings', label: 'Settings', icon: Settings },

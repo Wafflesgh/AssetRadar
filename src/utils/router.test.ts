@@ -83,3 +83,8 @@ test('brief route', () => {
   assert.deepEqual(parseHashRoute('#/brief'), { tab: 'brief' });
   assert.equal(buildHashRoute('brief'), '#/brief');
 });
+
+test('backtest route', () => {
+  assert.deepEqual(parseHashRoute('#/backtest'), { tab: 'backtest' });
+  assert.equal(buildHashRoute('backtest'), '#/backtest');
+});

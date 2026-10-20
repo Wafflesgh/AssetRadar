@@ -36,6 +36,7 @@ const STORAGE_KEYS = {
   DIVIDENDS: 'assetradar_dividends_v1',
   DIVIDENDS_DISMISSED: 'assetradar_dividend_dismissed_v1',
   GOLD_PRICES: 'assetradar_gold_prices_v1',
+  STRATEGIES: 'assetradar_strategies_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -644,4 +645,16 @@ export function saveGoldPrices(list: unknown[]): void {
   } catch {
     // No window (tests)
   }
+}
+
+// ---- Saved backtest strategies (synced) ----------------------------------------------------------------
+
+registerSyncAdapter('strategies', listAdapter(STORAGE_KEYS.STRATEGIES));
+
+export function getStrategiesRaw(): unknown {
+  return readJson(STORAGE_KEYS.STRATEGIES);
+}
+
+export function saveStrategies(list: unknown[]): void {
+  tracked('strategies', () => safeSet(STORAGE_KEYS.STRATEGIES, JSON.stringify(list)));
 }
