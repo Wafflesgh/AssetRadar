@@ -56,6 +56,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
 const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
@@ -434,6 +435,7 @@ export default function App() {
             onGoToRadar={() => handleSelectTab('radar')}
             onGoToAdvisor={() => handleSelectTab('advisor')}
             onGoToQuant={() => handleSelectTab('quant')}
+            onCompare={handleCompare}
           />
         )}
 
@@ -459,6 +461,7 @@ export default function App() {
             isWatchlisted={watchlist.includes(currentAsset.symbol)}
             onToggleWatchlist={handleToggleWatchlist}
             ticks={ticks}
+            onCompare={(symbol) => handleCompare(compareSymbols.includes(symbol) ? compareSymbols : [...compareSymbols, symbol].slice(-4))}
           />
         )}
 
@@ -509,6 +512,25 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'compare' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <CompareView
+              symbols={compareSymbols}
+              ticks={ticks}
+              onSelectAsset={handleSelectAsset}
+              onChange={(symbols) => {
+                setCompareSymbols(symbols);
+                window.history.replaceState(null, '', buildHashRoute('compare', undefined, symbols));
+              }}
+            />
           </Suspense>
         )}
         {activeTab === 'screener' && (

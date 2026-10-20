@@ -52,7 +52,12 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
   - Uji server (curl): 962 baris, pemindaian berjalan & progres naik (34 saham dalam ±5 dtk saat sumber gagal), baris tanpa data tetap tampil.
   - Keterbatasan: sumber hanya Yahoo (saham IDX ±4 tahun tahunan, ±5 kuartal); pemindaian penuh ±10–20 menit; P/E dll. memakai harga tertunda dari sapuan IDX.
   - Status verifikasi live: **belum** (Yahoo diblokir jaringan cloud).
-- [ ] 4. Bandingkan saham/aset
+- [x] 4. Bandingkan saham/aset
+  - Rencana: endpoint riwayat harian OHLC ±5 tahun (dipakai juga oleh portofolio & backtest), normalisasi murni dengan test, halaman lazy dengan recharts.
+  - Dibuat: `src/utils/compare.ts` (+5 test: parameter URL — kode/simbol/id, huruf besar-kecil bebas, duplikat dibuang, maks 4; tanggal awal periode; normalisasi mulai = 100 dengan libur berbeda per bursa → close terakhir dibawa maju; basis = hari pertama semua aset punya harga). Server `GET /api/market/daily?symbol=` (Yahoo `1d/5y` OHLC; crypto Indodax `tf=1D`; emas GC=F; SAR dari USD/IDR; cache 6 jam). Halaman **`#/compare?s=BBCA,BBRI,BMRI`** (2–4 aset lewat pencarian, chip warna, grafik kinerja 1M/3M/1Y/3Y/5Y, tabel harga & perubahan 24h/7d/30d/periode, untuk saham: pos laporan & rasio berdampingan tahunan/kuartalan dengan label mata uang laporan). Tombol **Compare** di detail aset dan di screener (centang 2–4), perintah Terminal **`CMP BBCA BBRI`** (+ test parser), menu Compare.
+  - Mata uang berbeda: kinerja dalam % mata uang masing-masing (tanpa konversi), angka laporan dalam mata uang aslinya.
+  - Uji server (curl): simbol tidak dikenal 400, sumber gagal 502 "History unavailable" (UI: "Data unavailable" + "Try again").
+  - Status verifikasi live: **belum** (Yahoo/Indodax diblokir jaringan cloud).
 - [ ] 5. Portofolio lanjutan
 - [ ] 6. Ringkasan pagi (morning brief)
 - [ ] 7. Harga emas Antam / Pegadaian

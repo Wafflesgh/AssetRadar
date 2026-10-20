@@ -29,6 +29,7 @@ interface TerminalViewProps {
   onGoToRadar: () => void;
   onGoToAdvisor: () => void;
   onGoToQuant: () => void;
+  onCompare?: (symbols: string[]) => void;
 }
 
 const PANEL_ELEMENT_ID: Record<PanelId, string> = {
@@ -106,6 +107,7 @@ export function TerminalView({
   onGoToRadar,
   onGoToAdvisor,
   onGoToQuant,
+  onCompare,
 }: TerminalViewProps) {
   const [group, setGroup] = useState<TerminalGroup>('ALL');
   const groupAssets = useMemo(() => (group === 'ALL' ? ASSETS : ASSETS.filter((a) => a.group === group)), [group]);
@@ -166,6 +168,10 @@ export function TerminalView({
         onGoToRadar();
         return 'Back to Radar.';
       }
+      if (cmd.type === 'compare') {
+        onCompare?.(cmd.symbols);
+        return 'Opening Compare.';
+      }
       if (cmd.type === 'quant') {
         onGoToQuant();
         return 'Opening the portfolio simulator.';
@@ -178,7 +184,7 @@ export function TerminalView({
       focusPanel(cmd.panel, true);
       return `Opening ${PANEL_NAME[cmd.panel]}`;
     },
-    [focusPanel, onGoToRadar, onGoToAdvisor, onGoToQuant]
+    [focusPanel, onGoToRadar, onGoToAdvisor, onGoToQuant, onCompare]
   );
 
   const selectAsset = useCallback((symbol: string) => setSelectedSymbol(symbol), []);

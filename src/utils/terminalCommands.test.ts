@@ -79,3 +79,10 @@ test('new market functions and asset analysis commands', () => {
   assert.equal((parseTerminalCommand('bbca cal') as { panel: string }).panel, 'cal');
   assert.deepEqual(getCommandSuggestions('cu').map((s) => s.command)[0], 'CURV');
 });
+
+test('CMP opens the Compare page with 2–4 assets', () => {
+  assert.deepEqual(parseTerminalCommand('cmp bbca bbri'), { type: 'compare', symbols: ['BBCA.JK', 'BBRI.JK'] });
+  assert.equal(parseTerminalCommand('CMP BBCA')?.type, 'error');
+  assert.equal(parseTerminalCommand('CMP BBCA NOPE')?.type, 'error');
+  assert.equal(parseTerminalCommand('CMP BBCA BBRI BMRI TLKM ASII')?.type, 'error');
+});

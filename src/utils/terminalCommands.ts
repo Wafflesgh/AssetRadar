@@ -1,7 +1,8 @@
 /**
  * terminalCommands.ts — Parser and autocomplete for the Terminal command line
  * (Bloomberg style: "<CODE> <FUNCTION>", e.g. "ETH GP", "BBCA INTEL", "SPX HP"), the market
- * functions (MOV, WEI, FXC, CURV, HM, ECO, CORR, TOP) and the HELP command list.
+ * functions (MOV, WEI, FXC, CURV, HM, ECO, CORR, TOP), "CMP <CODE> <CODE>…" (Compare page) and the
+ * HELP command list.
  * Asset codes and aliases come from ASSETS (config/assets.ts).
  */
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
@@ -17,6 +18,7 @@ export type TerminalCommand =
   | { type: 'radar' }
   | { type: 'advisor' }
   | { type: 'quant' }
+  | { type: 'compare'; symbols: string[] }
   | { type: 'error'; message: string };
 
 /** Recognized asset codes (aliases are accepted but not suggested). Order = suggestion order. */
@@ -64,6 +66,7 @@ export const TERMINAL_HELP: CommandHelpItem[] = [
   { command: 'HELP', description: 'List of commands' },
   { command: 'AI', description: 'Open the AI Advisor (backtested outlook)' },
   { command: 'QUANT', description: 'Open the value/momentum portfolio simulator' },
+  { command: 'CMP <CODE> <CODE>', description: 'Compare 2–4 assets, e.g. CMP BBCA BBRI BMRI' },
   { command: 'RADAR', description: 'Back to the Radar page' },
 ];
 
@@ -80,6 +83,14 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   if (text === 'AI' || text === 'ADVISOR') return { type: 'advisor' };
   if (text === 'QUANT' || text === 'LAB') return { type: 'quant' };
   if (PANEL_COMMANDS[text]) return { type: 'panel', panel: PANEL_COMMANDS[text].panel };
+  if (text === 'CMP' || text.startsWith('CMP ')) {
+    const codes = text.split(' ').slice(1);
+    const unknown = codes.filter((c) => !getAssetByCode(c));
+    if (unknown.length) return { type: 'error', message: `Unknown code: ${unknown.join(', ')}. Example: CMP BBCA BBRI` };
+    const symbols = [...new Set(codes.map((c) => (getAssetByCode(c) as { symbol: string }).symbol))];
+    if (symbols.length < 2 || symbols.length > 4) return { type: 'error', message: 'CMP needs 2 to 4 different codes, e.g. CMP BBCA BBRI' };
+    return { type: 'compare', symbols };
+  }
 
   const [code, fn, ...rest] = text.split(' ');
   const asset = getAssetByCode(code);
@@ -100,6 +111,7 @@ const COMMAND_SUGGESTIONS: CommandHelpItem[] = [
   { command: 'HELP', description: 'List of commands' },
   { command: 'AI', description: 'AI Advisor' },
   { command: 'QUANT', description: 'Portfolio simulator' },
+  { command: 'CMP', description: 'Compare assets: CMP BBCA BBRI' },
   { command: 'RADAR', description: 'Back to Radar' },
 ];
 

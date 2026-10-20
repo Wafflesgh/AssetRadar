@@ -4,7 +4,7 @@
  * (TradingView or alternative) and the sentiment + news panel.
  */
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { ArrowLeft, Star, Info, RefreshCw, Bell } from 'lucide-react';
+import { ArrowLeft, Star, Info, RefreshCw, Bell, GitCompare } from 'lucide-react';
 import { AlertDialog } from './AlertEditor.tsx';
 import {
   ASSETS,
@@ -38,6 +38,8 @@ interface AssetDetailViewProps {
   isWatchlisted: boolean;
   /** All live ticks (for the alert form's asset picker). */
   ticks?: Record<string, PriceTick>;
+  /** Adds this asset to the Compare page and opens it. */
+  onCompare?: (symbol: string) => void;
   onToggleWatchlist: (symbol: string) => void;
 }
 
@@ -51,6 +53,7 @@ export function AssetDetailView({
   effectiveTheme,
   isWatchlisted,
   ticks = {},
+  onCompare,
   onToggleWatchlist,
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
@@ -215,6 +218,17 @@ export function AssetDetailView({
               <Bell className="w-4 h-4" />
               <span>Alert</span>
             </button>
+            {onCompare && (
+              <button
+                type="button"
+                onClick={() => onCompare(asset.symbol)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap"
+                style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+              >
+                <GitCompare className="w-4 h-4" />
+                <span>Compare</span>
+              </button>
+            )}
           </div>
         </div>
 

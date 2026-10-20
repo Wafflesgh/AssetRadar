@@ -1672,6 +1672,86 @@ function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
 }
 
 
+// ---- Daily OHLC history (~5 years) for Compare, Backtest and portfolio performance ----------------
+
+interface DailyOhlc {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+const dailyOhlcCache = new Map<string, CacheEntry<DailyOhlc[]>>();
+const dailyOhlcPending = new Map<string, Promise<DailyOhlc[]>>();
+
+async function fetchYahooDailyOhlc(yahooSymbol: string): Promise<DailyOhlc[]> {
+  const result = await fetchYahooChartRaw(yahooSymbol, '1d', '5y');
+  const ts: number[] = result.timestamp || [];
+  const q = result.indicators?.quote?.[0] ?? {};
+  const offsetSec = Number(result.meta?.gmtoffset) || 0;
+  const bars: DailyOhlc[] = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = Number(q.close?.[i]);
+    if (!Number.isFinite(c) || c <= 0 || q.close?.[i] === null) continue;
+    const pick = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 && v !== null ? Number(v) : c);
+    const date = new Date((Number(ts[i]) + offsetSec) * 1000).toISOString().slice(0, 10);
+    const bar: DailyOhlc = { date, open: pick(q.open?.[i]), high: pick(q.high?.[i]), low: pick(q.low?.[i]), close: c };
+    if (Number.isFinite(Number(q.volume?.[i]))) bar.volume = Number(q.volume[i]);
+    bar.high = Math.max(bar.high, bar.open, bar.close);
+    bar.low = Math.min(bar.low, bar.open, bar.close);
+    if (bars.length && bars[bars.length - 1].date === date) bars[bars.length - 1] = bar;
+    else bars.push(bar);
+  }
+  return bars;
+}
+
+async function fetchIndodaxDailyOhlc(pair: string): Promise<DailyOhlc[]> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const url = `https://indodax.com/tradingview/history_v2?symbol=${pair.toUpperCase()}&tf=1D&from=${nowSec - 5 * 365 * DAY_SEC}&to=${nowSec}`;
+  const res = await fetchWithTimeout(url, {}, 10_000);
+  if (!res.ok) throw new Error(`Indodax HTTP ${res.status}`);
+  const rows = await res.json();
+  const bars: DailyOhlc[] = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const t = Number(row?.Time);
+    const c = Number(row?.Close);
+    if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) continue;
+    const o = Number(row?.Open) || c;
+    const bar: DailyOhlc = { date: localDate(t * 1000, 'CRYPTO'), open: o, high: Math.max(Number(row?.High) || c, o, c), low: Math.min(Number(row?.Low) || c, o, c), close: c };
+    if (Number.isFinite(Number(row?.Volume))) bar.volume = Number(row.Volume);
+    if (bars.length && bars[bars.length - 1].date === bar.date) bars[bars.length - 1] = bar;
+    else bars.push(bar);
+  }
+  return bars;
+}
+
+/** About 5 years of daily OHLC per asset (cached 6 h): Indodax for crypto, Yahoo for the rest. */
+async function dailyOhlcFor(asset: Asset): Promise<DailyOhlc[]> {
+  const cached = dailyOhlcCache.get(asset.symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  let pending = dailyOhlcPending.get(asset.symbol);
+  if (!pending) {
+    pending = (async () => {
+      if (asset.indodaxPair) return fetchIndodaxDailyOhlc(asset.indodaxPair);
+      if (asset.symbol === 'XAU/USD') return fetchYahooDailyOhlc('GC=F');
+      if (asset.symbol === 'SAR/IDR') {
+        return (await fetchYahooDailyOhlc('IDR=X')).map((b) => ({ ...b, open: b.open / SAR_PER_USD, high: b.high / SAR_PER_USD, low: b.low / SAR_PER_USD, close: b.close / SAR_PER_USD }));
+      }
+      if (!asset.yahooSymbol) return [];
+      return fetchYahooDailyOhlc(asset.yahooSymbol);
+    })()
+      .then((data) => {
+        dailyOhlcCache.set(asset.symbol, { data, expiresAt: Date.now() + (data.length ? AI_HISTORY_TTL_MS : 10 * 60_000) });
+        return data;
+      })
+      .finally(() => dailyOhlcPending.delete(asset.symbol));
+    dailyOhlcPending.set(asset.symbol, pending);
+  }
+  return pending;
+}
+
 // ---- Asset analysis: technical scorecard + chart patterns + fundamentals + news drivers ----
 
 const ANALYSIS_TTL_MS = 2 * 60_000;
@@ -3427,6 +3507,31 @@ async function startServer() {
       res.status(502).json({
         error: err instanceof Error ? err.message : 'Failed to load chart data',
       });
+    }
+  });
+
+  // 6b. ~5 years of daily OHLC (Compare, Backtest, portfolio performance)
+  app.get('/api/market/daily', async (req, res) => {
+    const asset = getAssetBySymbol(String(req.query.symbol || ''));
+    if (!asset || (!asset.yahooSymbol && !asset.indodaxPair)) {
+      res.status(400).json({ error: 'Unsupported symbol' });
+      return;
+    }
+    try {
+      const bars = await dailyOhlcFor(asset);
+      if (bars.length === 0) {
+        res.status(502).json({ error: 'History unavailable' });
+        return;
+      }
+      res.json({
+        symbol: asset.symbol,
+        currency: asset.currency,
+        source: asset.indodaxPair ? 'Indodax' : asset.symbol === 'XAU/USD' ? 'Yahoo Finance (gold futures GC=F)' : 'Yahoo Finance',
+        bars,
+      });
+    } catch (err) {
+      console.warn(`[Daily] ${asset.code} failed:`, err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'History unavailable' });
     }
   });
 
