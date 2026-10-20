@@ -133,7 +133,23 @@ import {
 import { dailyJobDue, wibDate } from './src/utils/sync.ts';
 import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore } from './server/store.ts';
-import { createOwnerAuth, registerSyncRoutes } from './server/sync.ts';
+import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
+import { loadSubscriptions, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
+import {
+  addHistory,
+  afterFire,
+  evaluateAlert,
+  HOLDINGS_CALENDAR_ID,
+  inQuietHours,
+  parseAlertSettings,
+  parseAlerts,
+  throttle,
+  type AlertHistoryEntry,
+  type AlertSettings,
+  type AlertState,
+  type UserAlert,
+} from './src/utils/alerts.ts';
+import { formatAssetPrice } from './src/utils/format.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -955,11 +971,15 @@ function streamFeeds() {
 }
 
 async function streamTick(): Promise<void> {
-  if (priceStream.running || priceStream.clients.size === 0) return;
+  // The loop also runs without viewers while the server checks alerts for web push
+  if (priceStream.running || (priceStream.clients.size === 0 && !serverAlerts.active)) return;
+  if (priceStream.clients.size === 0 && Date.now() - serverAlerts.lastCheckAt < 15_000) return;
   priceStream.running = true;
   try {
     recomputePriority();
-    pushPrices(await buildStreamTicks());
+    const ticks = await buildStreamTicks();
+    pushPrices(ticks);
+    if (serverAlerts.active) await checkServerAlerts(ticks);
   } catch (err) {
     console.warn('[Stream] tick failed:', err instanceof Error ? err.message : err);
   } finally {
@@ -2752,6 +2772,156 @@ function checkDueJobsSoon(): void {
   runDueJobs('request').catch(() => {});
 }
 
+// ---- Server-side alerts (web push; needs a database, VAPID keys and the owner login) ------------
+
+const serverAlerts = {
+  active: false,
+  alerts: [] as UserAlert[],
+  settings: parseAlertSettings(null) as AlertSettings,
+  holdings: [] as string[],
+  states: {} as Record<string, AlertState>,
+  statesLoaded: false,
+  statesDirty: false,
+  history: [] as AlertHistoryEntry[],
+  sentAt: [] as number[],
+  lastCheckAt: 0,
+  lastSavedAt: 0,
+};
+
+function serverAlertsReady(): boolean {
+  return vapidConfigured() && ownerAuth.configured && syncStorageReady(store);
+}
+
+/** Reloads the synced alert definitions every minute (alerts are edited on the devices). */
+async function refreshServerAlerts(): Promise<void> {
+  if (!serverAlertsReady()) {
+    serverAlerts.active = false;
+    priceStream.focus.delete('server-alerts');
+    return;
+  }
+  try {
+    const [data, subs] = await Promise.all([loadSyncData(store), loadSubscriptions(store)]);
+    serverAlerts.alerts = parseAlerts(liveValues<UserAlert>(data, 'alerts').map((x) => x.value));
+    serverAlerts.settings = parseAlertSettings(data.settings?.alertSettings?.v ?? null);
+    serverAlerts.holdings = [
+      ...new Set([
+        ...liveValues<boolean>(data, 'watchlist').map((x) => x.id),
+        ...liveValues<{ symbol?: string }>(data, 'portfolio').map((x) => x.value.symbol ?? ''),
+      ]),
+    ].filter((sym) => STOCK_GROUPS.includes(getAssetBySymbol(sym)?.group as AssetGroup));
+    if (!serverAlerts.statesLoaded) {
+      serverAlerts.states = (await store.get<Record<string, AlertState>>('alerts:state')) ?? {};
+      serverAlerts.history = (await store.get<AlertHistoryEntry[]>('alerts:history')) ?? [];
+      serverAlerts.statesLoaded = true;
+    }
+    const enabled = serverAlerts.alerts.filter((a) => a.active);
+    serverAlerts.active = subs.length > 0 && (enabled.length > 0 || serverAlerts.settings.holdingsCalendar);
+    const symbols = [...new Set(enabled.map((a) => a.symbol).filter((x): x is string => Boolean(x)))];
+    if (serverAlerts.active && symbols.length) priceStream.focus.set('server-alerts', { symbols, at: Date.now() });
+    else priceStream.focus.delete('server-alerts');
+    // News and geopolitical alerts need the news hub running
+    if (serverAlerts.active && enabled.some((a) => a.kind === 'news' || a.kind === 'geo')) {
+      newsHub.lastDemandAt = Date.now();
+      ensureNewsFresh().catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[Alerts] refresh failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+setInterval(() => refreshServerAlerts().catch(() => {}), 60_000);
+setTimeout(() => refreshServerAlerts().catch(() => {}), 5_000);
+
+const calendarCheckedAt = new Map<string, number>();
+/** Corporate events for alert symbols, fetched at most once per hour per stock (12 h cache behind it). */
+async function alertCalendar(symbols: string[]): Promise<CalendarEvent[]> {
+  const out: CalendarEvent[] = [];
+  for (const sym of symbols.slice(0, 60)) {
+    const asset = getAssetBySymbol(sym);
+    if (!asset?.yahooSymbol || !STOCK_GROUPS.includes(asset.group)) continue;
+    const cached = calendarCache.get(sym)?.data;
+    if (cached && Date.now() - (calendarCheckedAt.get(sym) ?? 0) < 3600_000) {
+      out.push(...cached);
+      continue;
+    }
+    calendarCheckedAt.set(sym, Date.now());
+    out.push(...(await getCalendarFor(asset).catch(() => cached ?? [])));
+  }
+  return out;
+}
+
+async function deliverServerAlert(alert: UserAlert, fire: { title: string; body: string; url?: string }, now: number): Promise<void> {
+  const quiet = inQuietHours(now, serverAlerts.settings.quiet);
+  let delivery: AlertHistoryEntry['delivery'] = 'silenced';
+  if (!quiet) {
+    const t = throttle(serverAlerts.sentAt, now);
+    serverAlerts.sentAt = t.sentAt;
+    if (!t.allowed) delivery = 'throttled';
+    else {
+      const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
+      const r = await sendPushToAll(store, { title: fire.title, body: fire.body, url: fire.url ?? (asset ? `#/asset/${asset.id}` : '#/alerts'), tag: alert.id });
+      delivery = r.sent > 0 ? 'push' : 'failed';
+    }
+  }
+  serverAlerts.history = addHistory(serverAlerts.history, {
+    id: `${alert.id}-${now}`,
+    alertId: alert.id,
+    symbol: alert.symbol,
+    title: fire.title,
+    body: fire.body,
+    at: now,
+    delivery,
+  });
+  await store.set('alerts:history', serverAlerts.history).catch(() => {});
+  // One-time alerts switch off for every device (stamped like an edit, so it syncs back)
+  if (!alert.repeat && alert.id !== HOLDINGS_CALENDAR_ID) {
+    await updateSyncData(store, (data, t) => {
+      const item = data.alerts?.[alert.id];
+      if (!item || item.v === null) return null;
+      data.alerts = { ...data.alerts, [alert.id]: { v: afterFire(item.v as UserAlert), t, s: t } };
+      return data;
+    }).catch((err) => console.warn('[Alerts] could not switch off a one-time alert:', err instanceof Error ? err.message : err));
+    serverAlerts.alerts = serverAlerts.alerts.map((a) => (a.id === alert.id ? afterFire(a) : a));
+  }
+}
+
+/** Runs every price-loop round (at most every 15 s without viewers) against the loop's own prices. */
+async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void> {
+  const now = Date.now();
+  serverAlerts.lastCheckAt = now;
+  const list: UserAlert[] = serverAlerts.alerts.filter((a) => a.active);
+  if (serverAlerts.settings.holdingsCalendar && serverAlerts.holdings.length) {
+    list.push({ id: HOLDINGS_CALENDAR_ID, kind: 'calendar', repeat: true, cooldownMin: 60, active: true, createdAt: 0 });
+  }
+  const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
+  const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
+  for (const alert of list) {
+    const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
+    const tick = alert.symbol ? ticks[alert.symbol] : undefined;
+    const usable = tick && tick.status !== 'error' && Number.isFinite(tick.price);
+    const { fire, state } = evaluateAlert(alert, serverAlerts.states[alert.id] ?? {}, {
+      now,
+      price: usable ? tick.price : undefined,
+      changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
+      events: alert.symbol ? events.filter((e) => e.symbol === alert.symbol) : events,
+      news: newsHub.items,
+      code: asset?.code,
+      name: alert.id === HOLDINGS_CALENDAR_ID ? 'Your stocks' : asset ? `${asset.shortName}` : undefined,
+      formatPrice: asset ? (v) => formatAssetPrice(v, asset) : undefined,
+    });
+    if (JSON.stringify(state) !== JSON.stringify(serverAlerts.states[alert.id] ?? {})) {
+      serverAlerts.states[alert.id] = state;
+      serverAlerts.statesDirty = true;
+    }
+    if (fire) await deliverServerAlert(alert, fire, now);
+  }
+  if (serverAlerts.statesDirty && now - serverAlerts.lastSavedAt > 30_000) {
+    serverAlerts.statesDirty = false;
+    serverAlerts.lastSavedAt = now;
+    await store.set('alerts:state', serverAlerts.states).catch(() => {});
+  }
+}
+
 async function startServer() {
   const app = express();
   // Small JSON bodies everywhere; the sync endpoint parses its own (larger) body after the login check
@@ -2763,6 +2933,13 @@ async function startServer() {
   });
 
   registerSyncRoutes(app, store, ownerAuth);
+  registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
+
+  // Alerts the server checked and sent (owner only)
+  app.get('/api/alerts/history', ownerAuth.requireOwner, async (_req, res) => {
+    if (!serverAlerts.statesLoaded) await refreshServerAlerts();
+    res.json({ history: serverAlerts.history, active: serverAlerts.active, ready: serverAlertsReady() });
+  });
 
   // Daily jobs for an external scheduler (Cloud Scheduler, cron-job.org): Authorization: Bearer CRON_TOKEN
   app.post('/api/cron/daily', async (req, res) => {

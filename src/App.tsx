@@ -48,6 +48,7 @@ import { HeaderSearch } from './components/HeaderSearch.tsx';
 import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 import { onSyncApplied, startSync, subscribeSync } from './services/syncService.ts';
+import { checkLocalAlerts, initAlerts } from './services/alertService.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -55,6 +56,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 
 export default function App() {
@@ -93,6 +95,7 @@ export default function App() {
   const [syncFailed, setSyncFailed] = useState<string | null>(null);
   useEffect(() => {
     startSync();
+    initAlerts();
     const unsub = subscribeSync((s) => setSyncFailed(s.loggedIn && s.lastError ? s.lastError : null));
     const off = onSyncApplied(['watchlist', 'settings'], () => {
       setWatchlist(getSavedWatchlist());
@@ -136,6 +139,8 @@ export default function App() {
         // Feed the live buffer behind the "moving fastest right now" tables
         liveHistory.recordTicks(updatedTicks);
         setTicks({ ...updatedTicks });
+        // Alerts are checked in the browser unless the server pushes them
+        checkLocalAlerts(updatedTicks);
       },
       onConnectionStateChange: (state) => {
         setConnectionState(state);
@@ -340,6 +345,7 @@ export default function App() {
               {activeTab === 'portfolio' && 'My Portfolio'}
               {activeTab === 'calendar' && 'IDX Corporate Calendar'}
               {activeTab === 'macro' && 'Indonesia Macro'}
+              {activeTab === 'alerts' && 'Alerts'}
             </span>
           </div>
         </div>
@@ -437,6 +443,7 @@ export default function App() {
             effectiveTheme={effectiveTheme}
             isWatchlisted={watchlist.includes(currentAsset.symbol)}
             onToggleWatchlist={handleToggleWatchlist}
+            ticks={ticks}
           />
         )}
 
@@ -487,6 +494,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'alerts' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <AlertsView ticks={ticks} onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
         {activeTab === 'idx' && (

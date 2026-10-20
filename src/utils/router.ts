@@ -1,13 +1,13 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio, #/calendar, #/macro.
+ * #/idx, #/portfolio, #/calendar, #/macro, #/alerts.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -56,6 +56,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   if (cleaned === 'macro' || cleaned === 'makro') {
     return { tab: 'macro' };
   }
+  if (cleaned === 'alerts' || cleaned === 'alert') {
+    return { tab: 'alerts' };
+  }
   const assetPrefix = ['asset/', 'aset/'].find((p) => cleaned.startsWith(p));
   if (assetPrefix) {
     const rawId = decodeURIComponent(cleaned.slice(assetPrefix.length)).trim();
@@ -103,6 +106,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/calendar';
     case 'macro':
       return '#/macro';
+    case 'alerts':
+      return '#/alerts';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];

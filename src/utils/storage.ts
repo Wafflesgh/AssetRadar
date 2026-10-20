@@ -28,6 +28,10 @@ const STORAGE_KEYS = {
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
   SYNC_SESSION: 'assetradar_sync_session',
   SYNC_META: 'assetradar_sync_meta_v1',
+  ALERTS: 'assetradar_alerts_v1',
+  ALERT_STATE: 'assetradar_alert_state_v1',
+  ALERT_HISTORY: 'assetradar_alert_history_v1',
+  ALERT_SETTINGS: 'assetradar_alert_settings_v1',
 } as const;
 
 function safeGet(key: string): string | null {
@@ -536,6 +540,8 @@ registerSyncAdapter('settings', {
     const ai = readJson(STORAGE_KEYS.AI_PREFS);
     if (ai) out.aiPrefs = ai;
     out.startInTerminal = getStartInTerminal();
+    const alertSettings = readJson(STORAGE_KEYS.ALERT_SETTINGS);
+    if (alertSettings) out.alertSettings = alertSettings;
     return out;
   },
   write(items) {
@@ -544,5 +550,44 @@ registerSyncAdapter('settings', {
     if (items.aiPrefs && typeof items.aiPrefs === 'object') safeSet(STORAGE_KEYS.AI_PREFS, JSON.stringify(items.aiPrefs));
     if (items.startInTerminal === true) safeSet(STORAGE_KEYS.START_IN_TERMINAL, '1');
     else if (items.startInTerminal === false) safeRemove(STORAGE_KEYS.START_IN_TERMINAL);
+    if (items.alertSettings && typeof items.alertSettings === 'object') safeSet(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(items.alertSettings));
   },
 });
+
+// ---- Alerts (definitions and settings are synced; state and history stay on the device) --------
+
+registerSyncAdapter('alerts', listAdapter(STORAGE_KEYS.ALERTS));
+
+export function getAlertsRaw(): unknown {
+  return readJson(STORAGE_KEYS.ALERTS);
+}
+
+export function saveAlerts(alerts: unknown[]): void {
+  tracked('alerts', () => safeSet(STORAGE_KEYS.ALERTS, JSON.stringify(alerts)));
+}
+
+export function getAlertStates<T>(): Record<string, T> {
+  const raw = readJson(STORAGE_KEYS.ALERT_STATE);
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, T>) : {};
+}
+
+export function saveAlertStates(states: Record<string, unknown>): void {
+  safeSet(STORAGE_KEYS.ALERT_STATE, JSON.stringify(states));
+}
+
+export function getAlertHistoryRaw(): unknown[] {
+  const raw = readJson(STORAGE_KEYS.ALERT_HISTORY);
+  return Array.isArray(raw) ? raw : [];
+}
+
+export function saveAlertHistory(history: unknown[]): void {
+  safeSet(STORAGE_KEYS.ALERT_HISTORY, JSON.stringify(history.slice(0, 200)));
+}
+
+export function getAlertSettingsRaw(): unknown {
+  return readJson(STORAGE_KEYS.ALERT_SETTINGS);
+}
+
+export function saveAlertSettings(settings: unknown): void {
+  tracked('settings', () => safeSet(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings)));
+}

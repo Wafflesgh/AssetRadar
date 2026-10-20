@@ -4,7 +4,8 @@
  * (TradingView or alternative) and the sentiment + news panel.
  */
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { ArrowLeft, Star, Info, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Star, Info, RefreshCw, Bell } from 'lucide-react';
+import { AlertDialog } from './AlertEditor.tsx';
 import {
   ASSETS,
   AssetConfig,
@@ -35,6 +36,8 @@ interface AssetDetailViewProps {
   onChangeTimeframe: (interval: TimeframeInterval) => void;
   effectiveTheme: 'light' | 'dark';
   isWatchlisted: boolean;
+  /** All live ticks (for the alert form's asset picker). */
+  ticks?: Record<string, PriceTick>;
   onToggleWatchlist: (symbol: string) => void;
 }
 
@@ -47,10 +50,12 @@ export function AssetDetailView({
   onChangeTimeframe,
   effectiveTheme,
   isWatchlisted,
+  ticks = {},
   onToggleWatchlist,
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
   const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
+  const [alertOpen, setAlertOpen] = useState(false);
 
   // Reset fallback toggle when switching assets
   useEffect(() => {
@@ -177,11 +182,12 @@ export function AssetDetailView({
             </p>
           </div>
 
-          {/* Watchlist Toggle Button */}
+          {/* Watchlist, alert */}
+          <div className="flex flex-wrap gap-2 shrink-0 self-start">
           <button
             type="button"
             onClick={() => onToggleWatchlist(asset.symbol)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 self-start"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0"
             style={{
               backgroundColor: isWatchlisted
                 ? 'var(--color-gold-soft)'
@@ -200,6 +206,16 @@ export function AssetDetailView({
               {isWatchlisted ? 'Saved to Watchlist' : 'Add to Watchlist'}
             </span>
           </button>
+            <button
+              type="button"
+              onClick={() => setAlertOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap"
+              style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+            >
+              <Bell className="w-4 h-4" />
+              <span>Alert</span>
+            </button>
+          </div>
         </div>
 
         {/* Live Price Metrics Row */}
@@ -465,6 +481,7 @@ export function AssetDetailView({
         symbol={asset.symbol}
         assetName={asset.name}
       />
+      {alertOpen && <AlertDialog asset={asset} ticks={{ ...ticks, ...(tick ? { [asset.symbol]: tick } : {}) }} onClose={() => setAlertOpen(false)} />}
     </div>
   );
 }

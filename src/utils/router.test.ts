@@ -65,3 +65,8 @@ test('macro route', () => {
   assert.deepEqual(parseHashRoute('#/macro'), { tab: 'macro' });
   assert.equal(buildHashRoute('macro'), '#/macro');
 });
+
+test('alerts route', () => {
+  assert.deepEqual(parseHashRoute('#/alerts'), { tab: 'alerts' });
+  assert.equal(buildHashRoute('alerts'), '#/alerts');
+});
