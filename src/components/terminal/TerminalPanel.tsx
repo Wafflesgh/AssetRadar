@@ -2,6 +2,7 @@
  * TerminalPanel.tsx — Shared Terminal building blocks: the panel frame, status messages,
  * retry button, and compact price/percent/WIB-time formatting helpers.
  */
+import { t as tr } from '../../i18n/index.ts';
 import { ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AssetConfig, PriceTick, SentimentLabel } from '../../config/assets.ts';
@@ -134,7 +135,7 @@ export function PanelMessage({
   onRetry?: () => void;
 }) {
   const fallbackText =
-    kind === 'loading' ? 'Loading data...' : kind === 'empty' ? 'No data yet.' : 'Data unavailable';
+    kind === 'loading' ? tr('term.loading') : kind === 'empty' ? tr('term.empty') : tr('common.dataUnavailable');
   return (
     <div
       role={kind === 'error' ? 'alert' : 'status'}
@@ -147,7 +148,7 @@ export function PanelMessage({
   );
 }
 
-export function RetryButton({ onClick, label = 'Try again' }: { onClick: () => void; label?: string }) {
+export function RetryButton({ onClick, label = tr('common.tryAgain') }: { onClick: () => void; label?: string }) {
   return (
     <button
       type="button"

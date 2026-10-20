@@ -2,6 +2,8 @@
  * DataPanels.tsx — Terminal panels for CHART (PriceChart + timeframes), ECONOMIC CALENDAR
  *  (TradingView widget), CORRELATION 30D (matrix) and the live NEWS FEED (all assets).
  */
+import { t as tr, getLang, type TranslationKey } from '../../i18n/index.ts';
+import { assetName } from '../../i18n/assetNames.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AssetConfig,
@@ -35,11 +37,11 @@ export function ChartPanel({
     <TerminalPanel
       id="panel-chart"
       className={className}
-      title="Chart"
-      subtitle={`${asset.code} · ${asset.name}`}
+      title={tr('term.title.chart')}
+      subtitle={`${asset.code} · ${assetName(asset)}`}
       highlighted={highlighted}
       right={
-        <div role="group" aria-label="Chart timeframe picker" className="flex flex-wrap terminal-mono">
+        <div role="group" aria-label={tr('term.tfPicker')} className="flex flex-wrap terminal-mono">
           {TIMEFRAME_OPTIONS.map((tf) => {
             const active = tf.interval === timeframe;
             return (
@@ -47,7 +49,7 @@ export function ChartPanel({
                 key={tf.interval}
                 type="button"
                 aria-pressed={active}
-                title={tf.title}
+                title={tr(`tf.${tf.interval}` as TranslationKey)}
                 onClick={() => onChangeTimeframe(tf.interval)}
                 className="px-1.5 h-5 text-[10px] font-bold"
                 style={{
@@ -91,7 +93,7 @@ export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }
       isTransparent: true,
       width: '100%',
       height: '100%',
-      locale: 'en',
+      locale: getLang() === 'id' ? 'id' : 'en',
       importanceFilter: '0,1',
       countryFilter: 'id,us',
     });
@@ -106,8 +108,8 @@ export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }
   return (
     <TerminalPanel
       id="panel-eco"
-      title="Economic Calendar"
-      subtitle="Indonesia & US · medium–high"
+      title={tr('term.title.eco')}
+      subtitle={tr('term.eco.sub')}
       highlighted={highlighted}
       bodyClassName="flex flex-col"
     >
@@ -121,7 +123,7 @@ export function EconomicCalendarPanel({ highlighted }: { highlighted?: boolean }
         className="px-2.5 py-1 text-[10px] hover:underline border-t"
         style={{ color: 'var(--t-amber)', borderColor: 'var(--t-line)' }}
       >
-        Economic calendar by TradingView
+        {tr('term.eco.credit')}
       </a>
     </TerminalPanel>
   );
@@ -157,8 +159,8 @@ export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
   return (
     <TerminalPanel
       id="panel-corr"
-      title="Correlation 30D"
-      subtitle="daily returns"
+      title={tr('term.title.corr')}
+      subtitle={tr('term.corr.sub')}
       highlighted={highlighted}
       bodyClassName="overflow-x-auto"
     >
@@ -199,7 +201,7 @@ export function CorrelationPanel({ highlighted }: { highlighted?: boolean }) {
             </tbody>
           </table>
           <p className="mt-1.5 text-[10px]" style={{ color: 'var(--t-muted)' }}>
-            Correlation is not causation. Updated {formatWibStamp(data.updatedAt)} WIB.
+            {tr('term.corr.note', { time: formatWibStamp(data.updatedAt) })}
           </p>
         </div>
       )}
@@ -251,17 +253,17 @@ export function NewsFeedPanel({
   return (
     <TerminalPanel
       id="panel-top"
-      title="News Feed"
+      title={tr('term.title.top')}
       subtitle={
         news.updatedAt
-          ? `${breakingCount > 0 ? `${breakingCount} new · ` : ''}updated ${formatWibStamp(news.updatedAt)} WIB`
-          : 'all assets · latest'
+          ? `${breakingCount > 0 ? `${tr('term.feed.new', { n: breakingCount })} ` : ''}${tr('term.feed.updated', { time: formatWibStamp(news.updatedAt) })}`
+          : tr('term.feed.all')
       }
       highlighted={highlighted}
       right={
         <div className="flex items-center gap-1.5 terminal-mono">
-          <div role="group" aria-label="News filter" className="flex">
-            {filterButton('all', 'ALL')}
+          <div role="group" aria-label={tr('term.feed.filter')} className="flex">
+            {filterButton('all', tr('term.g.ALL'))}
             {filterButton('asset', code)}
             {filterButton('macro', MACRO_TAG)}
           </div>
@@ -275,7 +277,7 @@ export function NewsFeedPanel({
       ) : news.items.length === 0 ? (
         <PanelMessage kind="error" onRetry={newsStore.refresh} />
       ) : items.length === 0 ? (
-        <PanelMessage kind="empty" text="No news for this filter yet." />
+        <PanelMessage kind="empty" text={tr('term.feed.empty')} />
       ) : (
         <ul>
           {items.map((item) => (

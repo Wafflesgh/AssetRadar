@@ -5,6 +5,7 @@
  * Asset codes and aliases come from ASSETS (config/assets.ts).
  */
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
+import { translate, type AppLang, type TranslationKey } from '../i18n/core.ts';
 
 export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal';
 export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro';
@@ -23,28 +24,29 @@ export type TerminalCommand =
 export const TERMINAL_ASSET_CODES: Array<{ code: string; symbol: string; label: string }> =
   ASSETS.map((a) => ({ code: a.code, symbol: a.symbol, label: a.name }));
 
-export const PANEL_COMMANDS: Record<string, { panel: MarketPanel; description: string }> = {
-  MOV: { panel: 'mov', description: 'Biggest movers (live 5m, 1H, 24H, 7D)' },
-  WEI: { panel: 'wei', description: 'World equity indices' },
-  FXC: { panel: 'fxc', description: 'Currency cross rates' },
-  CURV: { panel: 'curv', description: 'US Treasury yield curve' },
-  CAL: { panel: 'cal', description: 'IDX corporate calendar (earnings, dividends)' },
-  IDMACRO: { panel: 'idmacro', description: 'Indonesia macro (BI-Rate, inflation, GDP, reserves)' },
-  HM: { panel: 'heatmap', description: '24-hour change heatmap' },
-  ECO: { panel: 'eco', description: 'Economic calendar' },
-  CORR: { panel: 'corr', description: '30-day correlation' },
-  TOP: { panel: 'top', description: 'Latest news feed' },
+/** Market-wide panel commands. Descriptions are translation keys term.panel.<CMD>. */
+export const PANEL_COMMANDS: Record<string, { panel: MarketPanel }> = {
+  MOV: { panel: 'mov' },
+  WEI: { panel: 'wei' },
+  FXC: { panel: 'fxc' },
+  CURV: { panel: 'curv' },
+  CAL: { panel: 'cal' },
+  IDMACRO: { panel: 'idmacro' },
+  HM: { panel: 'heatmap' },
+  ECO: { panel: 'eco' },
+  CORR: { panel: 'corr' },
+  TOP: { panel: 'top' },
 };
 
-/** Asset functions: "<CODE> GP" etc. Aliases map to the same panel. */
-const ASSET_FUNCTIONS: Record<string, { panel: AssetPanel; description: string }> = {
-  GP: { panel: 'chart', description: 'chart' },
-  N: { panel: 'news', description: 'news' },
-  INTEL: { panel: 'intel', description: 'technical & fundamental analysis' },
-  TA: { panel: 'intel', description: 'technical analysis' },
-  FA: { panel: 'intel', description: 'fundamental analysis' },
-  HP: { panel: 'hp', description: 'historical prices' },
-  CAL: { panel: 'cal', description: 'corporate calendar' },
+/** Functions after an asset code: "ETH GP". Descriptions are translation keys term.fn.<FN>. */
+const ASSET_FUNCTIONS: Record<string, { panel: AssetPanel }> = {
+  GP: { panel: 'chart' },
+  N: { panel: 'news' },
+  INTEL: { panel: 'intel' },
+  TA: { panel: 'intel' },
+  FA: { panel: 'intel' },
+  HP: { panel: 'hp' },
+  CAL: { panel: 'cal' },
 };
 const SUGGESTED_FUNCTIONS = ['GP', 'N', 'INTEL', 'HP', 'CAL'];
 
@@ -53,26 +55,27 @@ export interface CommandHelpItem {
   description: string;
 }
 
-export const TERMINAL_HELP: CommandHelpItem[] = [
-  { command: '<CODE>', description: 'Select an asset, e.g. BTC, BBCA, NVDA, SPX, N225, GOLD, OIL, EUR' },
-  { command: '<CODE> GP', description: 'Asset chart, e.g. ETH GP' },
-  { command: '<CODE> N', description: 'Asset news, e.g. JCI N' },
-  { command: '<CODE> INTEL', description: 'Technical patterns, scorecard and fundamentals (also TA / FA)' },
-  { command: '<CODE> HP', description: 'Historical daily prices, e.g. SPX HP' },
-  { command: '<CODE> CAL', description: 'Corporate calendar of a stock, e.g. BBCA CAL' },
-  ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
-  { command: 'HELP', description: 'List of commands' },
-  { command: 'AI', description: 'Open the AI Advisor (backtested outlook)' },
-  { command: 'QUANT', description: 'Open the value/momentum portfolio simulator' },
-  { command: 'RADAR', description: 'Back to the Radar page' },
-];
+const tk = (lang: AppLang, key: string, params?: Record<string, string | number>) =>
+  translate(lang, key as TranslationKey, params);
+
+/** The HELP table in the chosen language (commands themselves stay English codes). */
+export function terminalHelp(lang: AppLang = 'en'): CommandHelpItem[] {
+  return [
+    { command: '<CODE>', description: tk(lang, 'term.help.code') },
+    ...['GP', 'N', 'INTEL', 'HP', 'CAL'].map((fn) => ({ command: `<CODE> ${fn}`, description: tk(lang, `term.help.${fn}`) })),
+    ...Object.keys(PANEL_COMMANDS).map((command) => ({ command, description: tk(lang, `term.panel.${command}`) })),
+    ...['HELP', 'AI', 'QUANT', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.help.${command}`) })),
+  ];
+}
+
+export const TERMINAL_HELP: CommandHelpItem[] = terminalHelp('en');
 
 function normalize(input: string): string {
   return input.trim().toUpperCase().replace(/\s+/g, ' ');
 }
 
 /** Parses one command line. Returns null for empty input. */
-export function parseTerminalCommand(input: string): TerminalCommand | null {
+export function parseTerminalCommand(input: string, lang: AppLang = 'en'): TerminalCommand | null {
   const text = normalize(input);
   if (!text) return null;
   if (text === 'HELP' || text === '?') return { type: 'help' };
@@ -84,30 +87,30 @@ export function parseTerminalCommand(input: string): TerminalCommand | null {
   const [code, fn, ...rest] = text.split(' ');
   const asset = getAssetByCode(code);
   if (!asset) {
-    return { type: 'error', message: `Unknown command: "${text}". Type HELP for the list of commands.` };
+    return { type: 'error', message: tk(lang, 'term.err.unknown', { text }) };
   }
   if (rest.length > 0 || (fn && !ASSET_FUNCTIONS[fn])) {
     return {
       type: 'error',
-      message: `Unknown function "${[fn, ...rest].join(' ')}" for ${code}. Use GP (chart), N (news), INTEL (analysis), HP (history) or CAL (calendar).`,
+      message: tk(lang, 'term.err.function', { fn: [fn, ...rest].join(' '), code }),
     };
   }
   return { type: 'asset', symbol: asset.symbol, code, panel: fn ? ASSET_FUNCTIONS[fn].panel : 'monitor' };
 }
 
-const COMMAND_SUGGESTIONS: CommandHelpItem[] = [
-  ...Object.entries(PANEL_COMMANDS).map(([command, p]) => ({ command, description: p.description })),
-  { command: 'HELP', description: 'List of commands' },
-  { command: 'AI', description: 'AI Advisor' },
-  { command: 'QUANT', description: 'Portfolio simulator' },
-  { command: 'RADAR', description: 'Back to Radar' },
-];
+function commandSuggestions(lang: AppLang): CommandHelpItem[] {
+  return [
+    ...Object.keys(PANEL_COMMANDS).map((command) => ({ command, description: tk(lang, `term.panel.${command}`) })),
+    { command: 'HELP', description: tk(lang, 'term.help.HELP') },
+    ...['AI', 'QUANT', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.sug.${command}`) })),
+  ];
+}
 
 /**
  * Autocomplete. Once the text names a full asset code ("ETH", "ETH G"), it suggests that
  * asset's functions; otherwise panel commands first, then asset codes that start with the text.
  */
-export function getCommandSuggestions(input: string, limit = 6): CommandHelpItem[] {
+export function getCommandSuggestions(input: string, limit = 6, lang: AppLang = 'en'): CommandHelpItem[] {
   const text = normalize(input);
   if (!text) return [];
   const code = text.split(' ')[0];
@@ -115,10 +118,10 @@ export function getCommandSuggestions(input: string, limit = 6): CommandHelpItem
   if (asset) {
     return SUGGESTED_FUNCTIONS.map((fn) => ({
       command: `${code} ${fn}`,
-      description: `${asset.label} ${ASSET_FUNCTIONS[fn].description}`,
+      description: `${asset.label} ${tk(lang, `term.fn.${fn}`)}`,
     })).filter((s) => s.command.startsWith(text) && s.command !== text);
   }
-  const commands = COMMAND_SUGGESTIONS.filter((s) => s.command.startsWith(text) && s.command !== text);
+  const commands = commandSuggestions(lang).filter((s) => s.command.startsWith(text) && s.command !== text);
   const assets = TERMINAL_ASSET_CODES.filter((a) => a.code.startsWith(text) && a.code !== text).map((a) => ({
     command: a.code,
     description: a.label,

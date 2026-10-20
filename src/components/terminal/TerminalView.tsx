@@ -4,6 +4,7 @@
  * WEI, HEATMAP, SENTIMENT, NEWS, FXC, CURV, HP, CORR, ECO, NEWS FEED), the market filter,
  * number-key shortcuts and command → panel focusing.
  */
+import { t as tr, useLang, useT, type TranslationKey } from '../../i18n/index.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ASSETS, PriceTick, TimeframeInterval, getAssetBySymbol } from '../../config/assets.ts';
 import { ConnectionState } from '../../services/marketDataService.ts';
@@ -49,42 +50,27 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   idmacro: 'panel-idmacro',
 };
 
-const PANEL_NAME: Record<PanelId, string> = {
-  monitor: 'MONITOR',
-  chart: 'CHART',
-  news: 'NEWS',
-  heatmap: 'HEATMAP',
-  eco: 'ECONOMIC CALENDAR',
-  corr: 'CORRELATION 30D',
-  top: 'NEWS FEED',
-  intel: 'INTEL',
-  hp: 'HISTORICAL PRICES',
-  mov: 'MOVERS',
-  wei: 'WORLD INDICES',
-  fxc: 'FX CROSS',
-  curv: 'US YIELD CURVE',
-  cal: 'CALENDAR',
-  idmacro: 'ID MACRO',
-};
+/** Panel name for the command feedback, in the current language. */
+const panelName = (panel: PanelId) => tr(`term.title.${panel}` as TranslationKey).toUpperCase();
 
 /** QuickBar: one click runs the function (asset functions apply to the selected asset). */
-const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string; title: string }> = [
-  { label: 'GP', command: (c) => `${c} GP`, title: 'Chart' },
-  { label: 'N', command: (c) => `${c} N`, title: 'Asset news' },
-  { label: 'INTEL', command: (c) => `${c} INTEL`, title: 'Technical & fundamental analysis' },
-  { label: 'HP', command: (c) => `${c} HP`, title: 'Historical prices' },
-  { label: 'CAL', command: (c) => `${c} CAL`, title: 'Corporate calendar' },
-  { label: 'MOV', command: () => 'MOV', title: 'Biggest movers' },
-  { label: 'WEI', command: () => 'WEI', title: 'World indices' },
-  { label: 'FXC', command: () => 'FXC', title: 'FX cross rates' },
-  { label: 'CURV', command: () => 'CURV', title: 'US yield curve' },
-  { label: 'IDMACRO', command: () => 'IDMACRO', title: 'Indonesia macro' },
-  { label: 'HM', command: () => 'HM', title: 'Heatmap' },
-  { label: 'ECO', command: () => 'ECO', title: 'Economic calendar' },
-  { label: 'CORR', command: () => 'CORR', title: 'Correlation' },
-  { label: 'TOP', command: () => 'TOP', title: 'News feed' },
-  { label: 'AI', command: () => 'AI', title: 'AI Advisor' },
-  { label: 'QUANT', command: () => 'QUANT', title: 'Portfolio simulator' },
+const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string; title: TranslationKey }> = [
+  { label: 'GP', command: (c) => `${c} GP`, title: 'term.title.chart' },
+  { label: 'N', command: (c) => `${c} N`, title: 'term.quick.news' },
+  { label: 'INTEL', command: (c) => `${c} INTEL`, title: 'term.fn.INTEL' },
+  { label: 'HP', command: (c) => `${c} HP`, title: 'term.title.hp' },
+  { label: 'CAL', command: (c) => `${c} CAL`, title: 'term.fn.CAL' },
+  { label: 'MOV', command: () => 'MOV', title: 'term.panel.MOV' },
+  { label: 'WEI', command: () => 'WEI', title: 'term.title.wei' },
+  { label: 'FXC', command: () => 'FXC', title: 'term.panel.FXC' },
+  { label: 'CURV', command: () => 'CURV', title: 'term.title.curv' },
+  { label: 'IDMACRO', command: () => 'IDMACRO', title: 'term.title.idmacro' },
+  { label: 'HM', command: () => 'HM', title: 'term.title.heatmap' },
+  { label: 'ECO', command: () => 'ECO', title: 'term.title.eco' },
+  { label: 'CORR', command: () => 'CORR', title: 'term.panel.CORR' },
+  { label: 'TOP', command: () => 'TOP', title: 'term.title.top' },
+  { label: 'AI', command: () => 'AI', title: 'term.sug.AI' },
+  { label: 'QUANT', command: () => 'QUANT', title: 'term.sug.QUANT' },
 ];
 
 function prefersReducedMotion(): boolean {
@@ -107,6 +93,8 @@ export function TerminalView({
   onGoToAdvisor,
   onGoToQuant,
 }: TerminalViewProps) {
+  const t = useT();
+  const lang = useLang();
   const [group, setGroup] = useState<TerminalGroup>('ALL');
   const groupAssets = useMemo(() => (group === 'ALL' ? ASSETS : ASSETS.filter((a) => a.group === group)), [group]);
   const groupTabs = <GroupTabs value={group} onChange={setGroup} />;
@@ -160,23 +148,23 @@ export function TerminalView({
     (cmd: Exclude<TerminalCommand, { type: 'help' } | { type: 'error' }>): string => {
       if (cmd.type === 'advisor') {
         onGoToAdvisor();
-        return 'Opening AI Advisor.';
+        return tr('term.ok.advisor');
       }
       if (cmd.type === 'radar') {
         onGoToRadar();
-        return 'Back to Radar.';
+        return tr('term.ok.radar');
       }
       if (cmd.type === 'quant') {
         onGoToQuant();
-        return 'Opening the portfolio simulator.';
+        return tr('term.ok.quant');
       }
       if (cmd.type === 'asset') {
         setSelectedSymbol(cmd.symbol);
         focusPanel(cmd.panel, cmd.panel !== 'monitor');
-        return `${cmd.code} selected → ${PANEL_NAME[cmd.panel]}`;
+        return tr('term.ok.asset', { code: cmd.code, panel: panelName(cmd.panel) });
       }
       focusPanel(cmd.panel, true);
-      return `Opening ${PANEL_NAME[cmd.panel]}`;
+      return tr('term.ok.panel', { panel: panelName(cmd.panel) });
     },
     [focusPanel, onGoToRadar, onGoToAdvisor, onGoToQuant]
   );
@@ -191,7 +179,7 @@ export function TerminalView({
         <NewsTape />
         <CommandLine onCommand={handleCommand} />
         <nav
-          aria-label="Terminal functions"
+          aria-label={t('term.functions')}
           className="flex flex-wrap items-center gap-1 px-2 py-1 border-b text-[10px]"
           style={{ backgroundColor: 'var(--t-panel)', borderColor: 'var(--t-line)' }}
         >
@@ -202,9 +190,9 @@ export function TerminalView({
             <button
               key={q.label}
               type="button"
-              title={q.title}
+              title={t(q.title)}
               onClick={() => {
-                const cmd = parseTerminalCommand(q.command(asset.code));
+                const cmd = parseTerminalCommand(q.command(asset.code), lang);
                 if (cmd && cmd.type !== 'help' && cmd.type !== 'error') handleCommand(cmd);
               }}
               className="px-1.5 h-5 font-bold border"

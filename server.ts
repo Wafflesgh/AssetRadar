@@ -278,7 +278,7 @@ async function pollNews(force = false): Promise<void> {
       for (const tag of new Set(added.flatMap((a) => a.assetTags ?? []))) {
         const asset = ASSETS.find((a) => a.code === tag);
         if (asset) {
-          intelligenceCache.delete(asset.symbol); // sentiment reacts to the news
+          for (const l of ['en', 'id']) intelligenceCache.delete(`${asset.symbol}|${l}`); // sentiment reacts to the news
           analysisCache.delete(asset.symbol);
         }
         if (tag === MACRO_TAG || tag === GEO_TAG) intelligenceCache.clear();
@@ -1371,10 +1371,13 @@ async function getGoldTick(usdIdrRate: number): Promise<PriceTick> {
 
 async function getAssetIntelligence(
   symbol: string,
-  tick?: PriceTick
+  tick?: PriceTick,
+  lang: AppLang = 'en'
 ): Promise<AssetIntelligence> {
   const now = Date.now();
-  const cached = intelligenceCache.get(symbol);
+  // Cached per language: only the Gemini-written text differs
+  const cacheKey = `${symbol}|${lang}`;
+  const cached = intelligenceCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     return cached.data;
   }
@@ -1407,13 +1410,15 @@ async function getAssetIntelligence(
     sentimentLabel: analysis?.label ?? baseSentiment.label,
     summary: analysis?.summary ?? baseSentiment.summary,
     keyFactors: analysis?.keyFactors.length ? analysis.keyFactors : baseSentiment.keyFactors,
+    summaryParts: analysis?.summaryParts,
+    keyFactorParts: analysis?.keyFactors.length ? analysis.keyFactorParts : undefined,
     news: newsItems,
     updatedAt: now,
     aiPowered: false,
   };
 
   // Cache immediately so subsequent requests are instant
-  intelligenceCache.set(symbol, {
+  intelligenceCache.set(cacheKey, {
     data: initialIntelligence,
     expiresAt: now + 300_000,
   });
@@ -1437,7 +1442,7 @@ async function getAssetIntelligence(
             ? newsItems.map((n, i) => `${i + 1}. ${n.title} (${n.source})`).join('\n')
             : 'No specific news today.';
 
-        const prompt = `Analyze the current market sentiment, in English, for the asset ${asset.name} (${asset.symbol}).
+        const prompt = `Analyze the current market sentiment, in ${lang === 'id' ? 'Indonesian (Bahasa Indonesia)' : 'English'}, for the asset ${asset.name} (${asset.symbol}).
 Current price: ${tick?.price ?? 'N/A'} (${asset.currency}), 24-hour change: ${
           tick?.changePct24h !== undefined ? tick.changePct24h.toFixed(2) + '%' : 'N/A'
         }.
@@ -1487,6 +1492,8 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
                   typeof parsed.summary === 'string' && parsed.summary.length > 15
                     ? parsed.summary
                     : initialIntelligence.summary,
+                summaryParts:
+                  typeof parsed.summary === 'string' && parsed.summary.length > 15 ? undefined : initialIntelligence.summaryParts,
                 aiPowered: true,
               }
             : {
@@ -1505,13 +1512,15 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
               typeof parsed.summary === 'string' && parsed.summary.length > 15
                 ? parsed.summary
                 : initialIntelligence.summary,
+            summaryParts: undefined,
             keyFactors:
               Array.isArray(parsed.keyFactors) && parsed.keyFactors.length > 0
                 ? parsed.keyFactors.slice(0, 4)
                 : initialIntelligence.keyFactors,
+            keyFactorParts: undefined,
             aiPowered: true,
           };
-          intelligenceCache.set(symbol, {
+          intelligenceCache.set(cacheKey, {
             data: enriched,
             expiresAt: Date.now() + 300_000,
           });
@@ -2762,7 +2771,7 @@ async function startServer() {
         currentTick = yahooCache.get(symbol)?.data;
       }
 
-      const intelligence = await getAssetIntelligence(symbol, currentTick);
+      const intelligence = await getAssetIntelligence(symbol, currentTick, parseLang(req.query.lang));
       res.json(intelligence);
     } catch (err) {
       res.status(500).json({

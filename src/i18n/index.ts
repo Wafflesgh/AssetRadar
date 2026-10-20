@@ -6,13 +6,13 @@
  * format (follow the language, or always en-US) applied to utils/format.ts.
  */
 import { useSyncExternalStore } from 'react';
-import { translate, type AppLang, type TParams } from './core.ts';
+import { translate, translateOr, type AppLang, type TParams } from './core.ts';
 import { setNumberLocale } from '../utils/format.ts';
 import { setTimeLang } from '../utils/marketHours.ts';
 import { getNumberFormatPref, getSavedLang, saveLang, saveNumberFormatPref, type NumberFormatPref } from '../utils/storage.ts';
 
 export type { TranslationKey, AppLang, TParams } from './core.ts';
-export { interpolate, translate, parseLang } from './core.ts';
+export { interpolate, translate, translateOr, parseLang } from './core.ts';
 import type { TranslationKey } from './core.ts';
 
 function detectLang(): AppLang {
@@ -74,6 +74,11 @@ export function setNumberFormat(pref: NumberFormatPref): void {
 /** Translation in the current language (for code outside React components). */
 export function t(key: TranslationKey, params?: TParams): string {
   return translate(current, key, params);
+}
+
+/** Like `t`, for keys built from data (e.g. a server id): falls back to the given text when the key is unknown. */
+export function tOr(key: string, fallback: string, params?: TParams): string {
+  return translateOr(current, key, fallback, params);
 }
 
 let version = 0;

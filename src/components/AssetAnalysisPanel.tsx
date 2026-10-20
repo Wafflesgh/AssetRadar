@@ -10,6 +10,18 @@
  */
 import { t, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
+import {
+  analysisSummary,
+  componentExplanation,
+  componentLabel,
+  fScoreDetail,
+  fScoreLabel,
+  patternDescription,
+  patternName,
+  signalLabel,
+  signalMethod,
+  signalReading,
+} from '../i18n/analysisText.ts';
 import { TranslateButton } from './TranslateButton.tsx';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { BookOpen, CheckCircle2, CircleSlash, ExternalLink, FlaskConical, LineChart, Newspaper, RefreshCw, XCircle } from 'lucide-react';
@@ -107,7 +119,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
           title={tr('analysis.whyTitle', { label: tr(`sentiment.${data.label}` as TranslationKey).toLowerCase(), name: assetName })}
           subtitle={tr('analysis.whySubtitle', { score: data.score, years: data.historyYears, age: formatAge(data.generatedAt) })}
         />
-        <p className="text-sm leading-relaxed">{data.summary}</p>
+        <p className="text-sm leading-relaxed">{analysisSummary(data)}</p>
         <ul className="space-y-3">
           {data.components.map((c) => (
             <EvidenceRow key={c.id} c={c} />
@@ -144,7 +156,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                     {t.patterns.map((p) => (
                       <li key={p.id} className="p-3 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm">{p.name}</span>
+                          <span className="font-bold text-sm">{patternName(p)}</span>
                           <BiasChip bias={p.bias} />
                           <span
                             className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded"
@@ -159,7 +171,7 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                           )}
                         </div>
                         <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                          {p.description}
+                          {patternDescription(p)}
                         </p>
                       </li>
                     ))}
@@ -181,12 +193,12 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                     {t.signals.map((s) => (
                       <tr key={s.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
                         <td className="py-2 pr-2">
-                          <span className="font-semibold block">{s.label}</span>
+                          <span className="font-semibold block">{signalLabel(s)}</span>
                           <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                            {s.method}
+                            {signalMethod(s)}
                           </span>
                         </td>
-                        <td className="py-2 pr-2">{s.reading}</td>
+                        <td className="py-2 pr-2">{signalReading(s)}</td>
                         <td className="py-2 text-right">
                           <BiasChip bias={s.bias} />
                         </td>
@@ -263,8 +275,8 @@ export function AssetAnalysisPanel({ symbol, assetName, refreshKey }: AssetAnaly
                       <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--color-down)' }} aria-label={tr('analysis.fail')} />
                     )}
                     <span>
-                      {s.label}
-                      <span className="block text-[10px]" style={{ color: 'var(--text-secondary)' }}>{s.detail}</span>
+                      {fScoreLabel(s)}
+                      <span className="block text-[10px]" style={{ color: 'var(--text-secondary)' }}>{fScoreDetail(s.detail)}</span>
                     </span>
                   </li>
                 ))}
@@ -386,7 +398,7 @@ function EvidenceRow({ c }: { c: EvidenceComponent }) {
   return (
     <li>
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="font-semibold">{c.label}</span>
+        <span className="font-semibold">{componentLabel(c)}</span>
         <span className="font-mono-num" style={{ color: 'var(--text-secondary)' }}>
           {t('analysis.contribution', { w: Math.round(c.weight * 100) })}{' '}
           <span style={{ color }}>
@@ -402,7 +414,7 @@ function EvidenceRow({ c }: { c: EvidenceComponent }) {
           style={{ backgroundColor: color, width: `${pctW}%`, left: c.value >= 0 ? '50%' : `${50 - pctW}%` }}
         />
       </div>
-      <p className="text-xs mt-1 leading-relaxed">{c.explanation}</p>
+      <p className="text-xs mt-1 leading-relaxed">{componentExplanation(c)}</p>
       <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{c.reference}</p>
     </li>
   );

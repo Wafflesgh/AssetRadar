@@ -2,9 +2,10 @@
  * CommandLine.tsx — Terminal command line with autocomplete, keyboard handling ("/" to
  * focus, Esc, Tab, arrows), feedback/error messages and the HELP table.
  */
+import { useLang, useT } from '../../i18n/index.ts';
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
-  TERMINAL_HELP,
+  terminalHelp,
   TerminalCommand,
   getCommandSuggestions,
   parseTerminalCommand,
@@ -31,7 +32,9 @@ export function CommandLine({ onCommand }: CommandLineProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [focused, setFocused] = useState(false);
 
-  const suggestions = focused ? getCommandSuggestions(value) : [];
+  const t = useT();
+  const lang = useLang();
+  const suggestions = focused ? getCommandSuggestions(value, 6, lang) : [];
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -45,13 +48,13 @@ export function CommandLine({ onCommand }: CommandLineProps) {
   }, []);
 
   const run = (text: string) => {
-    const cmd = parseTerminalCommand(text);
+    const cmd = parseTerminalCommand(text, lang);
     setValue('');
     setActiveIndex(0);
     if (!cmd) return;
     if (cmd.type === 'help') {
       setShowHelp(true);
-      setFeedback({ kind: 'ok', text: 'Command list shown below.' });
+      setFeedback({ kind: 'ok', text: t('term.ok.help') });
       return;
     }
     if (cmd.type === 'error') {
@@ -108,7 +111,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          placeholder="Type a command, e.g. ETH GP  (press / to focus, HELP for help)"
+          placeholder={t('term.placeholder')}
           aria-describedby="terminal-feedback"
           role="combobox"
           aria-expanded={suggestions.length > 0}
@@ -122,7 +125,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
           className="px-2 h-6 text-[10px] font-bold tracking-widest"
           style={{ backgroundColor: 'var(--t-amber)', color: '#05070A', borderRadius: 2 }}
         >
-          GO
+          {t('term.go')}
         </button>
       </div>
 
@@ -175,7 +178,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
         <div className="px-2.5 pb-2">
           <table className="text-[11px]">
             <tbody>
-              {TERMINAL_HELP.map((h) => (
+              {terminalHelp(lang).map((h) => (
                 <tr key={h.command}>
                   <td className="pr-4 py-0.5 font-bold whitespace-nowrap" style={{ color: 'var(--t-amber)' }}>
                     {h.command}
@@ -187,7 +190,7 @@ export function CommandLine({ onCommand }: CommandLineProps) {
                 <td className="pr-4 py-0.5 font-bold" style={{ color: 'var(--t-amber)' }}>
                   1–9
                 </td>
-                <td style={{ color: 'var(--t-text)' }}>Shortcut: select an asset by its MONITOR order</td>
+                <td style={{ color: 'var(--t-text)' }}>{t('term.shortcut')}</td>
               </tr>
             </tbody>
           </table>

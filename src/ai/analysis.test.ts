@@ -5,6 +5,7 @@ import { analyzeTechnicals, detectPatterns, findPivots } from './technical.ts';
 import { analyzeFundamentals, parseYahooFundamentals, piotroski, type AnnualFigures } from './fundamentals.ts';
 import { analyzeNewsDrivers, classifyDriver } from './newsDrivers.ts';
 import { buildAnalysis, labelOf } from './analysis.ts';
+import { renderParts } from '../i18n/textParts.ts';
 
 /** Piecewise-linear path through (bar, price) knots. */
 function path(knots: Array<[number, number]>): number[] {
@@ -157,4 +158,23 @@ test('buildAnalysis combines evidence with weights that sum to 1 and explains th
   assert.equal(labelOf(0.2), 'Bullish');
   assert.equal(labelOf(-0.2), 'Bearish');
   assert.equal(labelOf(0.05), 'Neutral');
+});
+
+test('analysis texts carry translation keys that render in English and Indonesian', () => {
+  const closes = Array.from({ length: 900 }, (_, i) => 100 * Math.pow(1.0012, i) * (1 + 0.01 * Math.sin(i / 4)));
+  const technical = analyzeTechnicals(closes);
+  assert.ok(technical);
+  // English keys reproduce the English readings exactly; Indonesian differs
+  for (const s of technical.signals) {
+    assert.equal(renderParts('en', s.readingParts, '__missing__'), s.reading, s.id);
+    assert.notEqual(renderParts('id', s.readingParts, '__missing__'), '__missing__', s.id);
+  }
+  const news = analyzeNewsDrivers([], 'index', '^GSPC');
+  const a = buildAnalysis({ symbol: '^GSPC', group: 'index', closes, technical, fundamentals: null, news });
+  const idSummary = renderParts('id', a.summaryParts, '__missing__');
+  assert.notEqual(idSummary, '__missing__');
+  assert.ok(!/@an\.|@ta\./.test(idSummary), idSummary);
+  for (const c of a.components) assert.notEqual(renderParts('id', c.explanationParts, '__missing__'), '__missing__', c.id);
+  // Unknown keys fall back to the English text
+  assert.equal(renderParts('id', [{ k: 'no.such.key' }], 'English'), 'English');
 });

@@ -24,6 +24,11 @@ export function translate(lang: AppLang, key: TranslationKey, params?: TParams):
   return interpolate(text, params);
 }
 
+/** Translation of a key that may not exist (e.g. built from a server id); otherwise the fallback text. */
+export function translateOr(lang: AppLang, key: string, fallback: string, params?: TParams): string {
+  return key in en ? translate(lang, key as TranslationKey, params) : fallback;
+}
+
 /** Reads a `lang` query value: "id" → Indonesian, anything else → English. */
 export function parseLang(value: unknown): AppLang {
   return value === 'id' ? 'id' : 'en';

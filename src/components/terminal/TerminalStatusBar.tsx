@@ -1,4 +1,5 @@
 /** TerminalStatusBar.tsx — Terminal top bar: brand, connection state, world market clocks (open/closed) and WIB clock. */
+import { useT, type TranslationKey } from '../../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { ConnectionState } from '../../services/marketDataService.ts';
 import { isExchangeOpen, isIdxMarketOpen } from '../../utils/marketHours.ts';
@@ -31,11 +32,11 @@ const WORLD_MARKETS: Array<{ label: string; exchange: ExchangeId; clock?: Intl.D
   { label: 'HK', exchange: 'HKEX', clock: localClock('Asia/Hong_Kong') },
 ];
 
-const CONNECTION_LABEL: Record<ConnectionState, { text: string; color: string }> = {
-  live: { text: 'LIVE', color: 'var(--t-up)' },
-  reconnecting: { text: 'RECONNECTING', color: 'var(--t-amber)' },
-  delayed: { text: 'DELAYED', color: 'var(--t-muted)' },
-  offline: { text: 'OFFLINE', color: 'var(--t-muted)' },
+const CONNECTION_COLOR: Record<ConnectionState, string> = {
+  live: 'var(--t-up)',
+  reconnecting: 'var(--t-amber)',
+  delayed: 'var(--t-muted)',
+  offline: 'var(--t-muted)',
 };
 
 /** Terminal top bar: brand, connection state, IDX market status and a running WIB clock. */
@@ -48,7 +49,8 @@ export function TerminalStatusBar({ connectionState }: { connectionState: Connec
   }, []);
 
   const bei = isIdxMarketOpen(now);
-  const conn = CONNECTION_LABEL[connectionState];
+  const t = useT();
+  const conn = { text: t(`term.conn.${connectionState}` as TranslationKey), color: CONNECTION_COLOR[connectionState] };
 
   return (
     <div
@@ -78,10 +80,10 @@ export function TerminalStatusBar({ connectionState }: { connectionState: Connec
         {WORLD_MARKETS.map((m) => {
           const open = m.exchange === 'IDX' ? bei : isExchangeOpen(m.exchange, now);
           return (
-            <span key={m.label} title={`${m.label} ${open ? 'open' : 'closed'}`}>
+            <span key={m.label} title={`${m.label} ${open ? t('term.open') : t('term.closed')}`}>
               <span style={{ color: 'var(--t-muted)' }}>{m.label} </span>
               <span className="font-bold" style={{ color: open ? 'var(--t-up)' : 'var(--t-down)' }}>
-                {m.clock ? m.clock.format(now) : open ? 'OPEN' : 'CLOSED'}
+                {m.clock ? m.clock.format(now) : open ? t('term.OPEN') : t('term.CLOSED')}
               </span>
             </span>
           );
@@ -89,7 +91,7 @@ export function TerminalStatusBar({ connectionState }: { connectionState: Connec
         <span style={{ color: 'var(--t-muted)' }} className="hidden sm:inline">
           {DATE.format(now)}
         </span>
-        <span className="font-bold" style={{ color: 'var(--t-text)' }} aria-label="WIB clock">
+        <span className="font-bold" style={{ color: 'var(--t-text)' }} aria-label={t('term.wibClock')}>
           {CLOCK.format(now).replace(/\./g, ':')} WIB
         </span>
       </div>

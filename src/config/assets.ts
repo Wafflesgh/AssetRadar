@@ -5,6 +5,7 @@
  * their data sources (Yahoo/Indodax), TradingView symbols, exchange, Terminal code, news
  * keywords and supply (for live market cap), the Radar groups and the chart timeframes.
  */
+import type { TextPart } from '../i18n/textParts.ts';
 import idxStocks from './idxStocks.json' with { type: 'json' };
 
 export type AssetGroup = 'commodity' | 'crypto' | 'idStock' | 'usStock' | 'globalStock' | 'index' | 'forex';
@@ -84,6 +85,9 @@ export interface AssetIntelligence {
   sentimentLabel: SentimentLabel;
   summary: string;
   keyFactors: string[];
+  /** The same summary and key factors as translation keys (absent when Gemini wrote the text). */
+  summaryParts?: TextPart[];
+  keyFactorParts?: TextPart[][];
   news: MarketNewsItem[];
   updatedAt: number;
   aiPowered: boolean;

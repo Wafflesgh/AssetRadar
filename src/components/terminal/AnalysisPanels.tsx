@@ -4,6 +4,8 @@
  * from /api/market/analysis), HP (historical daily prices: open, high, low, close, change) and
  * CAL (corporate calendar of the selected stock and upcoming IDX events).
  */
+import { t as tr, tOr, type TranslationKey } from '../../i18n/index.ts';
+import { analysisSummary, componentLabel, patternName, signalLabel, signalReading } from '../../i18n/analysisText.ts';
 import { useCallback, useEffect, useState } from 'react';
 import type { AssetAnalysis } from '../../ai/analysis.ts';
 import { DRIVER_LABELS } from '../../ai/newsDrivers.ts';
@@ -12,7 +14,7 @@ import { fetchAssetAnalysis, fetchCorporateCalendar, fetchHistory, type Calendar
 import { EVENT_LABELS, addDays, type CalendarEvent } from '../../utils/corporateCalendar.ts';
 import { PanelMessage, TerminalPanel, changeColor, formatTerminalPct, formatTerminalPrice, toneColor } from './TerminalPanel.tsx';
 
-const biasText = (b: number) => (b > 0 ? 'BULL' : b < 0 ? 'BEAR' : 'NEUT');
+const biasText = (b: number) => (b > 0 ? tr('term.bias.bull') : b < 0 ? tr('term.bias.bear') : tr('term.bias.neut'));
 const biasColor = (b: number) => (b > 0 ? 'var(--t-up)' : b < 0 ? 'var(--t-down)' : 'var(--t-muted)');
 
 export function IntelPanel({ asset, highlighted, className }: { asset: AssetConfig; highlighted?: boolean; className?: string }) {
@@ -45,14 +47,14 @@ export function IntelPanel({ asset, highlighted, className }: { asset: AssetConf
     <TerminalPanel
       id="panel-intel"
       className={className}
-      title="Intel"
-      subtitle={`${asset.code} · technical + fundamental evidence`}
+      title={tr('term.title.intel')}
+      subtitle={tr('term.intel.sub', { code: asset.code })}
       highlighted={highlighted}
       bodyClassName="overflow-auto max-h-[30rem]"
       right={
         data && (
           <span className="text-[11px] font-bold" style={{ color: toneColor(data.label) }}>
-            {data.score}/100 {data.label.toUpperCase()}
+            {data.score}/100 {tr(`sentiment.${data.label}` as TranslationKey).toUpperCase()}
           </span>
         )
       }
@@ -63,12 +65,12 @@ export function IntelPanel({ asset, highlighted, className }: { asset: AssetConf
         <PanelMessage kind="error" onRetry={() => load()} />
       ) : data ? (
         <div className="p-2 space-y-2 text-[11px]">
-          <p className="leading-snug" style={{ color: 'var(--t-text)' }}>{data.summary}</p>
+          <p className="leading-snug" style={{ color: 'var(--t-text)' }}>{analysisSummary(data)}</p>
 
           <div className="space-y-0.5">
             {data.components.map((c) => (
               <div key={c.id} className="flex items-center gap-2">
-                <span className="w-28 shrink-0 truncate" style={{ color: 'var(--t-muted)' }}>{c.label.replace(/ \(.+\)$/, '').toUpperCase()}</span>
+                <span className="w-28 shrink-0 truncate" style={{ color: 'var(--t-muted)' }}>{componentLabel(c).replace(/ \(.+\)$/, '').toUpperCase()}</span>
                 <span className="relative flex-1 h-1.5" style={{ backgroundColor: 'var(--t-line)' }} aria-hidden="true">
                   <span
                     className="absolute top-0 bottom-0"
@@ -90,13 +92,13 @@ export function IntelPanel({ asset, highlighted, className }: { asset: AssetConf
           {t && (
             <>
               <div>
-                <div className="text-[10px] font-bold tracking-widest" style={{ color: 'var(--t-amber)' }}>PATTERNS</div>
+                <div className="text-[10px] font-bold tracking-widest" style={{ color: 'var(--t-amber)' }}>{tr('term.patterns')}</div>
                 {t.patterns.length === 0 ? (
-                  <div style={{ color: 'var(--t-muted)' }}>No classic pattern on the daily chart.</div>
+                  <div style={{ color: 'var(--t-muted)' }}>{tr('term.noPattern')}</div>
                 ) : (
                   t.patterns.map((p) => (
                     <div key={p.id} className="flex flex-wrap gap-x-2">
-                      <span className="font-bold" style={{ color: biasColor(p.bias) }}>{p.name.toUpperCase()}</span>
+                      <span className="font-bold" style={{ color: biasColor(p.bias) }}>{patternName(p).toUpperCase()}</span>
                       <span style={{ color: 'var(--t-muted)' }}>{p.status}</span>
                       {p.keyLevel !== undefined && <span style={{ color: 'var(--t-muted)' }}>key {formatTerminalPrice(p.keyLevel, asset)}</span>}
                     </div>
@@ -107,8 +109,8 @@ export function IntelPanel({ asset, highlighted, className }: { asset: AssetConf
                 <tbody>
                   {t.signals.map((s) => (
                     <tr key={s.id} className="border-t" style={{ borderColor: 'var(--t-line)' }}>
-                      <td className="py-0.5 pr-2 whitespace-nowrap" style={{ color: 'var(--t-muted)' }}>{s.label}</td>
-                      <td className="py-0.5 pr-2" style={{ color: 'var(--t-text)' }}>{s.reading}</td>
+                      <td className="py-0.5 pr-2 whitespace-nowrap" style={{ color: 'var(--t-muted)' }}>{signalLabel(s)}</td>
+                      <td className="py-0.5 pr-2" style={{ color: 'var(--t-text)' }}>{signalReading(s)}</td>
                       <td className="py-0.5 text-right font-bold" style={{ color: biasColor(s.bias) }}>{biasText(s.bias)}</td>
                     </tr>
                   ))}
@@ -173,7 +175,7 @@ export function HistoryPanel({ asset, highlighted, className }: { asset: AssetCo
 
   const list = rows ? rows.map((r, i) => ({ ...r, chg: i > 0 ? (r.close / rows[i - 1].close - 1) * 100 : undefined })).slice(1).reverse() : [];
   return (
-    <TerminalPanel id="panel-hp" className={className} title="Historical Prices" subtitle={`HP · ${asset.code} daily`} highlighted={highlighted} bodyClassName="overflow-auto max-h-80">
+    <TerminalPanel id="panel-hp" className={className} title={tr('term.title.hp')} subtitle={tr('term.hp.sub', { code: asset.code })} highlighted={highlighted} bodyClassName="overflow-auto max-h-80">
       {error && !rows ? (
         <PanelMessage kind="error" onRetry={load} />
       ) : !rows ? (
@@ -182,12 +184,12 @@ export function HistoryPanel({ asset, highlighted, className }: { asset: AssetCo
         <table className="w-full text-[11px]">
           <thead className="sticky top-0" style={{ backgroundColor: 'var(--t-panel)' }}>
             <tr className="text-left" style={{ color: 'var(--t-muted)' }}>
-              <th className="px-2 py-1 font-medium">DATE</th>
-              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">OPEN</th>
-              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">HIGH</th>
-              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">LOW</th>
-              <th className="px-2 py-1 font-medium text-right">CLOSE</th>
-              <th className="px-2 py-1 font-medium text-right">%CHG</th>
+              <th className="px-2 py-1 font-medium">{tr('term.col.date')}</th>
+              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">{tr('term.col.open')}</th>
+              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">{tr('term.col.high')}</th>
+              <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">{tr('term.col.low')}</th>
+              <th className="px-2 py-1 font-medium text-right">{tr('term.col.close')}</th>
+              <th className="px-2 py-1 font-medium text-right">{tr('term.col.chg')}</th>
             </tr>
           </thead>
           <tbody>
@@ -261,8 +263,8 @@ export function CalendarTerminalPanel({
     <TerminalPanel
       id="panel-cal"
       className={className}
-      title="Calendar"
-      subtitle={all ? `CAL · ${all.scanned}/${all.total} IDX stocks checked${all.scanning ? ' …' : ''}` : 'CAL · corporate calendar'}
+      title={tr('term.title.cal')}
+      subtitle={all ? `${tr('term.cal.sub', { scanned: all.scanned ?? 0, total: all.total ?? 0 })}${all.scanning ? ' …' : ''}` : tr('term.cal.subDefault')}
       highlighted={highlighted}
       bodyClassName="overflow-auto max-h-80"
     >
@@ -276,14 +278,14 @@ export function CalendarTerminalPanel({
                 {asset.shortName}
               </div>
               {!own ? (
-                <div style={{ color: 'var(--t-muted)' }}>Loading...</div>
+                <div style={{ color: 'var(--t-muted)' }}>{tr('term.loadingShort')}</div>
               ) : mine.length === 0 ? (
-                <div style={{ color: 'var(--t-muted)' }}>No events in the last year or ahead.</div>
+                <div style={{ color: 'var(--t-muted)' }}>{tr('term.cal.noEvents')}</div>
               ) : (
                 mine.map((e) => (
                   <div key={e.type + e.date} className="flex justify-between gap-2">
                     <span style={{ color: e.date >= today ? 'var(--t-text)' : 'var(--t-muted)' }}>
-                      {EVENT_LABELS[e.type].toUpperCase()}
+                      {tOr(`event.${e.type}`, EVENT_LABELS[e.type]).toUpperCase()}
                       {e.estimate ? ' (EST)' : ''}
                       {e.amount !== undefined ? ` ${formatTerminalPrice(e.amount, asset)}` : ''}
                       {e.ratio ? ` ${e.ratio}` : ''}
@@ -299,9 +301,9 @@ export function CalendarTerminalPanel({
               IDX NEXT 14 DAYS
             </div>
             {!all ? (
-              <div style={{ color: 'var(--t-muted)' }}>Loading...</div>
+              <div style={{ color: 'var(--t-muted)' }}>{tr('term.loadingShort')}</div>
             ) : upcoming.length === 0 ? (
-              <div style={{ color: 'var(--t-muted)' }}>No events found yet.</div>
+              <div style={{ color: 'var(--t-muted)' }}>{tr('term.cal.noneYet')}</div>
             ) : (
               <table className="w-full">
                 <tbody>
@@ -310,7 +312,7 @@ export function CalendarTerminalPanel({
                       <td className="py-0.5 pr-2" style={{ color: 'var(--t-muted)' }}>{e.date.slice(5)}</td>
                       <td className="py-0.5 pr-2 font-bold" style={{ color: 'var(--t-amber)' }}>{e.symbol.replace('.JK', '')}</td>
                       <td className="py-0.5" style={{ color: 'var(--t-text)' }}>
-                        {EVENT_LABELS[e.type]}
+                        {tOr(`event.${e.type}`, EVENT_LABELS[e.type])}
                         {e.estimate ? ' (est.)' : ''}
                       </td>
                     </tr>
@@ -319,7 +321,7 @@ export function CalendarTerminalPanel({
               </table>
             )}
           </div>
-          <div style={{ color: 'var(--t-muted)' }}>Source: Yahoo Finance. RUPS, cum/recording dates and rights issues not available.</div>
+          <div style={{ color: 'var(--t-muted)' }}>{tr('term.cal.source')}</div>
         </div>
       )}
     </TerminalPanel>

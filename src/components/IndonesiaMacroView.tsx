@@ -5,7 +5,7 @@
  * 10-year chart. Indicators without a free source are listed as not available. Free macro data is
  * often published with a delay — every card shows how recent its data is.
  */
-import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
+import { getLang, tOr, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { ExternalLink, Landmark, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -148,7 +148,7 @@ function SeriesCard({ s }: { s: MacroSeries }) {
     <article className="p-4 rounded-xl border space-y-2" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-bold">{s.label}</h3>
+          <h3 className="text-sm font-bold">{tOr(`macro.s.${s.id}`, s.label)}</h3>
           <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
             {t(`macro.freq.${s.frequency}` as TranslationKey)} · {s.source}
           </p>
@@ -176,7 +176,7 @@ function SeriesCard({ s }: { s: MacroSeries }) {
       </div>
       {s.note && (
         <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-          {s.note}
+          {tOr(`macro.s.${s.id}.note`, s.note)}
         </p>
       )}
       <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] inline-flex items-center gap-1" style={{ color: 'var(--accent-radar)' }}>

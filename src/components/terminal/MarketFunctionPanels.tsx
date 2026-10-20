@@ -4,6 +4,7 @@
  * time), FXC (currency cross-rate matrix built from the Rupiah pairs), CURV (US Treasury
  * yield curve with the 10Y–3M spread) and IDMACRO (Indonesia macro snapshot).
  */
+import { t as tr, tOr, type TranslationKey } from '../../i18n/index.ts';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import { fetchIndonesiaMacro, fetchYieldCurve, type IndonesiaMacro, type YieldCurve } from '../../services/marketDataService.ts';
@@ -61,7 +62,7 @@ export function MoversTerminalPanel({ ticks, onSelect, highlighted, className }:
         {label}
       </div>
       {rows.length === 0 ? (
-        <div className="px-2 pb-2 text-[11px]" style={{ color: 'var(--t-muted)' }}>No movement measured yet.</div>
+        <div className="px-2 pb-2 text-[11px]" style={{ color: 'var(--t-muted)' }}>{tr('term.mov.noMove')}</div>
       ) : (
         <table className="w-full text-[11px]">
           <tbody>
@@ -82,13 +83,13 @@ export function MoversTerminalPanel({ ticks, onSelect, highlighted, className }:
     <TerminalPanel
       id="panel-mov"
       className={className}
-      title="Movers"
-      subtitle={win === 'now' ? `live 5m · ${Math.min(5, Math.floor(coverage / 60_000))}m of ticks collected` : MOVER_WINDOWS.find((w) => w.key === win)?.hint}
+      title={tr('term.title.mov')}
+      subtitle={win === 'now' ? tr('term.mov.live', { n: Math.min(5, Math.floor(coverage / 60_000)) }) : tr(`movers.win.${win}.hint` as TranslationKey)}
       highlighted={highlighted}
       right={
-        <div className="flex" role="group" aria-label="Movers window">
+        <div className="flex" role="group" aria-label={tr('term.mov.window')}>
           {MOVER_WINDOWS.map((w) => (
-            <TabButton key={w.key} active={win === w.key} onClick={() => setWin(w.key)} title={w.hint}>
+            <TabButton key={w.key} active={win === w.key} onClick={() => setWin(w.key)} title={tr(`movers.win.${w.key}.hint` as TranslationKey)}>
               {w.key === 'now' ? '5M' : w.label}
             </TabButton>
           ))}
@@ -96,8 +97,8 @@ export function MoversTerminalPanel({ ticks, onSelect, highlighted, className }:
       }
     >
       <div className="grid grid-cols-2 gap-1">
-        {list(gainers, 'GAINERS')}
-        {list(losers, 'LOSERS')}
+        {list(gainers, tr('term.mov.gainers'))}
+        {list(losers, tr('term.mov.losers'))}
       </div>
     </TerminalPanel>
   );
@@ -121,16 +122,16 @@ export function WorldIndicesPanel({ ticks, onSelect, highlighted, className }: P
     return () => clearInterval(t);
   }, []);
   return (
-    <TerminalPanel id="panel-wei" className={className} title="World Indices" subtitle="WEI · session status, local time" highlighted={highlighted} bodyClassName="overflow-x-auto">
+    <TerminalPanel id="panel-wei" className={className} title={tr('term.title.wei')} subtitle={tr('term.wei.sub')} highlighted={highlighted} bodyClassName="overflow-x-auto">
       <table className="w-full text-[11px]">
         <thead>
           <tr className="text-left" style={{ color: 'var(--t-muted)' }}>
-            <th className="px-2 py-1 font-medium">CODE</th>
-            <th className="px-2 py-1 font-medium hidden lg:table-cell">NAME</th>
-            <th className="px-2 py-1 font-medium text-right">LAST</th>
+            <th className="px-2 py-1 font-medium">{tr('term.col.code')}</th>
+            <th className="px-2 py-1 font-medium hidden lg:table-cell">{tr('term.col.name')}</th>
+            <th className="px-2 py-1 font-medium text-right">{tr('term.col.last')}</th>
             <th className="px-2 py-1 font-medium text-right">%24H</th>
             <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">%7D</th>
-            <th className="px-2 py-1 font-medium text-right">MKT</th>
+            <th className="px-2 py-1 font-medium text-right">{tr('term.col.mkt')}</th>
           </tr>
         </thead>
         <tbody>
@@ -185,7 +186,7 @@ export function FxCrossPanel({ ticks, highlighted, className }: Omit<PanelProps,
     return out;
   }, [ticks]);
   return (
-    <TerminalPanel id="panel-fxc" className={className} title="FX Cross" subtitle="FXC · units of column per 1 row · color = 24h" highlighted={highlighted} bodyClassName="overflow-x-auto">
+    <TerminalPanel id="panel-fxc" className={className} title={tr('term.title.fxc')} subtitle={tr('term.fxc.sub')} highlighted={highlighted} bodyClassName="overflow-x-auto">
       <table className="w-full text-[10px]">
         <thead>
           <tr style={{ color: 'var(--t-amber)' }}>
@@ -260,14 +261,14 @@ export function YieldCurvePanel({ highlighted, className }: { highlighted?: bool
       .join(' ');
 
   return (
-    <TerminalPanel id="panel-curv" className={className} title="US Yield Curve" subtitle="CURV · Treasury yields, %" highlighted={highlighted}>
+    <TerminalPanel id="panel-curv" className={className} title={tr('term.title.curv')} subtitle={tr('term.curv.sub')} highlighted={highlighted}>
       {error && !data ? (
         <PanelMessage kind="error" onRetry={load} />
       ) : !data ? (
         <PanelMessage kind="loading" />
       ) : (
         <div className="p-2 space-y-2">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-28" role="img" aria-label="US Treasury yield curve now and one month ago">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-28" role="img" aria-label={tr('term.curv.aria')}>
             <polyline points={line('monthAgo')} fill="none" stroke="var(--t-muted)" strokeDasharray="4 3" strokeWidth="1.2" />
             <polyline points={line('yield')} fill="none" stroke="var(--t-amber)" strokeWidth="2" />
             {pts.map((p, i) => (
@@ -281,9 +282,9 @@ export function YieldCurvePanel({ highlighted, className }: { highlighted?: bool
           <table className="w-full text-[11px]">
             <thead>
               <tr style={{ color: 'var(--t-muted)' }} className="text-left">
-                <th className="py-0.5 font-medium">TENOR</th>
-                <th className="py-0.5 font-medium text-right">YIELD</th>
-                <th className="py-0.5 font-medium text-right">Δ DAY</th>
+                <th className="py-0.5 font-medium">{tr('term.col.tenor')}</th>
+                <th className="py-0.5 font-medium text-right">{tr('term.col.yield')}</th>
+                <th className="py-0.5 font-medium text-right">{tr('term.col.dday')}</th>
                 <th className="py-0.5 font-medium text-right">Δ 1M</th>
               </tr>
             </thead>
@@ -304,11 +305,8 @@ export function YieldCurvePanel({ highlighted, className }: { highlighted?: bool
           </table>
           {spread !== null && (
             <p className="text-[10px] leading-snug" style={{ color: spread < 0 ? 'var(--t-down)' : 'var(--t-muted)' }}>
-              10Y–3M spread {spread >= 0 ? '+' : ''}
-              {(spread * 100).toFixed(0)}bp.{' '}
-              {spread < 0
-                ? 'Inverted: an inverted curve has preceded most US recessions (Estrella & Mishkin 1998), usually with a long and variable lag.'
-                : 'Upward sloping (normal).'}
+              {tr('term.curv.spread', { v: `${spread >= 0 ? '+' : ''}${(spread * 100).toFixed(0)}` })}{' '}
+              {spread < 0 ? tr('term.curv.inverted') : tr('term.curv.normal')}
             </p>
           )}
         </div>
@@ -336,7 +334,7 @@ export function IdMacroPanel({ highlighted, className }: { highlighted?: boolean
   }, []);
   const bi = data?.biRate.at(-1);
   return (
-    <TerminalPanel id="panel-idmacro" className={className} title="ID Macro" subtitle="IDMACRO · Bank Indonesia, FRED, World Bank" highlighted={highlighted}>
+    <TerminalPanel id="panel-idmacro" className={className} title={tr('term.title.idmacro')} subtitle={tr('term.idm.sub')} highlighted={highlighted}>
       {error && !data ? (
         <PanelMessage kind="error" onRetry={load} />
       ) : !data ? (
@@ -359,7 +357,7 @@ export function IdMacroPanel({ highlighted, className }: { highlighted?: boolean
                 const val = s.unit === 'Rp' ? formatNumber(l.value, 0) : s.unit === 'US$ bn' ? `$${l.value.toFixed(1)}B` : `${l.value.toFixed(2)}%`;
                 return (
                   <tr key={s.id} className="border-t" style={{ borderColor: 'var(--t-line)' }}>
-                    <td className="px-2 py-1" style={{ color: 'var(--t-muted)' }}>{s.label.toUpperCase()}</td>
+                    <td className="px-2 py-1" style={{ color: 'var(--t-muted)' }}>{tOr(`macro.s.${s.id}`, s.label).toUpperCase()}</td>
                     <td className="px-2 py-1 text-right" style={{ color: 'var(--t-text)' }}>{val}</td>
                     <td className="px-2 py-1 text-right whitespace-nowrap" style={{ color: 'var(--t-muted)' }}>{l.date.slice(0, 7)}</td>
                   </tr>

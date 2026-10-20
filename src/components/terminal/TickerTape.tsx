@@ -1,4 +1,5 @@
 /** TickerTape.tsx — Terminal scrolling price tape for all assets (click to select). */
+import { t as tr } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
 import { changeColor, formatTerminalPct, formatTerminalPrice, isTickUsable } from './TerminalPanel.tsx';
@@ -46,7 +47,7 @@ export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
       }`}
       style={{ backgroundColor: 'var(--t-panel)', borderColor: 'var(--t-line)' }}
       onTouchStart={() => setPaused((p) => !p)}
-      aria-label="Price tape for all assets"
+      aria-label={tr('term.tape')}
     >
       {/* ~2.5 s per asset keeps the speed readable however many assets are tracked */}
       <div className="terminal-ticker-track flex w-max" style={{ animationDuration: `${ASSETS.length * 2.5}s` }}>

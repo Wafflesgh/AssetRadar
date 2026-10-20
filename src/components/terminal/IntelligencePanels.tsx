@@ -3,6 +3,8 @@
  * shared useAssetIntelligence hook (re-scores silently when breaking news for the asset
  * arrives) and the live NewsRow used by both news panels.
  */
+import { t as tr, useLang, type TranslationKey } from '../../i18n/index.ts';
+import { analysisKeyFactors, analysisSummary } from '../../i18n/analysisText.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSETS, AssetConfig, AssetIntelligence, MarketNewsItem, PriceTick } from '../../config/assets.ts';
 import { fetchAssetIntelligence } from '../../services/marketDataService.ts';
@@ -41,6 +43,7 @@ export function useAssetIntelligence(symbol: string, newsKey = ''): Intelligence
   const [rescoredAt, setRescoredAt] = useState<number | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastNewsKey = useRef(newsKey);
+  const lang = useLang();
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +73,7 @@ export function useAssetIntelligence(symbol: string, newsKey = ''): Intelligence
       cancelled = true;
       if (retryTimer.current) clearTimeout(retryTimer.current);
     };
-  }, [symbol, reloadKey]);
+  }, [symbol, reloadKey, lang]);
 
   // Breaking news for this asset: re-score in the background (debounced), keep old data visible
   useEffect(() => {
@@ -109,10 +112,10 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
   return (
     <TerminalPanel
       id="panel-sentiment"
-      title="Sentiment"
-      subtitle={`${asset.code}${data?.aiPowered ? ' · AI-enhanced' : ''}`}
+      title={tr('term.title.sentiment')}
+      subtitle={`${asset.code}${data?.aiPowered ? ` ${tr('term.sent.ai')}` : ''}`}
       highlighted={highlighted}
-      right={!loading && <RetryButton onClick={reload} label="Reload" />}
+      right={!loading && <RetryButton onClick={reload} label={tr('term.reload')} />}
     >
       {loading ? (
         <PanelMessage kind="loading" />
@@ -122,7 +125,7 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
         <div className="p-2.5 space-y-2.5 terminal-mono text-[11px]">
           <div className="flex items-end justify-between gap-2">
             <span className="text-base font-bold" style={{ color: toneColor(data.sentimentLabel) }}>
-              {data.sentimentLabel.toUpperCase()}
+              {tr(`sentiment.${data.sentimentLabel}` as TranslationKey).toUpperCase()}
             </span>
             <span style={{ color: 'var(--t-text)' }}>
               <span className="text-xl font-bold">{Math.round(data.sentimentScore)}</span>
@@ -140,15 +143,15 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
           </div>
           {rescoredAt && (
             <p className="text-[10px]" style={{ color: 'var(--t-amber)' }}>
-              ↻ Re-scored on breaking news at {formatWibStamp(rescoredAt)} WIB
+              {tr('term.sent.rescored', { time: formatWibStamp(rescoredAt) })}
             </p>
           )}
           <p className="leading-relaxed" style={{ color: 'var(--t-text)' }}>
-            {data.summary}
+            {analysisSummary(data)}
           </p>
           {data.keyFactors.length > 0 && (
             <ul className="space-y-1">
-              {data.keyFactors.map((f) => (
+              {analysisKeyFactors(data).map((f) => (
                 <li key={f} className="flex gap-1.5" style={{ color: 'var(--t-muted)' }}>
                   <span style={{ color: 'var(--t-amber)' }}>›</span>
                   <span>{f}</span>
@@ -157,7 +160,7 @@ export function SentimentPanel({ asset, intel, highlighted }: SentimentPanelProp
             </ul>
           )}
           <p className="text-[10px]" style={{ color: 'var(--t-muted)' }}>
-            A summary of the news mood, not a buy/sell signal.
+            {tr('term.sent.note')}
           </p>
         </div>
       )}
@@ -243,7 +246,7 @@ export function LiveBadge() {
     <span
       className="flex items-center gap-1 text-[10px] font-bold tracking-wider terminal-mono"
       style={{ color: live ? 'var(--t-up)' : 'var(--t-muted)' }}
-      title={live ? 'Live stream connected' : 'Updating every 60 seconds'}
+      title={live ? tr('term.live.title') : tr('term.live.polling')}
     >
       <span
         aria-hidden="true"
@@ -270,8 +273,8 @@ export function AssetNewsPanel({
   return (
     <TerminalPanel
       id="panel-news"
-      title="News"
-      subtitle={`${asset.code} · original language`}
+      title={tr('term.title.news')}
+      subtitle={tr('term.news.sub', { code: asset.code })}
       highlighted={highlighted}
       right={<LiveBadge />}
       bodyClassName="overflow-y-auto max-h-80"
@@ -281,7 +284,7 @@ export function AssetNewsPanel({
       ) : news.items.length === 0 ? (
         <PanelMessage kind="error" onRetry={newsStore.refresh} />
       ) : items.length === 0 ? (
-        <PanelMessage kind="empty" text="No recent news for this asset yet." />
+        <PanelMessage kind="empty" text={tr('term.news.empty')} />
       ) : (
         <ul>
           {items.map((item) => (

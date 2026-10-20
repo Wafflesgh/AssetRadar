@@ -3,6 +3,7 @@
  * select) and HEATMAP grid (color intensity by 24h % change), both filtered by market type
  * through the shared group tabs.
  */
+import { t as tr, type TranslationKey } from '../../i18n/index.ts';
 import type { ReactNode } from 'react';
 import { AssetConfig, AssetGroup, PriceTick } from '../../config/assets.ts';
 import { LIVE_WINDOW_MS, liveHistory } from '../../utils/movers.ts';
@@ -31,34 +32,25 @@ interface MarketPanelProps {
 /** Market filter for MONITOR and HEATMAP. */
 export type TerminalGroup = 'ALL' | AssetGroup;
 
-export const TERMINAL_GROUPS: Array<{ key: TerminalGroup; label: string }> = [
-  { key: 'ALL', label: 'ALL' },
-  { key: 'crypto', label: 'CRYPTO' },
-  { key: 'idStock', label: 'IDX' },
-  { key: 'usStock', label: 'US' },
-  { key: 'globalStock', label: 'WORLD' },
-  { key: 'index', label: 'INDEX' },
-  { key: 'commodity', label: 'CMDTY' },
-  { key: 'forex', label: 'FX' },
-];
+export const TERMINAL_GROUPS: TerminalGroup[] = ['ALL', 'crypto', 'idStock', 'usStock', 'globalStock', 'index', 'commodity', 'forex'];
 
 export function GroupTabs({ value, onChange }: { value: TerminalGroup; onChange: (g: TerminalGroup) => void }) {
   return (
-    <div role="group" aria-label="Market filter" className="flex flex-wrap">
+    <div role="group" aria-label={tr('term.marketFilter')} className="flex flex-wrap">
       {TERMINAL_GROUPS.map((g) => (
         <button
-          key={g.key}
+          key={g}
           type="button"
-          aria-pressed={value === g.key}
-          onClick={() => onChange(g.key)}
+          aria-pressed={value === g}
+          onClick={() => onChange(g)}
           className="px-1.5 h-5 text-[10px] font-bold"
           style={{
-            backgroundColor: value === g.key ? 'var(--t-amber)' : 'transparent',
-            color: value === g.key ? '#05070A' : 'var(--t-muted)',
+            backgroundColor: value === g ? 'var(--t-amber)' : 'transparent',
+            color: value === g ? '#05070A' : 'var(--t-muted)',
             borderRadius: 2,
           }}
         >
-          {g.label}
+          {tr(`term.g.${g}` as TranslationKey)}
         </button>
       ))}
     </div>
@@ -81,8 +73,8 @@ export function MonitorPanel({
     <TerminalPanel
       id="panel-monitor"
       className={className}
-      title="Monitor"
-      subtitle={`${assets.length} assets · click or press 1–9`}
+      title={tr('term.title.monitor')}
+      subtitle={tr('term.mon.sub', { n: assets.length })}
       highlighted={highlighted}
       right={right}
       bodyClassName="overflow-auto max-h-[30rem]"
@@ -91,14 +83,14 @@ export function MonitorPanel({
         <thead className="sticky top-0 z-[1]" style={{ backgroundColor: 'var(--t-panel)' }}>
           <tr style={{ color: 'var(--t-muted)' }} className="text-left">
             <th className="px-2 py-1 font-medium">#</th>
-            <th className="px-2 py-1 font-medium">CODE</th>
-            <th className="px-2 py-1 font-medium text-right">PRICE</th>
-            <th className="px-2 py-1 font-medium text-right" title="Change over the last 5 minutes of live ticks">%5M</th>
+            <th className="px-2 py-1 font-medium">{tr('term.col.code')}</th>
+            <th className="px-2 py-1 font-medium text-right">{tr('term.col.price')}</th>
+            <th className="px-2 py-1 font-medium text-right" title={tr('term.col.5m')}>%5M</th>
             <th className="px-2 py-1 font-medium text-right">%24H</th>
-            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">HIGH</th>
-            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">LOW</th>
-            <th className="px-2 py-1 font-medium text-right hidden lg:table-cell">UPD</th>
-            <th className="px-2 py-1 font-medium hidden md:table-cell">STATUS</th>
+            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">{tr('term.col.high')}</th>
+            <th className="px-2 py-1 font-medium text-right hidden sm:table-cell">{tr('term.col.low')}</th>
+            <th className="px-2 py-1 font-medium text-right hidden lg:table-cell">{tr('term.col.upd')}</th>
+            <th className="px-2 py-1 font-medium hidden md:table-cell">{tr('term.col.status')}</th>
           </tr>
         </thead>
         <tbody>
@@ -157,20 +149,20 @@ export function MonitorPanel({
                       {formatWibStamp(tick.updatedAt)}
                     </td>
                     <td className="px-2 py-1.5 hidden md:table-cell uppercase" style={{ color: 'var(--t-muted)' }}>
-                      {tick.fromSnapshot ? 'SAVED' : tick.isMarketOpen === false ? 'CLOSED' : tick.status}
+                      {tick.fromSnapshot ? tr('term.status.saved') : tick.isMarketOpen === false ? tr('term.status.closed') : tr(`term.status.${tick.status}` as TranslationKey)}
                     </td>
                   </>
                 ) : (
                   <td colSpan={7} className="px-2 py-1.5" style={{ color: 'var(--t-muted)' }}>
                     {tick ? (
                       <span className="inline-flex items-center gap-2">
-                        Data unavailable
+                        {tr('common.dataUnavailable')}
                         <span onClick={(e) => e.stopPropagation()}>
                           <RetryButton onClick={() => onRetry(asset.symbol)} />
                         </span>
                       </span>
                     ) : (
-                      'Loading...'
+                      tr('term.loadingShort')
                     )}
                   </td>
                 )}
@@ -192,7 +184,7 @@ function heatColor(pct: number | undefined): string {
 
 export function HeatmapPanel({ ticks, assets, selectedSymbol, onSelect, highlighted, right }: MarketPanelProps) {
   return (
-    <TerminalPanel id="panel-heatmap" title="Heatmap" subtitle="24-hour % change" highlighted={highlighted} right={right} bodyClassName="overflow-y-auto max-h-[30rem]">
+    <TerminalPanel id="panel-heatmap" title={tr('term.title.heatmap')} subtitle={tr('term.heat.sub')} highlighted={highlighted} right={right} bodyClassName="overflow-y-auto max-h-[30rem]">
       <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-4 gap-1 p-1.5 terminal-mono">
         {assets.map((asset) => {
           const tick = ticks[asset.symbol];
@@ -214,7 +206,7 @@ export function HeatmapPanel({ ticks, assets, selectedSymbol, onSelect, highligh
                 {asset.code}
               </span>
               <span className="text-xs font-bold" style={{ color: 'var(--t-text)' }}>
-                {pct === undefined && tick && !isTickUsable(tick) ? 'N/A' : formatTerminalPct(pct)}
+                {pct === undefined && tick && !isTickUsable(tick) ? tr('term.na') : formatTerminalPct(pct)}
               </span>
             </button>
           );

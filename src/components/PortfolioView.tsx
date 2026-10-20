@@ -107,7 +107,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
 
   const persist = (next: PortfolioTx[]) => {
     setTxs(next);
-    if (!savePortfolioTxs(next)) setNotice('This browser did not allow saving (private mode or storage full). Export a backup.');
+    if (!savePortfolioTxs(next)) setNotice(tr('pf.saveBlocked'));
   };
 
   const positions = useMemo(() => buildPositions(txs), [txs]);

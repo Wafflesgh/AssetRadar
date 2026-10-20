@@ -5,7 +5,8 @@
  * background AI-enhanced result, and re-scores silently when breaking news arrives. Below it,
  * AssetAnalysisPanel shows the evidence behind the score (technical + fundamental analysis).
  */
-import { t, useT, type TranslationKey } from '../i18n/index.ts';
+import { t, useLang, useT, type TranslationKey } from '../i18n/index.ts';
+import { analysisKeyFactors, analysisSummary } from '../i18n/analysisText.ts';
 import { TranslateButton } from './TranslateButton.tsx';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -38,6 +39,7 @@ export function AssetIntelligencePanel({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const lang = useLang();
   const aiRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadIntelligence = useCallback(
@@ -61,7 +63,8 @@ export function AssetIntelligencePanel({
         if (!silent) setLoading(false);
       }
     },
-    [symbol]
+    // Refetch on a language switch: a Gemini summary is written in the chosen language
+    [symbol, lang]
   );
 
   useEffect(() => {
@@ -271,7 +274,7 @@ export function AssetIntelligencePanel({
 
               {/* Narrative Summary */}
               <p className="text-xs md:text-sm leading-relaxed">
-                {data.summary}
+                {analysisSummary(data)}
               </p>
 
               {/* Key Factors */}
@@ -284,7 +287,7 @@ export function AssetIntelligencePanel({
                     {t('intel.drivers')}
                   </h3>
                   <ul className="space-y-1.5 text-xs">
-                    {data.keyFactors.map((factor, idx) => (
+                    {analysisKeyFactors(data).map((factor, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <span
                           className="font-mono-num font-bold"

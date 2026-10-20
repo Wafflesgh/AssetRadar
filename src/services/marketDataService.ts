@@ -638,7 +638,7 @@ export class MarketDataManager {
 }
 
 export async function fetchAssetIntelligence(symbol: string): Promise<AssetIntelligence> {
-  const res = await fetch(`/api/market/intelligence?symbol=${encodeURIComponent(symbol)}`);
+  const res = await fetch(`/api/market/intelligence?symbol=${encodeURIComponent(symbol)}&${langParam()}`);
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }

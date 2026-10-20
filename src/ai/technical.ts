@@ -9,6 +9,7 @@
  * looks like; their textbook bias is not a forecast, which is why the historical hit rate
  * (versus the base rate) is reported next to them.
  */
+import { part, type TextPart } from '../i18n/textParts.ts';
 
 export type Bias = -1 | 0 | 1;
 
@@ -17,6 +18,8 @@ export interface TechnicalSignal {
   label: string;
   /** Plain-language reading, e.g. "Price 4.2% above the 200-day average". */
   reading: string;
+  /** The same reading as translation keys (src/i18n/textParts.ts). */
+  readingParts?: TextPart[];
   bias: Bias;
   weight: number;
   /** Method / study behind the rule. */
@@ -33,6 +36,8 @@ export interface ChartPattern {
   /** Price level that confirms or invalidates the pattern (neckline, breakout line). */
   keyLevel?: number;
   description: string;
+  /** The same description as translation keys. */
+  descParts?: TextPart[];
 }
 
 export interface HistoricalEdge {
@@ -164,6 +169,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'ma200',
       label: 'Long-term trend (200-day average)',
       reading: `Price ${pct(Math.abs(gap))} ${gap >= 0 ? 'above' : 'below'} the 200-day average`,
+      readingParts: [part(gap >= 0 ? 'ta.read.ma200.above' : 'ta.read.ma200.below', { pct: pct(Math.abs(gap)) })],
       bias: gap > 0.01 ? 1 : gap < -0.01 ? -1 : 0,
       weight: 1.5,
       method: 'Moving-average trend rule (Brock, Lakonishok & LeBaron 1992)',
@@ -174,6 +180,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'cross',
       label: '50-day vs 200-day average',
       reading: sma50 >= sma200 ? '50-day above 200-day (golden-cross regime)' : '50-day below 200-day (death-cross regime)',
+      readingParts: [part(sma50 >= sma200 ? 'ta.read.cross.golden' : 'ta.read.cross.death')],
       bias: sma50 > sma200 * 1.002 ? 1 : sma50 < sma200 * 0.998 ? -1 : 0,
       weight: 1,
       method: 'Dual moving-average crossover',
@@ -185,6 +192,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'ma50',
       label: 'Medium-term trend (50-day average)',
       reading: `Price ${pct(Math.abs(gap))} ${gap >= 0 ? 'above' : 'below'} the 50-day average`,
+      readingParts: [part(gap >= 0 ? 'ta.read.ma50.above' : 'ta.read.ma50.below', { pct: pct(Math.abs(gap)) })],
       bias: gap > 0.01 ? 1 : gap < -0.01 ? -1 : 0,
       weight: 1,
       method: 'Moving-average trend rule',
@@ -198,6 +206,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'macd',
       label: 'MACD (12, 26, 9)',
       reading: `Histogram ${hist >= 0 ? 'positive' : 'negative'} and ${rising ? 'rising' : 'falling'}`,
+      readingParts: [part(`ta.read.macd.${hist >= 0 ? 'pos' : 'neg'}.${rising ? 'rising' : 'falling'}`)],
       bias: hist > 0 && rising ? 1 : hist < 0 && !rising ? -1 : 0,
       weight: 1,
       method: 'Appel MACD momentum oscillator',
@@ -207,20 +216,26 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
   if (r !== null) {
     let bias: Bias = 0;
     let reading = `RSI ${r.toFixed(0)}`;
+    let state = 'neutral';
     if (r >= 70) {
       bias = -1;
+      state = 'overbought';
       reading += ' — overbought, short-term pullback risk';
     } else if (r <= 30) {
       bias = 1;
+      state = 'oversold';
       reading += ' — oversold, short-term rebound potential';
     } else if (r >= 55) {
       bias = 1;
+      state = 'pos';
       reading += ' — positive momentum';
     } else if (r <= 45) {
       bias = -1;
+      state = 'neg';
       reading += ' — negative momentum';
     } else reading += ' — neutral';
-    out.push({ id: 'rsi', label: 'RSI (14)', reading, bias, weight: 0.75, method: 'Wilder RSI; extremes as short-term reversal (Jegadeesh 1990)' });
+    const readingParts = [part(`ta.read.rsi.${state}`, { v: r.toFixed(0) })];
+    out.push({ id: 'rsi', label: 'RSI (14)', reading, readingParts, bias, weight: 0.75, method: 'Wilder RSI; extremes as short-term reversal (Jegadeesh 1990)' });
   }
   const mid = smaAt(s, t, 20);
   const sd = stdAt(s, t, 20);
@@ -237,6 +252,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
           : b < 0
             ? 'Closed below the lower band — stretched to the downside'
             : `Inside the bands (%B ${(b * 100).toFixed(0)})`,
+      readingParts: [part(b > 1 ? 'ta.read.boll.above' : b < 0 ? 'ta.read.boll.below' : 'ta.read.boll.inside', { b: (b * 100).toFixed(0) })],
       bias: b > 1 ? -1 : b < 0 ? 1 : 0,
       weight: 0.5,
       method: 'Bollinger %B mean reversion',
@@ -248,6 +264,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'mom',
       label: '12-1 month momentum',
       reading: `${mom >= 0 ? '+' : ''}${pct(mom)} from 12 months to 1 month ago`,
+      readingParts: [part('ta.read.mom', { v: `${mom >= 0 ? '+' : ''}${pct(mom)}` })],
       bias: mom > 0 ? 1 : mom < 0 ? -1 : 0,
       weight: 1.5,
       method: 'Time-series momentum (Moskowitz, Ooi & Pedersen 2012; Asness, Moskowitz & Pedersen 2013)',
@@ -260,6 +277,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       id: 'range52',
       label: '52-week range position',
       reading: `${(pos * 100).toFixed(0)}% of the way from the 52-week low to the high`,
+      readingParts: [part('ta.read.range52', { pos: (pos * 100).toFixed(0) })],
       bias: pos >= 0.8 ? 1 : pos <= 0.2 ? -1 : 0,
       weight: 0.75,
       method: '52-week-high anchoring effect (George & Hwang 2004)',
@@ -272,6 +290,7 @@ function signalsAt(s: Series, t: number, yearBars = 252): TechnicalSignal[] {
       label: '55-day breakout',
       reading:
         price > prior.max ? 'New 55-day closing high (breakout)' : price < prior.min ? 'New 55-day closing low (breakdown)' : 'Inside the 55-day range',
+      readingParts: [part(price > prior.max ? 'ta.read.donchian.high' : price < prior.min ? 'ta.read.donchian.low' : 'ta.read.donchian.inside')],
       bias: price > prior.max ? 1 : price < prior.min ? -1 : 0,
       weight: 0.75,
       method: 'Donchian channel breakout (turtle-style trend rule)',
@@ -420,6 +439,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
           price < neckline
             ? 'Two peaks at a similar level and price has closed below the neckline between them — a textbook bearish reversal.'
             : 'Two peaks at a similar level; a close below the neckline would confirm a bearish reversal, a close above the peaks would cancel it.',
+        descParts: [part(`ta.pat.double-top.${price < neckline ? 'confirmed' : 'forming'}`)],
       });
     }
   }
@@ -438,6 +458,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
           price > neckline
             ? 'Two troughs at a similar level and price has closed above the neckline — a textbook bullish reversal.'
             : 'Two troughs at a similar level; a close above the neckline would confirm a bullish reversal, a new low would cancel it.',
+        descParts: [part(`ta.pat.double-bottom.${price > neckline ? 'confirmed' : 'forming'}`)],
       });
     }
   }
@@ -459,6 +480,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
           price < neckline
             ? 'A higher peak (head) between two lower peaks (shoulders), and price broke the neckline — a textbook bearish top.'
             : 'A head between two shoulders; the pattern completes on a close below the neckline.',
+        descParts: [part(`ta.pat.head-shoulders.${price < neckline ? 'confirmed' : 'forming'}`)],
       });
     }
   }
@@ -478,6 +500,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
           price > neckline
             ? 'A lower trough (head) between two higher troughs, and price broke above the neckline — a textbook bullish bottom.'
             : 'An inverse head and shoulders; it completes on a close above the neckline.',
+        descParts: [part(`ta.pat.inverse-head-shoulders.${price > neckline ? 'confirmed' : 'forming'}`)],
       });
     }
   }
@@ -494,7 +517,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
     const above = price > upperNow * 1.005;
     const below = price < lowerNow * 0.995;
     const push = (id: string, name: string, bias: Bias, description: string, keyLevel: number) =>
-      out.push({ id, name, bias, status: above || below ? 'confirmed' : 'forming', keyLevel, description });
+      out.push({ id, name, bias, status: above || below ? 'confirmed' : 'forming', keyLevel, description, descParts: [part(`ta.pat.${id}`)] });
 
     if (Math.abs(hSlope) < flat && lSlope > flat) {
       push('ascending-triangle', 'Ascending triangle', 1, 'Flat resistance with rising lows — buyers keep stepping in higher; textbook bias is an upside breakout.', upperNow);
@@ -514,6 +537,7 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
     const last = out[out.length - 1];
     if (last && last.status === 'confirmed') {
       last.description += above ? ' Price has already closed above the upper line.' : ' Price has already closed below the lower line.';
+      last.descParts?.push(part(above ? 'ta.pat.closedAbove' : 'ta.pat.closedBelow'));
       if (last.id === 'symmetrical-triangle') last.bias = above ? 1 : -1;
     }
   }
@@ -527,11 +551,11 @@ export function detectPatterns(closes: number[]): ChartPattern[] {
     const pb = smaAt(s, i - 1, 200);
     if (a === null || b === null || pa === null || pb === null) break;
     if (pa <= pb && a > b) {
-      out.push({ id: 'golden-cross', name: 'Golden cross', bias: 1, status: 'confirmed', keyLevel: b, description: `The 50-day average crossed above the 200-day ${t - i} trading days ago.` });
+      out.push({ id: 'golden-cross', name: 'Golden cross', bias: 1, status: 'confirmed', keyLevel: b, description: `The 50-day average crossed above the 200-day ${t - i} trading days ago.`, descParts: [part('ta.pat.golden-cross', { n: t - i })] });
       break;
     }
     if (pa >= pb && a < b) {
-      out.push({ id: 'death-cross', name: 'Death cross', bias: -1, status: 'confirmed', keyLevel: b, description: `The 50-day average crossed below the 200-day ${t - i} trading days ago.` });
+      out.push({ id: 'death-cross', name: 'Death cross', bias: -1, status: 'confirmed', keyLevel: b, description: `The 50-day average crossed below the 200-day ${t - i} trading days ago.`, descParts: [part('ta.pat.death-cross', { n: t - i })] });
       break;
     }
   }

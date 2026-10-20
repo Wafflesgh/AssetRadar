@@ -18,7 +18,10 @@ const files = [];
 
 // A word of at least 3 letters makes it a sentence a person reads
 const WORDY = /[A-Za-z]{3,}/;
-const IGNORE = /^(AssetRadar|Radar|TradingView|IHSG|BEI|IDX|USD|IDR|WIB|EN|ID|OK|CSV|JSON|PWA|SSE|BTC|ETH|AI|\W+)$/;
+// Names and codes that read the same in both languages
+const IGNORE = /^(AssetRadar|Radar|TradingView|IHSG|BEI|IDX|USD|IDR|WIB|EN|ID|OK|CSV|JSON|PWA|SSE|BTC|ETH|AI|BI-Rate|BI-RATE|Piotroski F-score|\W+)$/;
+// TypeScript generics and comparisons on one line look like text between > and <
+const CODE_LIKE = /=>|&&|\|\||\?\s|^\)|\(\s*$|\w\(|\s:\s|^[a-z]+[A-Z]\w*$/;
 let total = 0;
 for (const file of files) {
   const src = readFileSync(file, 'utf8');
@@ -28,7 +31,7 @@ for (const file of files) {
     // Text between > and < on one line, not inside {...}
     for (const m of line.matchAll(/>([^<>{}]+)</g)) {
       const text = m[1].trim();
-      if (text && WORDY.test(text) && !IGNORE.test(text) && !/=>|&&|\|\||\?\s|^\)|\(\s*$/.test(text)) hits.push([i + 1, text]);
+      if (text && WORDY.test(text) && !IGNORE.test(text) && !CODE_LIKE.test(text)) hits.push([i + 1, text]);
     }
     // Lines that are only text (multi-line JSX text)
     const bare = line.trim();
