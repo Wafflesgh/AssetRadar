@@ -185,16 +185,7 @@ Production: `npm run build`, then `NODE_ENV=production npm start`.
 
 ## Deploy
 
-**Recommended: Google Cloud Run with continuous deployment.** The `Dockerfile` builds the app
-(`npm ci`, `npm run build`) and starts `server.ts` in production on port 8080. Connect the
-GitHub repository once in Cloud Run ("Continuously deploy from a repository", build type
-Dockerfile, branch `^main$`); every push to `main` then deploys a new revision at the same URL,
-and the installed PWA picks it up on its next start. Suggested settings: max instances 1,
-request timeout 3600 s (SSE streams), 1 vCPU / 1 GiB, request-based billing, keys as Secret
-Manager secrets exposed as `FINNHUB_API_KEY` / `GEMINI_API_KEY`. Click-by-click guide (Indonesian):
-`docs/DEPLOY_CloudRun.md`.
-
-Alternative: the repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
+The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
 runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY` and/or `FINNHUB_API_KEY` in the Secrets
 panel if you want them. Do not push from AI Studio back to GitHub; import the latest version
 instead (as a new app), then Publish.
@@ -211,7 +202,6 @@ instead (as a new app), then Publish.
 | `package.json` / `package-lock.json` | Dependencies and npm scripts (`dev`, `lint`, `test`, `build`, `start`). |
 | `tsconfig.json` | TypeScript settings. |
 | `.env.example` | Example environment variables. |
-| `Dockerfile` / `.dockerignore` | Container build for Google Cloud Run (continuous deployment from GitHub). |
 | `metadata.json` | App name/description for Google AI Studio. |
 | `CLAUDE.md` | Project notes for Claude Code. |
 | `docs/` | The original specification, follow-up prompts and progress log (Indonesian). |
