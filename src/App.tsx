@@ -56,6 +56,7 @@ const RiskProfileView = lazy(() =>
 );
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
 const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
 const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
@@ -362,6 +363,7 @@ export default function App() {
               {activeTab === 'alerts' && 'Alerts'}
               {activeTab === 'screener' && 'IDX Screener'}
               {activeTab === 'compare' && 'Compare'}
+              {activeTab === 'brief' && 'Morning Brief'}
             </span>
           </div>
         </div>
@@ -512,6 +514,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'brief' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Loading…
+              </p>
+            }
+          >
+            <BriefView watchlist={[...watchlist, ...portfolioSymbols]} onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
         {activeTab === 'compare' && (

@@ -150,6 +150,7 @@ import {
   type UserAlert,
 } from './src/utils/alerts.ts';
 import { formatAssetPrice } from './src/utils/format.ts';
+import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
 import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2806,7 +2807,7 @@ const FORWARD_TIME = '16:15'; // WIB, after the IDX close
 
 /** Last run date (WIB) of each daily job; persisted so a restart does not repeat a job. */
 const jobs = {
-  state: { forward: null as string | null } as Record<string, string | null>,
+  state: { forward: null as string | null, brief: null as string | null } as Record<string, string | null>,
   loaded: false,
   running: new Map<string, Promise<unknown>>(),
   retryAfter: new Map<string, number>(),
@@ -2904,6 +2905,174 @@ async function runServerForwardTest(): Promise<{ date: string; saved: number; sc
 
 const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
 
+// ---- Morning brief (±07:30 WIB; optional Telegram and web push) ----------------------------------
+
+const BRIEF_PREFIX = 'brief:';
+const briefMemo = new Map<string, MorningBrief>();
+
+function telegramConfigured(): boolean {
+  return Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
+}
+
+/** Sends a plain-text message to the owner's Telegram chat (the token is never logged). */
+async function sendTelegram(text: string): Promise<boolean> {
+  if (!telegramConfigured()) return false;
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN?.trim()}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID?.trim(), text, disable_web_page_preview: true }),
+      },
+      10_000
+    );
+    if (!res.ok) console.warn(`[Telegram] send failed (HTTP ${res.status})`);
+    return res.ok;
+  } catch {
+    console.warn('[Telegram] send failed (network)');
+    return false;
+  }
+}
+
+function briefQuote(asset: Asset | undefined, tick: PriceTick | undefined): BriefQuote | null {
+  if (!asset || !tick || tick.status === 'error' || !Number.isFinite(tick.price)) return null;
+  return {
+    code: asset.code,
+    name: asset.shortName,
+    group: asset.group,
+    price: tick.price,
+    changePct: typeof tick.changePct24h === 'number' && Number.isFinite(tick.changePct24h) ? tick.changePct24h : null,
+    display: formatAssetPrice(tick.price, asset),
+  };
+}
+
+/** Builds the brief for a WIB date from the caches (prices, calendar, macro, news, forward test). */
+async function generateBrief(date: string): Promise<MorningBrief> {
+  const now = Date.now();
+  const [yahoo, indodax] = await Promise.all([getYahooTicks().catch(() => ({}) as Record<string, PriceTick>), getIndodaxPrices().catch(() => ({}) as Record<string, PriceTick>)]);
+  const ticks: Record<string, PriceTick> = { ...yahoo, ...indodax };
+  try {
+    const usd = ticks['USD/IDR']?.price;
+    ticks['XAU/USD'] = await getGoldTick(Number.isFinite(usd) ? usd : 0);
+  } catch {
+    // Gold left out
+  }
+  const q = (code: string) => {
+    const asset = ASSETS.find((a) => a.code === code);
+    return asset ? briefQuote(asset, ticks[asset.symbol]) : null;
+  };
+  const list = (codes: string[]) => codes.map(q).filter((x): x is BriefQuote => x !== null);
+
+  // Watchlist + portfolio from synced data come first in the calendar
+  let priority: string[] = [];
+  if (syncStorageReady(store)) {
+    const data = await loadSyncData(store);
+    priority = [...new Set([...liveValues<boolean>(data, 'watchlist').map((x) => x.id), ...liveValues<{ symbol?: string }>(data, 'portfolio').map((x) => x.value.symbol ?? '')])].filter(Boolean);
+  }
+  for (const sym of priority.slice(0, 30)) {
+    const a = getAssetBySymbol(sym);
+    if (a?.yahooSymbol && STOCK_GROUPS.includes(a.group)) await getCalendarFor(a).catch(() => []);
+  }
+  const events: CalendarEvent[] = [];
+  for (const [sym, entry] of calendarCache) {
+    for (const e of entry.data) if (e.date === date && e.type !== 'dividend' && e.symbol === sym) events.push(e);
+  }
+
+  const macro: Array<{ label: string; value: string; date: string }> = [];
+  try {
+    const m = await Promise.race([getIndonesiaMacro(), new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
+    if (m) {
+      const bi = m.biRate[0];
+      if (bi) macro.push({ label: 'BI-Rate', value: `${bi.value.toFixed(2)}%`, date: bi.date });
+      for (const sr of m.series.slice(0, 5)) {
+        const lastPoint = sr.points[sr.points.length - 1];
+        if (lastPoint) macro.push({ label: sr.label, value: `${Number(lastPoint.value.toFixed(2)).toLocaleString('en-US')}${sr.unit === '%' ? '%' : ` ${sr.unit}`}`, date: lastPoint.date });
+      }
+    }
+  } catch {
+    // Macro left out
+  }
+
+  await ensureNewsFresh().catch(() => {});
+  let forward: { saved: number; evaluated: number; lastRunDate: string | null } | null = null;
+  try {
+    const snaps = (await loadForwardMonths()).flatMap((m) => m.log.snapshots);
+    forward = { saved: snaps.length, evaluated: snaps.filter((x) => x.outcome).length, lastRunDate: jobs.state.forward ?? null };
+  } catch {
+    forward = null;
+  }
+
+  const brief = buildBrief({
+    date,
+    generatedAt: now,
+    wallStreet: list(['SPX', 'NDX', 'DJI']),
+    asia: list(['N225', 'HSI', 'KOSPI', 'SSE', 'STI']),
+    ihsg: q('JCI'),
+    movers: ASSETS.filter((a) => a.group !== 'index' && a.group !== 'forex').map((a) => briefQuote(a, ticks[a.symbol])).filter((x): x is BriefQuote => x !== null),
+    rates: list(['USD', 'EUR', 'SGD', 'JPY', 'CNY']),
+    gold: q('GOLD'),
+    events,
+    priority,
+    codeOf: (sym) => getAssetBySymbol(sym)?.code.replace(/\.JK$/, '') ?? sym,
+    macro,
+    news: newsHub.items,
+    forward,
+  });
+
+  // Optional: Gemini rewrites the overview in plain English from the same facts
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && brief.sections.length > 1) {
+    try {
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      const facts = brief.sections.filter((x) => x.id !== 'overview').map((x) => `${x.title}: ${x.lines.join('; ')}`).join('\n');
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: `Write 3-4 plain-English sentences summarizing this morning's market mood for an Indonesian investor, using ONLY these facts. No predictions, no buy/sell advice.\n${facts}`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+        }),
+        new Promise<null>((r) => setTimeout(() => r(null), 12_000)),
+      ]);
+      const text = response?.text?.trim();
+      if (text) {
+        brief.sections[0] = { ...brief.sections[0], lines: [text] };
+        brief.aiPolished = true;
+      }
+    } catch (err) {
+      console.warn('[Brief] Gemini failed:', err instanceof Error ? err.message : err);
+    }
+  }
+  return brief;
+}
+
+async function storedBrief(date: string): Promise<MorningBrief | null> {
+  const memo = briefMemo.get(date);
+  if (memo) return memo;
+  const saved = await store.get<MorningBrief>(`${BRIEF_PREFIX}${date}`).catch(() => null);
+  if (saved) briefMemo.set(date, saved);
+  return saved;
+}
+
+/** Today's brief: generate, store, and send to Telegram / web push when configured. */
+async function runMorningBrief(): Promise<{ date: string; telegram: boolean; push: number }> {
+  const { date } = briefDateFor(Date.now());
+  const brief = await generateBrief(date);
+  // Without any market data the brief is not worth sending; try again later
+  if (!brief.sections.some((x) => x.id === 'global' || x.id === 'ihsg')) throw new Error('Market data unavailable for the brief');
+  briefMemo.set(date, brief);
+  await store.set(`${BRIEF_PREFIX}${date}`, brief).catch((err) => console.warn('[Brief] save failed:', err instanceof Error ? err.message : err));
+  const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
+  let push = 0;
+  if (vapidConfigured() && syncStorageReady(store)) {
+    const overview = brief.sections[0]?.lines[0] ?? '';
+    push = (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: overview.slice(0, 180), url: '#/brief', tag: `brief-${date}` }).catch(() => ({ sent: 0 }))).sent;
+  }
+  await markJobDone('brief', date);
+  console.log(`[Brief] ${date} ready (telegram: ${telegram ? 'sent' : 'off'}, push: ${push})`);
+  return { date, telegram, push };
+}
+
 /** Runs the daily jobs that are due (called on API requests and by POST /api/cron/daily). */
 async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, unknown>> {
   await loadJobState();
@@ -2912,10 +3081,17 @@ async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, u
   const allowed = (name: string) => trigger === 'cron' || (jobs.retryAfter.get(name) ?? 0) <= now;
   if (dailyJobDue(now, jobs.state.forward ?? null, FORWARD_TIME, true) && allowed('forward')) {
     const job = runJob('forward', runServerForwardTest);
-    results.forward = trigger === 'cron' ? await job : 'started';
+    results.forward = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
     if (trigger === 'request') job.catch(() => {});
   } else {
     results.forward = { skipped: jobs.state.forward === wibDate(now) ? 'already ran today' : `not due (weekdays after ${FORWARD_TIME} WIB)` };
+  }
+  if (dailyJobDue(now, jobs.state.brief ?? null, BRIEF_TIME) && allowed('brief')) {
+    const job = runJob('brief', runMorningBrief);
+    results.brief = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') job.catch(() => {});
+  } else {
+    results.brief = { skipped: jobs.state.brief === wibDate(now) ? 'already ran today' : `not due (after ${BRIEF_TIME} WIB)` };
   }
   return results;
 }
@@ -3114,6 +3290,61 @@ async function startServer() {
     } catch (err) {
       res.status(502).json({ ok: false, error: err instanceof Error ? err.message : 'Job failed' });
     }
+  });
+
+  // Morning brief: today's from 07:30 WIB (made on the first request if the scheduler has not run),
+  // before that yesterday's; ?date=YYYY-MM-DD for a stored one
+  app.get('/api/brief', async (req, res) => {
+    try {
+      await loadJobState();
+      const asked = String(req.query.date || '');
+      if (asked) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(asked)) {
+          res.status(400).json({ error: 'Invalid date' });
+          return;
+        }
+        const b = await storedBrief(asked);
+        if (!b) {
+          res.status(404).json({ error: 'No brief saved for that date' });
+          return;
+        }
+        res.json({ brief: b, preview: false });
+        return;
+      }
+      const { date, ready } = briefDateFor(Date.now());
+      let brief = await storedBrief(date);
+      if (!brief && ready) {
+        await runJob('brief', runMorningBrief).catch(() => {});
+        brief = await storedBrief(date);
+      }
+      if (brief) {
+        res.json({ brief, preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+        return;
+      }
+      // Nothing saved yet (e.g. before 07:30 after a restart): a live preview, not stored
+      res.json({ brief: await generateBrief(date), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+    } catch (err) {
+      console.warn('[Brief] failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Brief unavailable' });
+    }
+  });
+
+  app.get('/api/brief/dates', async (_req, res) => {
+    const keys = await store.keys(BRIEF_PREFIX).catch(() => [] as string[]);
+    res.json({ dates: keys.map((k) => k.slice(BRIEF_PREFIX.length)).sort().reverse().slice(0, 60) });
+  });
+
+  // Owner: send the current brief to Telegram / push now (to test the setup)
+  app.post('/api/brief/send-test', ownerAuth.requireOwner, async (_req, res) => {
+    if (!telegramConfigured() && !vapidConfigured()) {
+      res.status(503).json({ error: 'Neither Telegram nor web push is configured on the server' });
+      return;
+    }
+    const { date } = briefDateFor(Date.now());
+    const brief = (await storedBrief(date)) ?? (await generateBrief(date));
+    const telegram = await sendTelegram(briefToText(brief, process.env.APP_URL?.startsWith('http') ? process.env.APP_URL : undefined));
+    const push = vapidConfigured() ? (await sendPushToAll(store, { title: `Morning brief · ${date}`, body: (brief.sections[0]?.lines[0] ?? '').slice(0, 180), url: '#/brief', tag: 'brief-test' })).sent : 0;
+    res.json({ telegram, push });
   });
 
   // Server forward test: track record of the daily AI verdict snapshots

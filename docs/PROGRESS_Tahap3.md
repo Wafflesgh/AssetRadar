@@ -67,7 +67,13 @@ Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan,
     - **Calendar**: ex-date, pembayaran dividen dan jadwal laporan keuangan untuk saham yang dimiliki.
   - Keterbatasan: aset tanpa kurs Rupiah historis (KRW, HKD) tidak masuk perhitungan (ditulis di UI); nilai harian memakai close (bukan harga live); pajak dividen harus diisi sendiri.
   - Status verifikasi live: **belum** (riwayat harga & kalender dari Yahoo diblokir jaringan cloud).
-- [ ] 6. Ringkasan pagi (morning brief)
+- [x] 6. Ringkasan pagi (morning brief)
+  - Rencana: penyusun ringkasan murni (dengan test, data contoh hanya di test), dibuat server dari cache yang sudah ada, disimpan per tanggal di DB (atau memori), dikirim opsional ke Telegram & web push.
+  - Dibuat: `src/utils/morningBrief.ts` (+4 test: pemilihan 5 berita terpenting — alert geopolitik "high" dulu, lalu bobot event (kebijakan moneter, laporan keuangan, makro…) di atas berita harga, berita sama dari beberapa media dibuang, >18 jam dibuang; jadwal 07:30 WIB — sebelum itu ringkasan kemarin; penyusunan dari data contoh; teks Telegram ≤4096 karakter). Server: `generateBrief` (penutupan Wall Street SPX/NDX/DJI & Asia N225/HSI/KOSPI/SSE/STI, IHSG sesi terakhir, 3 naik/turun terbesar 24 jam, kurs USD/EUR/SGD/JPY/CNY & emas, jadwal emiten hari ini — watchlist/portofolio dari data sinkron diberi ★ dan di atas, data makro terbaru BI-Rate dll., 5 berita, status forward test AI); Gemini merapikan paragraf ringkasan bila `GEMINI_API_KEY` ada, jika tidak berbasis aturan. Job harian `brief` (≥07:30 WIB) lewat `POST /api/cron/daily` atau permintaan API pertama; tidak dikirim bila tidak ada data pasar sama sekali (dicoba lagi 30 mnt). `GET /api/brief[?date=]`, `GET /api/brief/dates`, `POST /api/brief/send-test` (pemilik). Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) dan web push Fitur 2 bila dikonfigurasi; token tidak pernah dicetak ke log.
+  - Halaman **`#/brief`** (pilih tanggal tersimpan, berita dengan tautan, baris kalender bisa diklik, ★ untuk watchlist/portofolio, keterangan "preview" bila belum tersimpan, disclaimer) dan panel Terminal **`BRIEF`** (+ tombol QuickBar). Menu: Morning Brief.
+  - Tanpa kunci: hanya tampil di aplikasi (preview langsung bila belum ada yang tersimpan).
+  - Uji server (curl): `/api/brief` → preview dengan bagian "Market data is unavailable right now." (sumber diblokir), tanggal salah 400, tanggal tanpa ringkasan 404, send-test tanpa login → 503/401, cron → brief gagal dengan pesan jelas lalu dicoba lagi.
+  - Status verifikasi live: **belum** (sumber harga, berita dan Telegram diblokir jaringan cloud).
 - [ ] 7. Harga emas Antam / Pegadaian
 - [ ] 8. Backtest sederhana
 

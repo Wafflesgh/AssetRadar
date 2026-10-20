@@ -78,3 +78,8 @@ test('screener and compare routes', () => {
   assert.equal(buildHashRoute('compare', undefined, ['BBCA.JK', 'BTC/IDR']), '#/compare?s=BBCA,BTC');
   assert.equal(buildHashRoute('screener'), '#/screener');
 });
+
+test('brief route', () => {
+  assert.deepEqual(parseHashRoute('#/brief'), { tab: 'brief' });
+  assert.equal(buildHashRoute('brief'), '#/brief');
+});

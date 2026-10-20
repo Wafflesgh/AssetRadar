@@ -23,6 +23,7 @@ import {
   Bell,
   Filter,
   GitCompare,
+  Newspaper,
   MoreHorizontal,
   X,
 } from 'lucide-react';
@@ -30,7 +31,7 @@ import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'alerts' | 'screener' | 'compare' | 'brief';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -59,6 +60,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'idx', label: 'IDX Stocks', shortLabel: 'IDX', icon: Landmark, mobile: true },
   { id: 'terminal', label: 'Terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'AI Advisor', shortLabel: 'AI', icon: BrainCircuit, mobile: true },
+  { id: 'brief', label: 'Morning Brief', shortLabel: 'Brief', icon: Newspaper },
   { id: 'screener', label: 'IDX Screener', shortLabel: 'Screener', icon: Filter },
   { id: 'compare', label: 'Compare', icon: GitCompare },
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },

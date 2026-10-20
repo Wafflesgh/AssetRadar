@@ -838,3 +838,25 @@ export function fetchDailyHistory(symbol: string): Promise<DailyHistory> {
   dailyMemo.set(symbol, { at: Date.now(), data });
   return data;
 }
+
+export interface BriefResponse {
+  brief: import('../utils/morningBrief.ts').MorningBrief;
+  /** Generated on the fly (nothing saved for that date yet). */
+  preview: boolean;
+  nextAt?: string;
+  telegram?: boolean;
+  persistent?: boolean;
+}
+
+/** Today's morning brief (from 07:30 WIB; before that yesterday's), or a saved one by date. */
+export async function fetchMorningBrief(date?: string): Promise<BriefResponse> {
+  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}` : '/api/brief');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function fetchBriefDates(): Promise<string[]> {
+  const res = await fetch('/api/brief/dates');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).dates ?? [];
+}

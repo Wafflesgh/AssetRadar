@@ -14,7 +14,7 @@ import { NewsTape } from '../NewsTape.tsx';
 import { latestNewsKey, useLiveNews } from '../../hooks/useLiveNews.ts';
 import { CommandLine } from './CommandLine.tsx';
 import { GroupTabs, HeatmapPanel, MonitorPanel, type TerminalGroup } from './MarketPanels.tsx';
-import { FxCrossPanel, IdMacroPanel, MoversTerminalPanel, WorldIndicesPanel, YieldCurvePanel } from './MarketFunctionPanels.tsx';
+import { FxCrossPanel, BriefPanel, IdMacroPanel, MoversTerminalPanel, WorldIndicesPanel, YieldCurvePanel } from './MarketFunctionPanels.tsx';
 import { CalendarTerminalPanel, HistoryPanel, IntelPanel } from './AnalysisPanels.tsx';
 import { AssetNewsPanel, SentimentPanel, useAssetIntelligence } from './IntelligencePanels.tsx';
 import { ChartPanel, CorrelationPanel, EconomicCalendarPanel, NewsFeedPanel } from './DataPanels.tsx';
@@ -48,6 +48,7 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   curv: 'panel-curv',
   cal: 'panel-cal',
   idmacro: 'panel-idmacro',
+  brief: 'panel-brief',
 };
 
 const PANEL_NAME: Record<PanelId, string> = {
@@ -66,6 +67,7 @@ const PANEL_NAME: Record<PanelId, string> = {
   curv: 'US YIELD CURVE',
   cal: 'CALENDAR',
   idmacro: 'ID MACRO',
+  brief: 'MORNING BRIEF',
 };
 
 /** QuickBar: one click runs the function (asset functions apply to the selected asset). */
@@ -80,6 +82,7 @@ const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string;
   { label: 'FXC', command: () => 'FXC', title: 'FX cross rates' },
   { label: 'CURV', command: () => 'CURV', title: 'US yield curve' },
   { label: 'IDMACRO', command: () => 'IDMACRO', title: 'Indonesia macro' },
+  { label: 'BRIEF', command: () => 'BRIEF', title: 'Morning brief' },
   { label: 'HM', command: () => 'HM', title: 'Heatmap' },
   { label: 'ECO', command: () => 'ECO', title: 'Economic calendar' },
   { label: 'CORR', command: () => 'CORR', title: 'Correlation' },
@@ -258,6 +261,7 @@ export function TerminalView({
         <HistoryPanel asset={asset} highlighted={highlight === 'hp'} />
         <CalendarTerminalPanel asset={asset} onSelect={selectAsset} highlighted={highlight === 'cal'} />
         <IdMacroPanel highlighted={highlight === 'idmacro'} />
+        <BriefPanel highlighted={highlight === 'brief'} />
         <CorrelationPanel highlighted={highlight === 'corr'} />
         <EconomicCalendarPanel highlighted={highlight === 'eco'} />
         <NewsFeedPanel asset={asset} ticks={ticks} highlighted={highlight === 'top'} />

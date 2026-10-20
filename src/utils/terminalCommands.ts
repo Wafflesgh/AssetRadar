@@ -8,7 +8,7 @@
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
 
 export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal';
-export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro';
+export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro' | 'brief';
 export type TerminalPanel = AssetPanel | MarketPanel;
 
 export type TerminalCommand =
@@ -32,6 +32,7 @@ export const PANEL_COMMANDS: Record<string, { panel: MarketPanel; description: s
   CURV: { panel: 'curv', description: 'US Treasury yield curve' },
   CAL: { panel: 'cal', description: 'IDX corporate calendar (earnings, dividends)' },
   IDMACRO: { panel: 'idmacro', description: 'Indonesia macro (BI-Rate, inflation, GDP, reserves)' },
+  BRIEF: { panel: 'brief', description: 'Morning brief (markets, calendar, headlines)' },
   HM: { panel: 'heatmap', description: '24-hour change heatmap' },
   ECO: { panel: 'eco', description: 'Economic calendar' },
   CORR: { panel: 'corr', description: '30-day correlation' },
