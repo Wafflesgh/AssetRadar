@@ -39,7 +39,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 3. Pilar & horizon sentimen
 - [x] 4. Proyeksi teknikal & kalkulator posisi
 - [x] 5. Validasi & cadence
-- [ ] 6. Tampilan
+- [x] 6. Tampilan
 - [ ] 7. Makro Indonesia diperluas
 - [ ] 8. Penutup
 
@@ -91,6 +91,16 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 - Crypto: `validatePanel` untuk 100 pasangan Binance (candle harian tertutup ±500 hari, skor Short/Medium tiap 7 hari vs return 7/30 hari).
 - `GET /api/sentiment/validation?market=idx|us|crypto` (dihitung di latar belakang saat data pemindaian cukup, cache 24 jam; status `computing` / `waiting-for-data` / `ready`). Hasil IC dipakai untuk **confidence** di `/api/sentiment/v2` (High hanya bila IC positif & signifikan) dan cadence horizon.
 - Keterbatasan jujur: berita & teknikal harian tidak punya riwayat tersimpan → tidak ikut back-test (ditulis di `scope`); fundamental BEI dari Yahoo hanya ±4 tahun tahunan / ±5 kuartal → validasi fundamental BEI pendek (`fundamentalYears`); FEPS tidak divalidasi (tidak ada riwayat konsensus).
+
+## Fase 6 — Tampilan
+
+- **Detail aset**: kartu **Investment sentiment** (`src/components/sentiment/InvestmentSentimentPanel.tsx`, lazy) — tab Pendek/Menengah/Panjang dengan rentang waktu per kelas aset, skor 0–100 + label 5 tingkat, keyakinan + alasannya, cadence tinjau (+ alasan dari half-life IC bila sudah divalidasi), katalis berikutnya, tabel komponen (skor, bobot efektif, kontribusi poin, tanggal data, referensi jurnal, alasan "Not applicable"/"Not reported", catatan bobot dibagi ulang), berita penyumbang skor berita, 3 pilar + sub-faktor (saham), peringatan distress, D_Up/D_Down, nilai wajar hibrida + peringatan R², bukti uji historis, kesegaran data & progres pemindaian, disclaimer. Kartu **Technical ranges & levels** (`TechnicalLevelsPanel.tsx`, lazy) — kisaran 68%/90% + kalibrasi, ATR, level S/R + sumber & kekuatan, terdekat + reward/risk, target pola + hit rate, opsi Fibonacci, "tampilkan level di grafik" (garis harga di grafik alternatif; widget TradingView tidak bisa), **kalkulator posisi** (`PositionCalculator.tsx`). Harga koin hasil konversi menampilkan "≈ … USDT · dikonversi".
+- **Radar**: kartu **Sentiment leaders** (IDX/AS × Pendek/Menengah/Panjang, terkuat & terlemah, progres pemindaian).
+- **`#/crypto`** (`CryptoBinanceView.tsx`, lazy, menu "Crypto Binance"): tabel 100 pasangan (harga USDT, %1h/4h/24h/7d, volume, funding, skor 3 horizon), cari (termasuk simbol non-Latin), filter "hanya koin di AssetRadar", status Binance (wilayah diblokir / 429 / 418 / tidak terjangkau) + pemakaian weight; halaman pasangan `#/crypto/<PAIR>`: candle 1h/4h/1D (candle berjalan ditandai), kisaran & level dari candle tertutup, kalkulator, posisi futures (funding, OI 24 jam, long/short, taker, basis; "hanya 30 hari"), tautan dua arah ke aset Rupiah.
+- **Terminal**: `<KODE> SENT` / `SENT <KODE>`, `<KODE> LVL` / `LVL <KODE>`, `RANK`, `RANK IDX|US SHORT|MEDIUM|LONG`, `BINANCE`, `BNB` (memilih koin BNB + panel Binance), `BNB <PAIR>` (buka halaman pasangan); panel SENT, LVL, RANK, BINANCE di grid + tombol QuickBar; HELP & saran diperbarui.
+- **Settings**: kartu target volatilitas (default 10%/tahun, `assetradar_vol_target_v1`).
+- Endpoint tambahan sesuai nama di rencana: `/api/crypto/binance/overview` (alias), `/api/crypto/binance/pair?symbol=&tf=`, `/api/sentiment/rankings?market=idx|idStock|us|usStock|crypto&sector=` (+ desil per baris).
+- Cek tampilan headless (Chromium, satu tab per halaman): 8 halaman (Radar, detail BBCA/ZEC/BTC, `#/crypto`, `#/crypto/BTCUSDT`, Terminal, Settings) × EN/ID × terang/gelap × 375/1440 → **tanpa scroll horizontal**.
 
 ## Butuh keputusan pemilik
 

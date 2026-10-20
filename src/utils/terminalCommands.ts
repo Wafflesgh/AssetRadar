@@ -7,13 +7,14 @@
 import { ASSETS, getAssetByCode } from '../config/assets.ts';
 import { translate, type AppLang, type TranslationKey } from '../i18n/core.ts';
 
-export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal';
-export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro';
+export type AssetPanel = 'monitor' | 'chart' | 'news' | 'intel' | 'hp' | 'cal' | 'sent' | 'lvl';
+export type MarketPanel = 'heatmap' | 'eco' | 'corr' | 'top' | 'mov' | 'wei' | 'fxc' | 'curv' | 'cal' | 'idmacro' | 'rank' | 'bnb';
 export type TerminalPanel = AssetPanel | MarketPanel;
 
 export type TerminalCommand =
-  | { type: 'asset'; symbol: string; code: string; panel: AssetPanel }
-  | { type: 'panel'; panel: MarketPanel }
+  | { type: 'asset'; symbol: string; code: string; panel: TerminalPanel }
+  | { type: 'panel'; panel: MarketPanel; market?: 'idx' | 'us'; horizon?: 'short' | 'medium' | 'long' }
+  | { type: 'binancePair'; pair: string }
   | { type: 'help' }
   | { type: 'radar' }
   | { type: 'advisor' }
@@ -36,6 +37,8 @@ export const PANEL_COMMANDS: Record<string, { panel: MarketPanel }> = {
   ECO: { panel: 'eco' },
   CORR: { panel: 'corr' },
   TOP: { panel: 'top' },
+  RANK: { panel: 'rank' },
+  BINANCE: { panel: 'bnb' },
 };
 
 /** Functions after an asset code: "ETH GP". Descriptions are translation keys term.fn.<FN>. */
@@ -47,8 +50,10 @@ const ASSET_FUNCTIONS: Record<string, { panel: AssetPanel }> = {
   FA: { panel: 'intel' },
   HP: { panel: 'hp' },
   CAL: { panel: 'cal' },
+  SENT: { panel: 'sent' },
+  LVL: { panel: 'lvl' },
 };
-const SUGGESTED_FUNCTIONS = ['GP', 'N', 'INTEL', 'HP', 'CAL'];
+const SUGGESTED_FUNCTIONS = ['GP', 'N', 'INTEL', 'SENT', 'LVL', 'HP', 'CAL'];
 
 export interface CommandHelpItem {
   command: string;
@@ -62,7 +67,12 @@ const tk = (lang: AppLang, key: string, params?: Record<string, string | number>
 export function terminalHelp(lang: AppLang = 'en'): CommandHelpItem[] {
   return [
     { command: '<CODE>', description: tk(lang, 'term.help.code') },
-    ...['GP', 'N', 'INTEL', 'HP', 'CAL'].map((fn) => ({ command: `<CODE> ${fn}`, description: tk(lang, `term.help.${fn}`) })),
+    ...['GP', 'N', 'INTEL', 'SENT', 'LVL', 'HP', 'CAL'].map((fn) => ({ command: `<CODE> ${fn}`, description: tk(lang, `term.help.${fn}`) })),
+    { command: 'BNB', description: tk(lang, 'term.help.BNB') },
+    { command: 'SENT <CODE>', description: tk(lang, 'term.help.SENT') },
+    { command: 'LVL <CODE>', description: tk(lang, 'term.help.LVL') },
+    { command: 'RANK IDX|US SHORT|MEDIUM|LONG', description: tk(lang, 'term.help.RANK') },
+    { command: 'BNB <PAIR>', description: tk(lang, 'term.help.BNBPAIR') },
     ...Object.keys(PANEL_COMMANDS).map((command) => ({ command, description: tk(lang, `term.panel.${command}`) })),
     ...['HELP', 'AI', 'QUANT', 'RADAR'].map((command) => ({ command, description: tk(lang, `term.help.${command}`) })),
   ];
@@ -83,6 +93,30 @@ export function parseTerminalCommand(input: string, lang: AppLang = 'en'): Termi
   if (text === 'AI' || text === 'ADVISOR') return { type: 'advisor' };
   if (text === 'QUANT' || text === 'LAB') return { type: 'quant' };
   if (PANEL_COMMANDS[text]) return { type: 'panel', panel: PANEL_COMMANDS[text].panel };
+
+  // Command-first forms: SENT <CODE>, LVL <CODE>, RANK IDX|US [SHORT|MEDIUM|LONG], BNB <PAIR>
+  const [head, ...args] = text.split(' ');
+  if ((head === 'SENT' || head === 'LVL') && args.length === 1) {
+    const a = getAssetByCode(args[0]);
+    if (a) return { type: 'asset', symbol: a.symbol, code: args[0], panel: head === 'SENT' ? 'sent' : 'lvl' };
+    return { type: 'error', message: tk(lang, 'term.err.unknown', { text }) };
+  }
+  if (head === 'RANK' && args.length >= 1 && args.length <= 2) {
+    const market = args[0] === 'IDX' || args[0] === 'BEI' ? 'idx' : args[0] === 'US' ? 'us' : null;
+    const horizon = args[1] === undefined ? 'medium' : ({ SHORT: 'short', MEDIUM: 'medium', LONG: 'long' } as const)[args[1] as 'SHORT'];
+    if (market && horizon) return { type: 'panel', panel: 'rank', market, horizon };
+    return { type: 'error', message: tk(lang, 'term.err.rank') };
+  }
+  // "BNB GP" stays the BNB coin's chart; any other single word after BNB is a Binance pair
+  if (head === 'BNB' && args.length === 1 && !ASSET_FUNCTIONS[args[0]]) {
+    const pair = args[0].endsWith('USDT') ? args[0] : `${args[0]}USDT`;
+    return { type: 'binancePair', pair };
+  }
+  // BNB is both the coin and the Binance panel: select the coin and open the Binance table
+  if (text === 'BNB') {
+    const bnb = getAssetByCode('BNB');
+    if (bnb) return { type: 'asset', symbol: bnb.symbol, code: 'BNB', panel: 'bnb' };
+  }
 
   const [code, fn, ...rest] = text.split(' ');
   const asset = getAssetByCode(code);

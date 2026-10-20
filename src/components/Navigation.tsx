@@ -4,6 +4,7 @@
  * mobile bottom navigation bar (main pages plus a "More" sheet). Also defines the NavTab type.
  */
 import {
+  Bitcoin,
   Radar,
   Star,
   ShieldAlert,
@@ -29,7 +30,7 @@ import { ThemePreference } from '../utils/storage.ts';
 import { useT, type TranslationKey } from '../i18n/index.ts';
 import { LangToggle } from './LangToggle.tsx';
 
-export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro';
+export type NavTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'crypto';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -58,6 +59,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'idx', label: 'nav.idx', shortLabel: 'nav.idxShort', icon: Landmark, mobile: true },
   { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, mobile: true },
   { id: 'advisor', label: 'nav.advisor', shortLabel: 'nav.advisorShort', icon: BrainCircuit, mobile: true },
+  { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
   { id: 'portfolio', label: 'nav.portfolio', icon: Wallet },
   { id: 'calendar', label: 'nav.calendar', shortLabel: 'nav.calendarShort', icon: CalendarDays },
   { id: 'macro', label: 'nav.macro', icon: Building2 },

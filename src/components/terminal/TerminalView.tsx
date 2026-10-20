@@ -19,6 +19,7 @@ import { FxCrossPanel, IdMacroPanel, MoversTerminalPanel, WorldIndicesPanel, Yie
 import { CalendarTerminalPanel, HistoryPanel, IntelPanel } from './AnalysisPanels.tsx';
 import { AssetNewsPanel, SentimentPanel, useAssetIntelligence } from './IntelligencePanels.tsx';
 import { ChartPanel, CorrelationPanel, EconomicCalendarPanel, NewsFeedPanel } from './DataPanels.tsx';
+import { BinancePanel, LevelsPanel, RankingsPanel, SentimentV2Panel } from './SentimentPanels.tsx';
 
 interface TerminalViewProps {
   ticks: Record<string, PriceTick>;
@@ -48,6 +49,10 @@ const PANEL_ELEMENT_ID: Record<PanelId, string> = {
   curv: 'panel-curv',
   cal: 'panel-cal',
   idmacro: 'panel-idmacro',
+  sent: 'panel-sent',
+  lvl: 'panel-lvl',
+  rank: 'panel-rank',
+  bnb: 'panel-bnb',
 };
 
 /** Panel name for the command feedback, in the current language. */
@@ -60,6 +65,10 @@ const QUICK_FUNCTIONS: Array<{ label: string; command: (code: string) => string;
   { label: 'INTEL', command: (c) => `${c} INTEL`, title: 'term.fn.INTEL' },
   { label: 'HP', command: (c) => `${c} HP`, title: 'term.title.hp' },
   { label: 'CAL', command: (c) => `${c} CAL`, title: 'term.fn.CAL' },
+  { label: 'SENT', command: (c) => `${c} SENT`, title: 'term.fn.SENT' },
+  { label: 'LVL', command: (c) => `${c} LVL`, title: 'term.fn.LVL' },
+  { label: 'RANK', command: () => 'RANK', title: 'term.panel.RANK' },
+  { label: 'BNB', command: () => 'BINANCE', title: 'term.panel.BINANCE' },
   { label: 'MOV', command: () => 'MOV', title: 'term.panel.MOV' },
   { label: 'WEI', command: () => 'WEI', title: 'term.title.wei' },
   { label: 'FXC', command: () => 'FXC', title: 'term.panel.FXC' },
@@ -102,6 +111,8 @@ export function TerminalView({
     () => getAssetBySymbol(initialSymbol)?.symbol ?? ASSETS[0].symbol
   );
   const [highlight, setHighlight] = useState<PanelId | null>(null);
+  // Market and horizon of the RANK panel (set by "RANK IDX SHORT")
+  const [rankChoice, setRankChoice] = useState<{ market: 'idx' | 'us'; horizon: 'short' | 'medium' | 'long' }>({ market: 'idx', horizon: 'medium' });
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const asset = getAssetBySymbol(selectedSymbol) ?? ASSETS[0];
@@ -163,6 +174,11 @@ export function TerminalView({
         focusPanel(cmd.panel, cmd.panel !== 'monitor');
         return tr('term.ok.asset', { code: cmd.code, panel: panelName(cmd.panel) });
       }
+      if (cmd.type === 'binancePair') {
+        window.location.hash = `#/crypto/${encodeURIComponent(cmd.pair)}`;
+        return tr('term.ok.pair', { pair: cmd.pair });
+      }
+      if (cmd.panel === 'rank' && cmd.market) setRankChoice({ market: cmd.market, horizon: cmd.horizon ?? 'medium' });
       focusPanel(cmd.panel, true);
       return tr('term.ok.panel', { panel: panelName(cmd.panel) });
     },
@@ -234,6 +250,10 @@ export function TerminalView({
           highlighted={highlight === 'heatmap'}
         />
         <SentimentPanel asset={asset} intel={intel} />
+        <SentimentV2Panel asset={asset} highlighted={highlight === 'sent'} />
+        <LevelsPanel asset={asset} highlighted={highlight === 'lvl'} />
+        <RankingsPanel onSelect={selectAsset} highlighted={highlight === 'rank'} choice={rankChoice} onChoice={setRankChoice} />
+        <BinancePanel highlighted={highlight === 'bnb'} />
         <AssetNewsPanel asset={asset} ticks={ticks} highlighted={highlight === 'news'} />
         <FxCrossPanel ticks={ticks} highlighted={highlight === 'fxc'} />
         <YieldCurvePanel highlighted={highlight === 'curv'} />

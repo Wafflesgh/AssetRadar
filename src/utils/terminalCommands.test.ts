@@ -43,7 +43,7 @@ test('getCommandSuggestions returns prefix matches', () => {
   assert.deepEqual(getCommandSuggestions(''), []);
   assert.deepEqual(
     getCommandSuggestions('eth').map((s) => s.command),
-    ['ETH GP', 'ETH N', 'ETH INTEL', 'ETH HP', 'ETH CAL']
+    ['ETH GP', 'ETH N', 'ETH INTEL', 'ETH SENT', 'ETH LVL', 'ETH HP', 'ETH CAL']
   );
   assert.deepEqual(
     getCommandSuggestions('co').map((s) => s.command).slice(0, 2),
@@ -73,9 +73,31 @@ test('new market functions and asset analysis commands', () => {
   assert.equal((parseTerminalCommand('bbca intel') as { panel: string }).panel, 'intel');
   assert.equal((parseTerminalCommand('NVDA TA') as { panel: string }).panel, 'intel');
   assert.equal((parseTerminalCommand('spx hp') as { panel: string }).panel, 'hp');
-  assert.deepEqual(getCommandSuggestions('btc').map((s) => s.command), ['BTC GP', 'BTC N', 'BTC INTEL', 'BTC HP', 'BTC CAL']);
+  assert.deepEqual(getCommandSuggestions('btc').map((s) => s.command), ['BTC GP', 'BTC N', 'BTC INTEL', 'BTC SENT', 'BTC LVL', 'BTC HP', 'BTC CAL']);
   assert.deepEqual(parseTerminalCommand('cal'), { type: 'panel', panel: 'cal' });
   assert.deepEqual(parseTerminalCommand('idmacro'), { type: 'panel', panel: 'idmacro' });
   assert.equal((parseTerminalCommand('bbca cal') as { panel: string }).panel, 'cal');
   assert.deepEqual(getCommandSuggestions('cu').map((s) => s.command)[0], 'CURV');
+});
+
+test('stage 4 commands: SENT and LVL per asset, RANK and BINANCE panels, BNB opens both', () => {
+  assert.equal((parseTerminalCommand('bbca sent') as { panel: string }).panel, 'sent');
+  assert.equal((parseTerminalCommand('btc lvl') as { panel: string }).panel, 'lvl');
+  assert.deepEqual(parseTerminalCommand('rank'), { type: 'panel', panel: 'rank' });
+  assert.deepEqual(parseTerminalCommand('binance'), { type: 'panel', panel: 'bnb' });
+  const bnb = parseTerminalCommand('bnb') as { type: string; code: string; panel: string };
+  assert.equal(bnb.type, 'asset');
+  assert.equal(bnb.panel, 'bnb');
+  assert.ok(parseTerminalCommand('bnb gp')?.type === 'asset');
+});
+
+test('command-first forms from the plan: SENT <CODE>, LVL <CODE>, RANK IDX SHORT, BNB <PAIR>', () => {
+  assert.equal((parseTerminalCommand('sent bbca') as { panel: string }).panel, 'sent');
+  assert.equal((parseTerminalCommand('LVL BTC') as { panel: string }).panel, 'lvl');
+  assert.deepEqual(parseTerminalCommand('rank idx short'), { type: 'panel', panel: 'rank', market: 'idx', horizon: 'short' });
+  assert.deepEqual(parseTerminalCommand('rank us'), { type: 'panel', panel: 'rank', market: 'us', horizon: 'medium' });
+  assert.equal(parseTerminalCommand('rank mars')?.type, 'error');
+  assert.deepEqual(parseTerminalCommand('bnb solusdt'), { type: 'binancePair', pair: 'SOLUSDT' });
+  assert.deepEqual(parseTerminalCommand('bnb pepe'), { type: 'binancePair', pair: 'PEPEUSDT' });
+  assert.equal(parseTerminalCommand('sent nosuchcode')?.type, 'error');
 });

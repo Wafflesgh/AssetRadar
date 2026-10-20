@@ -19,6 +19,8 @@ export interface PriceChartProps {
   /** 'terminal' = dark TradingView widget using the Terminal panel colors. */
   theme: ChartTheme;
   height?: number;
+  /** Lines to draw; when present the alternative chart is used (the widget cannot draw them). */
+  priceLines?: Array<{ price: number; color: string; title: string }>;
 }
 
 /**
@@ -38,16 +40,24 @@ export function getDefaultTvSymbol(asset: AssetConfig): string {
   return asset.tvWidgetUnsupported && asset.tvFallbackSymbol ? asset.tvFallbackSymbol : asset.tvSymbol;
 }
 
-export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceChartProps) {
+export function PriceChart({ asset, tvSymbol, interval, theme, height, priceLines }: PriceChartProps) {
   // A manual choice only applies to the asset it was made for (resets when switching assets)
   const [override, setOverride] = useState<{ symbol: string; source: ChartSource } | null>(null);
   const t = useT();
 
   const autoSource = getAutoChartSource(asset, interval);
-  const source = override?.symbol === asset.symbol ? override.source : autoSource;
-  // Rupiah crypto from Indodax (Yahoo has no BTC-IDR etc.), other assets from Yahoo Finance
-  const altSourceLabel = asset.indodaxPair ? 'Indodax' : 'Yahoo Finance';
-  const canUseAlternative = Boolean(asset.indodaxPair || asset.yahooSymbol);
+  const wantsLines = Boolean(priceLines?.length);
+  const source = wantsLines ? 'alternative' : override?.symbol === asset.symbol ? override.source : autoSource;
+  // Rupiah crypto from Indodax (Yahoo has no BTC-IDR etc.); other coins from Binance/CoinGecko
+  // converted to Rupiah; everything else from Yahoo Finance
+  const altSourceLabel = asset.indodaxPair
+    ? 'Indodax'
+    : asset.group === 'crypto'
+      ? asset.binanceSpot || asset.binanceFutures
+        ? 'Binance → IDR'
+        : 'CoinGecko'
+      : 'Yahoo Finance';
+  const canUseAlternative = Boolean(asset.indodaxPair || asset.yahooSymbol || asset.group === 'crypto');
   const showAlternative = source === 'alternative' && canUseAlternative;
   // Symbols the widget rejects with no fallback symbol can only use the alternative chart
   const tradingViewAvailable = !(asset.tvWidgetUnsupported && !asset.tvFallbackSymbol);
@@ -106,6 +116,7 @@ export function PriceChart({ asset, tvSymbol, interval, theme, height }: PriceCh
           theme={theme}
           height={height}
           sourceLabel={altSourceLabel}
+          priceLines={priceLines}
         />
       ) : (
         <TradingViewChart

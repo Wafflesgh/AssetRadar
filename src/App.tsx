@@ -57,6 +57,7 @@ const RiskProfileView = lazy(() =>
 // recharts-heavy pages load on demand
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
+const CryptoBinanceView = lazy(() => import('./components/CryptoBinanceView.tsx').then((m) => ({ default: m.CryptoBinanceView })));
 
 export default function App() {
   // Re-renders the whole app when the language changes
@@ -68,6 +69,10 @@ export default function App() {
     return parseHashRoute(window.location.hash).tab;
   });
   const [startInTerminal, setStartInTerminal] = useState<boolean>(() => getStartInTerminal());
+  // Binance pair shown on #/crypto/<PAIR> (undefined = the pair table)
+  const [cryptoPair, setCryptoPair] = useState<string | undefined>(() =>
+    typeof window === 'undefined' ? undefined : parseHashRoute(window.location.hash).pair
+  );
   const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
     if (typeof window === 'undefined') return 'BTC/IDR';
     return parseHashRoute(window.location.hash).assetSymbol ?? 'BTC/IDR';
@@ -105,6 +110,7 @@ export default function App() {
     const handleHashChange = () => {
       const parsed = parseHashRoute(window.location.hash);
       setActiveTab(parsed.tab);
+      setCryptoPair(parsed.pair);
       if (parsed.assetSymbol) {
         setSelectedSymbol(parsed.assetSymbol);
       }
@@ -192,7 +198,8 @@ export default function App() {
     (tab: NavTab) => {
       setActiveTab(tab);
       if (typeof window !== 'undefined') {
-        const nextHash = buildHashRoute(tab, selectedSymbol);
+        const nextHash = buildHashRoute(tab, tab === 'crypto' ? undefined : selectedSymbol);
+        if (tab === 'crypto') setCryptoPair(undefined);
         if (window.location.hash !== nextHash) {
           window.location.hash = nextHash;
         }
@@ -201,6 +208,13 @@ export default function App() {
     },
     [selectedSymbol]
   );
+
+  const handleOpenPair = useCallback((pair?: string) => {
+    setCryptoPair(pair);
+    const nextHash = buildHashRoute('crypto', pair);
+    if (typeof window !== 'undefined' && window.location.hash !== nextHash) window.location.hash = nextHash;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleSelectAsset = useCallback((symbol: string) => {
     const found = getAssetBySymbol(symbol);
@@ -325,6 +339,7 @@ export default function App() {
               {activeTab === 'portfolio' && t('header.title.portfolio')}
               {activeTab === 'calendar' && t('header.title.calendar')}
               {activeTab === 'macro' && t('header.title.macro')}
+              {activeTab === 'crypto' && t('header.title.crypto')}
             </span>
           </div>
         </div>
@@ -457,6 +472,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'crypto' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <CryptoBinanceView pair={cryptoPair} onOpenPair={handleOpenPair} onSelectAsset={handleSelectAsset} theme={effectiveTheme} />
           </Suspense>
         )}
         {activeTab === 'idx' && (

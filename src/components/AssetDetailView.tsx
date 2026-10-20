@@ -20,14 +20,18 @@ import {
   formatUsdPerOz,
   formatAssetPrice,
   formatPercent,
+  formatDecimal,
 } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { CorporateCalendarPanel } from './CorporateCalendarPanel.tsx';
+import type { ChartLine } from './sentiment/TechnicalLevelsPanel.tsx';
 
 const FinancialStatementsPanel = lazy(() => import('./FinancialStatementsPanel.tsx').then((m) => ({ default: m.FinancialStatementsPanel })));
+const InvestmentSentimentPanel = lazy(() => import('./sentiment/InvestmentSentimentPanel.tsx').then((m) => ({ default: m.InvestmentSentimentPanel })));
+const TechnicalLevelsPanel = lazy(() => import('./sentiment/TechnicalLevelsPanel.tsx').then((m) => ({ default: m.TechnicalLevelsPanel })));
 
 interface AssetDetailViewProps {
   asset: AssetConfig;
@@ -54,6 +58,9 @@ export function AssetDetailView({
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
   const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
+  // Support/resistance lines from the Technical ranges card (empty = none)
+  const [chartLines, setChartLines] = useState<ChartLine[]>([]);
+  useEffect(() => setChartLines([]), [asset.symbol]);
   const t = useT();
 
   // Reset fallback toggle when switching assets
@@ -277,6 +284,11 @@ export function AssetDetailView({
               >
                 {isLoaded && tick ? formatVal(tick.price) : t('common.loading')}
               </span>
+              {isLoaded && tick?.converted && tick.priceUsdt !== undefined && (
+                <span className="text-[11px] block font-mono-num" style={{ color: 'var(--text-secondary)' }}>
+                  {t('detail.converted', { usdt: formatDecimal(tick.priceUsdt, tick.priceUsdt >= 1 ? 4 : 8) })}
+                </span>
+              )}
               <span
                 className="text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
@@ -450,8 +462,14 @@ export function AssetDetailView({
           tvSymbol={activeTvSymbol}
           interval={timeframe}
           theme={effectiveTheme}
+          priceLines={chartLines}
         />
       </section>
+
+      <Suspense fallback={null}>
+        <InvestmentSentimentPanel asset={asset} />
+        <TechnicalLevelsPanel asset={asset} onChartLines={setChartLines} />
+      </Suspense>
 
       {isStock && (
         <Suspense fallback={null}>

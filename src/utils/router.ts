@@ -1,17 +1,19 @@
 /**
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
- * #/idx, #/portfolio, #/calendar, #/macro.
+ * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance) and #/crypto/<PAIR>.
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
 import { ALL_ASSETS, ASSETS, getAssetBySymbol } from '../config/assets.ts';
 
-export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro';
+export type RouteTab = 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio' | 'calendar' | 'macro' | 'crypto';
 
 export interface ParsedRoute {
   tab: RouteTab;
   assetSymbol?: string;
+  /** Binance pair on #/crypto/<PAIR> (may contain non-Latin characters). */
+  pair?: string;
 }
 
 // Legacy asset ids from before the English rename
@@ -55,6 +57,19 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (cleaned === 'macro' || cleaned === 'makro') {
     return { tab: 'macro' };
+  }
+  if (cleaned === 'crypto' || cleaned === 'binance' || cleaned === 'kripto') {
+    return { tab: 'crypto' };
+  }
+  if (cleaned.startsWith('crypto/')) {
+    const raw = hash.trim().replace(/^#\/?/, '').slice('crypto/'.length);
+    let pair = raw;
+    try {
+      pair = decodeURIComponent(raw);
+    } catch {
+      // keep the raw text
+    }
+    return pair ? { tab: 'crypto', pair: pair.toUpperCase() } : { tab: 'crypto' };
   }
   const assetPrefix = ['asset/', 'aset/'].find((p) => cleaned.startsWith(p));
   if (assetPrefix) {
@@ -103,6 +118,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string): string 
       return '#/calendar';
     case 'macro':
       return '#/macro';
+    case 'crypto':
+      return assetSymbolOrId ? `#/crypto/${encodeURIComponent(assetSymbolOrId)}` : '#/crypto';
     case 'detail': {
       const asset =
         (assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined) ?? ASSETS[0];

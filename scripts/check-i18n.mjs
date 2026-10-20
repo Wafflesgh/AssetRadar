@@ -31,6 +31,8 @@ for (const file of files) {
     // Text between > and < on one line, not inside {...}
     for (const m of line.matchAll(/>([^<>{}]+)</g)) {
       const text = m[1].trim();
+      // An arrow's "=>" followed by a generic type ("=> Promise<T>") is code, not text
+      if (line[m.index - 1] === '=') continue;
       if (text && WORDY.test(text) && !IGNORE.test(text) && !CODE_LIKE.test(text)) hits.push([i + 1, text]);
     }
     // Lines that are only text (multi-line JSX text)

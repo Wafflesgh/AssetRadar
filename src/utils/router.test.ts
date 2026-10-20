@@ -65,3 +65,11 @@ test('macro route', () => {
   assert.deepEqual(parseHashRoute('#/macro'), { tab: 'macro' });
   assert.equal(buildHashRoute('macro'), '#/macro');
 });
+
+test('crypto (Binance) route with an optional pair, including non-Latin symbols', () => {
+  assert.deepEqual(parseHashRoute('#/crypto'), { tab: 'crypto' });
+  assert.deepEqual(parseHashRoute('#/crypto/btcusdt'), { tab: 'crypto', pair: 'BTCUSDT' });
+  const pair = '币安人生USDT';
+  assert.equal(buildHashRoute('crypto', pair), `#/crypto/${encodeURIComponent(pair)}`);
+  assert.deepEqual(parseHashRoute(buildHashRoute('crypto', pair)), { tab: 'crypto', pair });
+});

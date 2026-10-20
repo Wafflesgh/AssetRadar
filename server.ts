@@ -3549,10 +3549,33 @@ async function startServer() {
 
   // Sentiment leaders of a market for one horizon (cross-section of the scanned stocks)
   app.get('/api/sentiment/rankings', (req, res) => {
-    const market = req.query.market === 'us' ? 'us' : 'idx';
+    const m = String(req.query.market || 'idx');
     const h: Horizon = req.query.horizon === 'short' || req.query.horizon === 'long' ? req.query.horizon : 'medium';
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { rows, n } = rankingsFor(market, h);
+    if (m === 'crypto') {
+      // Binance top 100: scores from closed daily candles and funding (see /api/crypto/binance)
+      noteBinanceDemand();
+      const rows = binanceUniverse()
+        .map((p) => {
+          const daily = cachedClosedKlines(p.symbol, '1d').map((k) => k.close);
+          const f = fundingFor(`${p.baseAsset}USDT`) ?? fundingFor(`1000${p.baseAsset}USDT`);
+          const r = scoreHorizon(h, { group: 'crypto', technicalShort: shortTechnical(daily)?.score ?? null, tsMomentum: tsMomentumScore(daily, 365), trend: trendScore(daily), derivatives: f ? derivativesScore({ fundingRate: f.lastFundingRate }) : null, binance: true });
+          return { symbol: p.symbol, code: p.baseAsset, name: p.symbol, industry: null, score: r.score, label: r.label, confidence: r.confidence, coverage: r.coverage, pillars: { momentum: null, health: null, quality: null }, distressWarning: false };
+        })
+        .filter((r) => r.score !== null)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      res.json({ market: 'crypto', horizon: h, n: rows.length, top: rows.slice(0, limit), bottom: rows.slice(-limit).reverse(), binance: binanceStatus(), disclaimer: SENTIMENT_DISCLAIMER, serverTime: Date.now() });
+      return;
+    }
+    const market = m === 'us' || m === 'usStock' ? 'us' : 'idx';
+    const sector = String(req.query.sector || '').toLowerCase();
+    const all = rankingsFor(market, h);
+    const n = all.n;
+    // Decile of each scored stock in this ranking (10 = top), then the optional sector filter
+    const scored = all.rows.filter((r) => r.score !== null);
+    const rows = scored
+      .map((r, i) => ({ ...r, decile: 10 - Math.floor((i * 10) / Math.max(1, scored.length)) }))
+      .filter((r) => !sector || (getAssetBySymbol(r.symbol)?.sector ?? '').toLowerCase() === sector || (r.industry ?? '').toLowerCase() === sector);
     res.json({
       market,
       horizon: h,
@@ -3600,7 +3623,7 @@ async function startServer() {
 
   // ---- Binance (public market data only; no API key) ----------------------------------------
   // Top-100 USDT pairs with live price, 1h/4h/24h/7d change, volume and funding
-  app.get('/api/crypto/binance', async (_req, res) => {
+  app.get(['/api/crypto/binance', '/api/crypto/binance/overview'], async (_req, res) => {
     await warmBinance();
     const byPair = new Map(ASSETS.filter((a) => a.binanceSpot).map((a) => [a.binanceSpot as string, a]));
     const quotes = spotQuotes();
@@ -3660,6 +3683,28 @@ async function startServer() {
     try {
       const klines = await getBinanceKlines(symbol, interval, 500);
       res.json({ symbol, interval, klines, closed: closedKlines(klines).length, status: binanceStatus() });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Binance unavailable', status: binanceStatus() });
+    }
+  });
+
+  // One pair: candles of a timeframe plus funding (plan name /api/crypto/binance/pair)
+  app.get('/api/crypto/binance/pair', async (req, res) => {
+    const symbol = String(req.query.symbol || '');
+    const tf = String(req.query.tf || '1d') as KlineInterval;
+    if (!['1h', '4h', '1d', '1w'].includes(tf)) {
+      res.status(400).json({ error: 'tf must be 1h, 4h, 1d or 1w' });
+      return;
+    }
+    await warmBinance(2000);
+    if (!isKnownSpotPair(symbol)) {
+      res.status(404).json({ error: 'Unknown Binance pair', status: binanceStatus() });
+      return;
+    }
+    try {
+      const base = symbol.replace(/USDT$/, '');
+      const klines = await getBinanceKlines(symbol, tf, 500);
+      res.json({ symbol, tf, klines, quote: spotQuotes().get(symbol) ?? null, funding: fundingFor(`${base}USDT`) ?? fundingFor(`1000${base}USDT`) ?? null, status: binanceStatus() });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Binance unavailable', status: binanceStatus() });
     }

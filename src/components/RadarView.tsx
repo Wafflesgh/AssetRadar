@@ -5,7 +5,7 @@
  * Indonesian / US / world stocks, indices, forex), the live headline tape, and the sentiment
  * + news section with its own asset search.
  */
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { LineChart } from 'lucide-react';
 import { useT } from '../i18n/index.ts';
 import { assetName, assetShortName, groupSubtitle, groupTitle } from '../i18n/assetNames.ts';
@@ -15,6 +15,8 @@ import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { MarketTable } from './MarketTable.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
+
+const SentimentLeaders = lazy(() => import('./sentiment/SentimentLeaders.tsx').then((m) => ({ default: m.SentimentLeaders })));
 import { NewsTape } from './NewsTape.tsx';
 import { InstallAppBanner } from './InstallApp.tsx';
 import { KeyIndicesStrip } from './KeyIndicesStrip.tsx';
@@ -145,6 +147,10 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       <KeyIndicesStrip ticks={ticks} onSelect={onSelectAsset} />
 
       <MoversPanel ticks={ticks} onSelect={onSelectAsset} />
+
+      <Suspense fallback={null}>
+        <SentimentLeaders onSelectAsset={onSelectAsset} />
+      </Suspense>
 
       {/* Top 20 by market cap */}
       <section aria-labelledby="top20-heading" className="space-y-3">

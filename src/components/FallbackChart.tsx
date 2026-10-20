@@ -28,6 +28,8 @@ export interface FallbackChartProps {
   height?: number;
   /** Candle source name for the caption, e.g. "Yahoo Finance" or "Indodax". */
   sourceLabel?: string;
+  /** Horizontal lines (support/resistance, ranges) drawn on the price series. */
+  priceLines?: Array<{ price: number; color: string; title: string }>;
 }
 
 // The canvas cannot read var(--...), so the colors are copied from the tokens in index.css
@@ -85,6 +87,7 @@ export function FallbackChart({
   theme,
   height,
   sourceLabel = 'Yahoo Finance',
+  priceLines,
 }: FallbackChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const t = useT();
@@ -93,6 +96,24 @@ export function FallbackChart({
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   const [loadState, setLoadState] = useState<LoadState>('loading');
+
+  // Draw the requested horizontal lines (replaced whenever the list changes)
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series || !priceLines?.length) return;
+    const created = priceLines.map((l) =>
+      series.createPriceLine({ price: l.price, color: l.color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: l.title })
+    );
+    return () => {
+      for (const line of created) {
+        try {
+          series.removePriceLine(line);
+        } catch {
+          // The chart may already be gone
+        }
+      }
+    };
+  }, [priceLines]);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
