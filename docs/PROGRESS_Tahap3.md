@@ -1,0 +1,55 @@
+# AssetRadar tahap 3 — catatan kemajuan
+
+Diisi oleh sesi Claude yang mengerjakan `docs/PROMPT_Cloud_Tahap3.md` (cloud). Sesi berikutnya melanjutkan dari fitur pertama yang belum dicentang.
+
+Dijalankan di Claude Code cloud, 20 Okt 2026. Branch kerja: **`claude/ecstatic-fermat-nyv2f9`** (branch yang ditetapkan oleh sesi cloud ini; lingkungan cloud hanya mengizinkan push ke branch tersebut, jadi branch ini menggantikan `claude/tahap3-features` yang disebut di prompt). Satu pull request ke `main`.
+
+## Cek lingkungan
+
+Node v22.22.0 · `npm install` lulus · kondisi awal `npm run lint && npm test && npm run build`: **lulus (123 test)**.
+
+Akses internet dari container cloud (`curl`, 20 Okt 2026): kebijakan jaringan lingkungan ini **menolak semua host di bawah** (proxy menjawab `403` pada CONNECT; hanya registry npm yang diizinkan).
+
+| Sumber | Hasil | Dipakai untuk |
+|---|---|---|
+| Yahoo Finance chart (`query1.finance.yahoo.com/v8/finance/chart/BBCA.JK`) | diblokir (403 proxy) | harga, riwayat harian, compare, backtest, portofolio |
+| Yahoo fundamentals-timeseries | diblokir (403 proxy) | screener |
+| Indodax `api/summaries` | diblokir (403 proxy) | harga crypto |
+| Google News RSS | diblokir (403 proxy) | ringkasan pagi, alert berita |
+| SEC EDGAR companyfacts | diblokir (403 proxy) | compare (saham AS) |
+| `api.telegram.org` | diblokir (403 proxy) | ringkasan pagi ke Telegram |
+| `www.logammulia.com` (+ `robots.txt`) | diblokir (403 proxy) | fitur 7 |
+| `www.pegadaian.co.id` (+ `robots.txt`) | diblokir (403 proxy) | fitur 7 |
+| gold-api.com, CoinGecko, FRED, bi.go.id, World Bank, supabase.com | diblokir (403 proxy) | — |
+| registry.npmjs.org | 200 | pemasangan paket |
+
+Akibatnya: semua fitur ditulis lengkap dengan penanganan "Data unavailable", logika diuji dengan fixture kecil di repo, dan **belum diverifikasi dengan data live**. Endpoint server tetap diuji dengan `curl` (bentuk JSON, input salah, tanpa kunci, galat sumber).
+
+## Fitur
+
+Untuk setiap fitur: rencana singkat, apa yang dibuat, sumber data, keterbatasan, kunci opsional, status verifikasi live, commit.
+
+- [x] 1. Sinkronisasi antar perangkat + uji nyata AI di server
+  - Rencana: database lewat server saja (`/api/sync/*`), satu tabel key/value; login passphrase pemilik → token sesi bertanda tangan; merge per item dengan waktu edit; forward test di server lewat `POST /api/cron/daily` + cadangan "permintaan pertama setelah 16:15 WIB".
+  - Pilihan database: **Supabase** (default). Perbandingan singkat: Supabase gratis = Postgres 500 MB, 5 GB transfer/bulan, proyek gratis *dijeda setelah 1 minggu tanpa aktivitas* (cron harian di bawah mencegahnya), dipasang dengan 2 nilai (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) dan diakses lewat REST tanpa paket tambahan. Firestore gratis = 1 GiB, 50.000 baca & 20.000 tulis per hari, tetapi butuh proyek Google Cloud + kunci service account JSON (atau izin IAM Cloud Run) dan paket `firebase-admin` yang besar. Supabase dipilih karena paling sederhana dipasang dari Cloud Run (AI Studio) dengan kunci server.
+  - Dibuat: `src/utils/sync.ts` (merge per item: edit terbaru menang, hapus = tombstone 180 hari, transaksi portofolio per id, entri forward test yang sudah punya hasil selalu menang, delta berdasarkan waktu server, jadwal harian WIB) + `src/utils/syncAuth.ts` (passphrase dibandingkan lewat hash SHA-256 waktu-konstan, token HMAC 90 hari — ganti passphrase = semua perangkat logout, batas login 5 gagal/15 mnt per klien + 30 gagal/15 mnt total) + 14 test. Server: `server/store.ts` (Supabase REST / memori), `server/sync.ts` (`GET /api/sync/status`, `POST /api/sync/login`, `POST /api/sync/merge` — body besar hanya diterima setelah login). `storage.ts` mencatat otomatis item yang berubah di setiap penyimpan (watchlist, portofolio, log forward test, profil risiko, pengaturan: tema, timeframe, preferensi AI, start-in-Terminal). `src/services/syncService.ts`: sinkron saat mulai, 4 dtk setelah ada perubahan, tiap 5 mnt, saat tab terlihat/online lagi. Kartu **Sync** di Settings (status, waktu sinkron terakhir, login/logout, "Sync now", ringkasan penggabungan pertama), ikon awan merah di header bila sinkron gagal.
+  - Forward test di server: tiap hari kerja ≥16:15 WIB server menyimpan verdict AI untuk horizon 20 & 60 hari × 3 profil (per bulan, kunci `forward:YYYY-MM`) lalu menilai yang sudah jatuh tempo dengan close harian (`src/ai/forwardTest.ts`). Dipicu `POST /api/cron/daily` (header `Authorization: Bearer <CRON_TOKEN>`) atau otomatis oleh permintaan API pertama setelah jamnya. Hasil: `GET /api/ai/forward-track?horizon=&profile=`, tampil di AI Advisor di bawah rekaman perangkat ("Server record").
+  - Tanpa kunci: semua tetap lokal seperti sebelumnya; kartu Sync menjelaskan cara mengaktifkan. Forward test server tetap jalan di memori (hilang saat server restart/tidur — dijelaskan di UI).
+  - Uji server (curl, mode memori dev `SYNC_DEV_MEMORY_DB=1`): status, login salah/benar, merge dua perangkat (item baru dua sisi, hapus menang karena lebih baru, delta kosong setelah sinkron), merge tanpa login 401, token palsu 401, login ke-6 → 429 + `Retry-After`, cron tanpa/benar token, forward-track. Build produksi: `/`, `/manifest.webmanifest`, `/sw.js` 200; SW tetap melewati stream SSE.
+  - Status verifikasi live: **belum** — Supabase dan sumber harga diblokir jaringan cloud; perlu dicoba pemilik setelah mengisi Secrets.
+- [ ] 2. Alert harga & notifikasi HP
+- [ ] 3. Screener saham BEI
+- [ ] 4. Bandingkan saham/aset
+- [ ] 5. Portofolio lanjutan
+- [ ] 6. Ringkasan pagi (morning brief)
+- [ ] 7. Harga emas Antam / Pegadaian
+- [ ] 8. Backtest sederhana
+
+## Butuh keputusan pemilik
+
+- **Database sinkronisasi**: default Supabase (gratis). Perlu pemilik membuat proyek Supabase, menjalankan SQL di README, dan mengisi `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SYNC_PASSPHRASE` di Secrets. Alternatif Firestore bisa ditambahkan nanti bila diinginkan.
+- **Penjadwal harian**: Cloud Scheduler (Google Cloud, gratis 3 job/bulan) atau cron-job.org (gratis) memanggil `POST /api/cron/daily` dengan `CRON_TOKEN` tiap hari kerja ±16:20 WIB. Tanpa itu, forward test server hanya tercatat bila ada yang membuka aplikasi setelah 16:15 WIB.
+
+## Laporan akhir
+
+(diisi di akhir)

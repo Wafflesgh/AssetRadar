@@ -4,8 +4,10 @@
  * (Indodax, Yahoo Finance, gold-api.com), sentiment + news (Google News, optional Gemini),
  * OHLC history for the alternative chart, 30-day correlation, the combined news feed, a
  * server-push price stream (SSE, optional Finnhub real-time trades), financial statements,
- * the IDX calendar, Indonesia macro data and the AI Advisor.
- * All upstream data is cached in memory; API keys stay on the server.
+ * the IDX calendar, Indonesia macro data and the AI Advisor; plus owner sync (/api/sync/*,
+ * server/sync.ts), the daily server AI forward test and the protected cron endpoint.
+ * All upstream data is cached in memory; durable data goes to the optional database
+ * (server/store.ts). API keys stay on the server.
  */
 import 'dotenv/config';
 import express from 'express';
@@ -118,6 +120,20 @@ import {
   type QuantFactorsPayload,
   type QuantUniverse,
 } from './src/ai/factorPortfolio.ts';
+import {
+  emptyLog,
+  evaluateSnapshots,
+  parseForwardLog,
+  pendingSymbols,
+  recordSnapshots,
+  trackRecord,
+  type DailyClose,
+  type ForwardLog,
+} from './src/ai/forwardTest.ts';
+import { dailyJobDue, wibDate } from './src/utils/sync.ts';
+import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
+import { createStore } from './server/store.ts';
+import { createOwnerAuth, registerSyncRoutes } from './server/sync.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2604,9 +2620,198 @@ DATA: ${JSON.stringify(facts)}`;
   }
 }
 
+// ---- Durable storage, owner login and the daily server jobs -------------------------------------
+
+const store = createStore();
+const ownerAuth = createOwnerAuth();
+const FORWARD_PREFIX = 'forward:';
+const FORWARD_TIME = '16:15'; // WIB, after the IDX close
+
+/** Last run date (WIB) of each daily job; persisted so a restart does not repeat a job. */
+const jobs = {
+  state: { forward: null as string | null } as Record<string, string | null>,
+  loaded: false,
+  running: new Map<string, Promise<unknown>>(),
+  retryAfter: new Map<string, number>(),
+};
+
+async function loadJobState(): Promise<void> {
+  if (jobs.loaded) return;
+  try {
+    const saved = await store.get<Record<string, string | null>>('jobs:state');
+    if (saved) Object.assign(jobs.state, saved);
+    jobs.loaded = true;
+  } catch (err) {
+    console.warn('[Jobs] state load failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+async function markJobDone(name: string, date: string): Promise<void> {
+  jobs.state[name] = date;
+  await store.set('jobs:state', jobs.state).catch((err) => console.warn('[Jobs] state save failed:', err instanceof Error ? err.message : err));
+}
+
+/** Runs a job once at a time; failures wait 30 minutes before the next automatic attempt. */
+function runJob<T>(name: string, job: () => Promise<T>): Promise<T> {
+  const running = jobs.running.get(name) as Promise<T> | undefined;
+  if (running) return running;
+  const p = job()
+    .catch((err) => {
+      jobs.retryAfter.set(name, Date.now() + 30 * 60_000);
+      console.warn(`[Jobs] ${name} failed:`, err instanceof Error ? err.message : err);
+      throw err;
+    })
+    .finally(() => jobs.running.delete(name));
+  jobs.running.set(name, p);
+  return p;
+}
+
+async function loadForwardMonths(): Promise<Array<{ key: string; log: ForwardLog }>> {
+  const keys = await store.keys(FORWARD_PREFIX);
+  const out: Array<{ key: string; log: ForwardLog }> = [];
+  for (const key of keys) out.push({ key, log: parseForwardLog(await store.get(key)) ?? emptyLog() });
+  return out;
+}
+
+/**
+ * Server forward test: today's AI verdicts for both horizons and all three risk profiles
+ * (stored per month), then scores every snapshot whose horizon has passed with real daily closes.
+ */
+async function runServerForwardTest(): Promise<{ date: string; saved: number; scored: number }> {
+  const date = wibDate(Date.now());
+  const key = `${FORWARD_PREFIX}${date.slice(0, 7)}`;
+  let log = parseForwardLog(await store.get(key)) ?? emptyLog();
+  const before = log.snapshots.length;
+  for (const horizon of AI_HORIZONS) {
+    const payload = await getAiOutlook(horizon);
+    if (payload.assets.length === 0) throw new Error('AI outlook unavailable (no market data)');
+    for (const profile of Object.keys(RISK_PROFILES) as RiskProfile[]) {
+      const ranked = rankOutlooks(payload.assets, profile, { geoAlertActive: payload.geoAlertActive });
+      log = recordSnapshots(
+        log,
+        date,
+        horizon,
+        profile,
+        ranked.map((o) => {
+          const asset = getAssetBySymbol(o.symbol);
+          return { symbol: o.symbol, verdict: o.verdict, chance: o.adjustedProbability, price: asset ? livePriceFor(asset)?.price : undefined };
+        })
+      );
+    }
+  }
+  const saved = log.snapshots.length - before;
+  if (saved > 0) await store.set(key, log);
+  // Score due snapshots (the last 6 months cover the 60-day horizon with room to spare)
+  let scored = 0;
+  const months = (await loadForwardMonths()).slice(-6);
+  const history = new Map<string, DailyClose[]>();
+  for (const m of months) {
+    const pending = pendingSymbols(m.log, date);
+    if (pending.length === 0) continue;
+    for (const sym of pending) {
+      if (history.has(sym)) continue;
+      const asset = getAssetBySymbol(sym);
+      history.set(sym, asset ? await dailyHistoryFor(asset).catch(() => []) : []);
+    }
+    const next = evaluateSnapshots(m.log, history);
+    if (next !== m.log) {
+      scored += next.snapshots.filter((s) => s.outcome).length - m.log.snapshots.filter((s) => s.outcome).length;
+      await store.set(m.key, next);
+    }
+  }
+  forwardTrackCache.clear();
+  await markJobDone('forward', date);
+  console.log(`[Forward] ${date}: ${saved} verdicts saved, ${scored} results scored`);
+  return { date, saved, scored };
+}
+
+const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
+
+/** Runs the daily jobs that are due (called on API requests and by POST /api/cron/daily). */
+async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, unknown>> {
+  await loadJobState();
+  const now = Date.now();
+  const results: Record<string, unknown> = {};
+  const allowed = (name: string) => trigger === 'cron' || (jobs.retryAfter.get(name) ?? 0) <= now;
+  if (dailyJobDue(now, jobs.state.forward ?? null, FORWARD_TIME, true) && allowed('forward')) {
+    const job = runJob('forward', runServerForwardTest);
+    results.forward = trigger === 'cron' ? await job : 'started';
+    if (trigger === 'request') job.catch(() => {});
+  } else {
+    results.forward = { skipped: jobs.state.forward === wibDate(now) ? 'already ran today' : `not due (weekdays after ${FORWARD_TIME} WIB)` };
+  }
+  return results;
+}
+
+let lastDueCheck = 0;
+/** Cheap check on API traffic: the first request after the scheduled time starts the job. */
+function checkDueJobsSoon(): void {
+  const now = Date.now();
+  if (now - lastDueCheck < 60_000) return;
+  lastDueCheck = now;
+  runDueJobs('request').catch(() => {});
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  // Small JSON bodies everywhere; the sync endpoint parses its own (larger) body after the login check
+  const smallJson = express.json();
+  app.use((req, res, next) => (req.path === '/api/sync/merge' ? next() : smallJson(req, res, next)));
+  app.use('/api', (_req, _res, next) => {
+    checkDueJobsSoon();
+    next();
+  });
+
+  registerSyncRoutes(app, store, ownerAuth);
+
+  // Daily jobs for an external scheduler (Cloud Scheduler, cron-job.org): Authorization: Bearer CRON_TOKEN
+  app.post('/api/cron/daily', async (req, res) => {
+    const expected = process.env.CRON_TOKEN?.trim();
+    if (!expected) {
+      res.status(503).json({ error: 'CRON_TOKEN is not configured; daily jobs run on the first request after their time instead' });
+      return;
+    }
+    if (!passphraseMatches(bearerToken(req.headers.authorization) ?? '', expected)) {
+      res.status(401).json({ error: 'Invalid cron token' });
+      return;
+    }
+    try {
+      res.json({ ok: true, ranAt: Date.now(), results: await runDueJobs('cron') });
+    } catch (err) {
+      res.status(502).json({ ok: false, error: err instanceof Error ? err.message : 'Job failed' });
+    }
+  });
+
+  // Server forward test: track record of the daily AI verdict snapshots
+  app.get('/api/ai/forward-track', async (req, res) => {
+    const horizon = Number(req.query.horizon) === 60 ? 60 : 20;
+    const profileParam = String(req.query.profile || 'moderate');
+    const profile: RiskProfile = profileParam in RISK_PROFILES ? (profileParam as RiskProfile) : 'moderate';
+    const cacheKey = `${horizon}|${profile}`;
+    try {
+      await loadJobState();
+      const cached = forwardTrackCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        res.json(cached.data);
+        return;
+      }
+      const months = await loadForwardMonths();
+      const all: ForwardLog = { version: 1, startedAt: null, snapshots: months.flatMap((m) => m.log.snapshots) };
+      const data = {
+        record: trackRecord(all, horizon, profile),
+        lastRunDate: jobs.state.forward ?? null,
+        scheduleWib: `${FORWARD_TIME} on weekdays`,
+        persistent: store.persistent,
+        database: store.provider,
+        cronConfigured: Boolean(process.env.CRON_TOKEN?.trim()),
+      };
+      forwardTrackCache.set(cacheKey, { data, expiresAt: Date.now() + 10 * 60_000 });
+      res.json(data);
+    } catch (err) {
+      console.warn('[Forward] track failed:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Forward-test record unavailable' });
+    }
+  });
 
   // 1. All market snapshot endpoint (Indodax + Yahoo JCI & USD/IDR + Gold XAU/USD)
   app.get('/api/market/snapshot', async (_req, res) => {

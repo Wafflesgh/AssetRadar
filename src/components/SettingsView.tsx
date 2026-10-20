@@ -1,11 +1,12 @@
 /**
- * SettingsView.tsx — Settings & About page: theme choice, default chart timeframe, the
- * "open in Terminal mode" switch, data sources and the disclaimer.
+ * SettingsView.tsx — Settings & About page: install card, cross-device sync, theme choice,
+ * default chart timeframe, the "open in Terminal mode" switch, data sources and the disclaimer.
  */
 import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal } from 'lucide-react';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
+import { SyncCard } from './SyncCard.tsx';
 
 interface SettingsViewProps {
   themePreference: ThemePreference;
@@ -65,6 +66,8 @@ export function SettingsView({
       </header>
 
       <InstallAppCard />
+
+      <SyncCard />
 
       {/* Theme Selection */}
       <section

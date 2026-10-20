@@ -29,6 +29,7 @@ import {
   type ValuedPosition,
 } from '../utils/portfolio.ts';
 import { getPortfolioTxs, getSavedRiskResult, savePortfolioTxs } from '../utils/storage.ts';
+import { onSyncApplied } from '../services/syncService.ts';
 import { AssetSearch } from './AssetSearch.tsx';
 
 const CLASS_META: Record<AssetClass, { label: string; color: string }> = {
@@ -78,6 +79,8 @@ interface PortfolioViewProps {
 
 export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const [txs, setTxs] = useState<PortfolioTx[]>(() => getPortfolioTxs<PortfolioTx>());
+  // Another device changed the portfolio (sync)
+  useEffect(() => onSyncApplied(['portfolio'], () => setTxs(getPortfolioTxs<PortfolioTx>())), []);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);

@@ -3,7 +3,8 @@
  * the selected horizon and profile (on this device), checks saved verdicts against real daily
  * closes once their horizon has passed, and shows how often prices rose after each verdict
  * versus the base rate of all saved verdicts. Under 30 results it says so instead of judging.
- * Export/import moves the log between devices.
+ * Export/import moves the log between devices (sync does it automatically when logged in). Also
+ * shows the server's own record, saved every weekday at 16:15 WIB even when the app is closed.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Download, History, Upload } from 'lucide-react';
@@ -18,10 +19,20 @@ import {
   trackRecord,
   type DailyClose,
   type ForwardLog,
+  type TrackRecord,
 } from '../ai/forwardTest.ts';
 import type { PriceTick } from '../config/assets.ts';
 import { fetchHistory } from '../services/marketDataService.ts';
 import { getForwardLogRaw, saveForwardLogRaw } from '../utils/storage.ts';
+import { onSyncApplied } from '../services/syncService.ts';
+
+interface ServerTrack {
+  record: TrackRecord;
+  lastRunDate: string | null;
+  scheduleWib: string;
+  persistent: boolean;
+  cronConfigured: boolean;
+}
 
 const VERDICT_LABEL: Record<string, string> = {
   favorable: 'Favorable now',
@@ -49,6 +60,19 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
   const [log, setLog] = useState<ForwardLog>(() => loadLog());
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [server, setServer] = useState<ServerTrack | null>(null);
+
+  useEffect(() => onSyncApplied(['forwardLog'], () => setLog(loadLog())), []);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/ai/forward-track?horizon=${horizonDays}&profile=${encodeURIComponent(profile)}`)
+      .then((r) => (r.ok && !r.headers.get('X-AssetRadar-Offline') ? r.json() : null))
+      .then((d) => alive && setServer(d))
+      .catch(() => alive && setServer(null));
+    return () => {
+      alive = false;
+    };
+  }, [horizonDays, profile]);
 
   const save = (next: ForwardLog) => {
     setLog(next);
@@ -174,48 +198,16 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
         {checking ? ' · checking prices…' : ''}
       </p>
 
-      {record.evaluated < MIN_RESULTS ? (
-        <p className="text-sm p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
-          Too few results to judge yet ({record.evaluated} of at least {MIN_RESULTS}). The first results arrive about {horizonDays} trading
-          days after the first saved day.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <caption className="sr-only">Forward-test results by verdict</caption>
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
-                <th className="py-1.5 pr-2 font-semibold">Verdict</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">Results</th>
-                <th className="py-1.5 pr-2 font-semibold text-right">Price rose</th>
-                <th className="py-1.5 font-semibold text-right">Avg move</th>
-              </tr>
-            </thead>
-            <tbody>
-              {record.rows
-                .filter((r) => r.samples > 0)
-                .map((r) => (
-                  <tr key={r.verdict} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="py-1.5 pr-2 font-semibold">{VERDICT_LABEL[r.verdict]}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono-num">{r.samples}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono-num">
-                      {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>(few)</span>}
-                    </td>
-                    <td className="py-1.5 text-right font-mono-num">{pct(r.avgReturn, 1)}</td>
-                  </tr>
-                ))}
-              <tr className="border-t font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
-                <td className="py-1.5 pr-2">Base rate (all saved verdicts)</td>
-                <td className="py-1.5 pr-2 text-right font-mono-num">{record.evaluated}</td>
-                <td className="py-1.5 pr-2 text-right font-mono-num">{pct(record.baseUpRate)}</td>
-                <td className="py-1.5 text-right" />
-              </tr>
-            </tbody>
-          </table>
-          <p className="text-[11px] mt-2" style={{ color: 'var(--text-secondary)' }}>
-            "Favorable" works if it rose more often than the base rate; "Unfavorable" works if it rose less often. Results from the same
-            day move together, so treat small differences as noise.
+      <RecordTable record={record} horizonDays={horizonDays} />
+
+      {server && (
+        <div className="pt-3 border-t space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
+          <h3 className="text-xs font-bold">Server record (saved {server.scheduleWib} WIB, even when the app is closed)</h3>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Last saved: {server.lastRunDate ?? 'not yet'} · {server.record.saved} verdicts · {server.record.evaluated} with a result
+            {!server.persistent && ' · no database configured, so this record restarts whenever the server restarts'}
           </p>
+          {server.record.saved > 0 && <RecordTable record={server.record} horizonDays={horizonDays} />}
         </div>
       )}
       {notice && (
@@ -224,5 +216,55 @@ export function LiveTrackRecord({ ranked, horizonDays, profile, ticks }: LiveTra
         </p>
       )}
     </section>
+  );
+}
+
+function RecordTable({ record, horizonDays }: { record: TrackRecord; horizonDays: number }) {
+  if (record.evaluated < MIN_RESULTS) {
+    return (
+      <p className="text-sm p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
+        Too few results to judge yet ({record.evaluated} of at least {MIN_RESULTS}). The first results arrive about {horizonDays} trading
+        days after the first saved day.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <caption className="sr-only">Forward-test results by verdict</caption>
+        <thead>
+          <tr className="text-left" style={{ color: 'var(--text-secondary)' }}>
+            <th className="py-1.5 pr-2 font-semibold">Verdict</th>
+            <th className="py-1.5 pr-2 font-semibold text-right">Results</th>
+            <th className="py-1.5 pr-2 font-semibold text-right">Price rose</th>
+            <th className="py-1.5 font-semibold text-right">Avg move</th>
+          </tr>
+        </thead>
+        <tbody>
+          {record.rows
+            .filter((r) => r.samples > 0)
+            .map((r) => (
+              <tr key={r.verdict} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                <td className="py-1.5 pr-2 font-semibold">{VERDICT_LABEL[r.verdict]}</td>
+                <td className="py-1.5 pr-2 text-right font-mono-num">{r.samples}</td>
+                <td className="py-1.5 pr-2 text-right font-mono-num">
+                  {pct(r.upRate)} {r.samples < MIN_RESULTS && <span style={{ color: 'var(--text-secondary)' }}>(few)</span>}
+                </td>
+                <td className="py-1.5 text-right font-mono-num">{pct(r.avgReturn, 1)}</td>
+              </tr>
+            ))}
+          <tr className="border-t font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
+            <td className="py-1.5 pr-2">Base rate (all saved verdicts)</td>
+            <td className="py-1.5 pr-2 text-right font-mono-num">{record.evaluated}</td>
+            <td className="py-1.5 pr-2 text-right font-mono-num">{pct(record.baseUpRate)}</td>
+            <td className="py-1.5 text-right" />
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-[11px] mt-2" style={{ color: 'var(--text-secondary)' }}>
+        "Favorable" works if it rose more often than the base rate; "Unfavorable" works if it rose less often. Results from the same day
+        move together, so treat small differences as noise.
+      </p>
+    </div>
   );
 }

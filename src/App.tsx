@@ -4,7 +4,7 @@
  * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
  */
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
-import { Sun, Moon, Wifi } from 'lucide-react';
+import { Sun, Moon, Wifi, CloudOff } from 'lucide-react';
 import {
   ASSETS,
   getAssetBySymbol,
@@ -47,6 +47,7 @@ import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
 import { HeaderSearch } from './components/HeaderSearch.tsx';
 import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
+import { onSyncApplied, startSync, subscribeSync } from './services/syncService.ts';
 
 // Lazy: the Risk Profile page pulls in recharts, which most visits never need
 const RiskProfileView = lazy(() =>
@@ -86,6 +87,24 @@ export default function App() {
   );
 
   const managerRef = useRef<MarketDataManager | null>(null);
+
+  // Cross-device sync: start it, show a small warning in the header when it fails, and reload the
+  // settings and watchlist when another device changed them
+  const [syncFailed, setSyncFailed] = useState<string | null>(null);
+  useEffect(() => {
+    startSync();
+    const unsub = subscribeSync((s) => setSyncFailed(s.loggedIn && s.lastError ? s.lastError : null));
+    const off = onSyncApplied(['watchlist', 'settings'], () => {
+      setWatchlist(getSavedWatchlist());
+      setTimeframe(getSavedTimeframe());
+      setThemePreference(getSavedTheme());
+      setStartInTerminal(getStartInTerminal());
+    });
+    return () => {
+      unsub();
+      off();
+    };
+  }, []);
 
   // Sync URL hash with browser Back/Forward navigation
   useEffect(() => {
@@ -328,6 +347,18 @@ export default function App() {
         {/* Right: search, connection status and theme switch */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <HeaderSearch ticks={ticks} onSelectAsset={handleSelectAsset} />
+          {syncFailed && (
+            <button
+              type="button"
+              onClick={() => handleSelectTab('settings')}
+              className="p-1.5 rounded-lg"
+              title={`Sync failed: ${syncFailed}`}
+              aria-label={`Sync failed: ${syncFailed}. Open settings`}
+              style={{ color: 'var(--color-down)' }}
+            >
+              <CloudOff className="w-4 h-4" />
+            </button>
+          )}
           <div
             data-testid="connection-indicator"
             className="flex items-center gap-1.5 text-xs font-semibold"
