@@ -23,7 +23,7 @@ import {
 import type { AssetAnalysis } from '../ai/analysis.ts';
 import type { QuantFactorsPayload, QuantUniverse } from '../ai/factorPortfolio.ts';
 import type { CalendarEvent } from '../utils/corporateCalendar.ts';
-import type { MacroPoint, MacroSeries } from '../utils/macro.ts';
+import type { MacroIndicator, MacroPoint, MacroSeries, PulseCategory } from '../utils/macro.ts';
 import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 import { isStreamStalled, reconnectDelayMs } from '../utils/priceStream.ts';
@@ -783,9 +783,24 @@ export async function fetchCorporateCalendar(symbol?: string): Promise<CalendarR
 export interface IndonesiaMacro {
   series: MacroSeries[];
   biRate: MacroPoint[];
-  unavailable: Array<{ label: string; reason: string }>;
+  unavailable: Array<{ id?: string; label: string; reason: string }>;
   failed: string[];
   generatedAt: number;
+  /** Stage 4: categorized indicators with z-scores and stale flags, the Macro Pulse and IDX valuation. */
+  indicators?: MacroIndicator[];
+  pulse?: PulseCategory[];
+  idxValuation?: {
+    medianPE: number | null;
+    medianPB: number | null;
+    earningsYield: number | null;
+    eyMinusBiRate: number | null;
+    advancers: number;
+    decliners: number;
+    unchanged: number;
+    n: number;
+  } | null;
+  calendar?: Array<{ type: 'fomc'; date: string }>;
+  bpsConfigured?: boolean;
 }
 
 /** Indonesia macro indicators (Bank Indonesia, FRED, World Bank; cached 6 h on the server). */

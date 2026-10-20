@@ -117,14 +117,23 @@ import {
 } from './src/utils/priceStream.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
+  findBpsVar,
+  macroPulse,
   mergeSeries,
+  monthlyPoints,
   parseBiTable,
+  parseBpsDynData,
   parseFredCsv,
   parseWorldBank,
   periodChange,
   shiftToRelease,
+  spreadSeries,
+  toIndicator,
+  type MacroCategory,
+  type MacroIndicator,
   type MacroPoint,
   type MacroSeries,
+  type PulseCategory,
 } from './src/utils/macro.ts';
 import {
   addDays,
@@ -2775,9 +2784,26 @@ interface IndonesiaMacroPayload {
   series: MacroSeries[];
   /** Official BI-Rate decisions (latest first page of bi.go.id). */
   biRate: MacroPoint[];
-  unavailable: Array<{ label: string; reason: string }>;
+  unavailable: Array<{ id?: string; label: string; reason: string }>;
   failed: string[];
   generatedAt: number;
+  /** Stage 4: every indicator with category, direction, 10-year z-score and stale flag. */
+  indicators: MacroIndicator[];
+  pulse: PulseCategory[];
+  /** Aggregate IDX valuation and breadth from the scanned cross-section (no history). */
+  idxValuation: {
+    medianPE: number | null;
+    medianPB: number | null;
+    earningsYield: number | null;
+    eyMinusBiRate: number | null;
+    advancers: number;
+    decliners: number;
+    unchanged: number;
+    n: number;
+  } | null;
+  calendar: Array<{ type: 'fomc'; date: string }>;
+  /** Whether the optional BPS key is configured (never its value). */
+  bpsConfigured: boolean;
 }
 
 const FRED_URL = (id: string) => `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}`;
@@ -2871,15 +2897,183 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     { id: 'inflationAnnual', label: 'Inflation, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=ID', points: since(wbInfl, '2000-01-01') },
     { id: 'gdpAnnual', label: 'GDP growth, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG?locations=ID', points: since(wbGdp, '2000-01-01') },
   ].filter((x) => x.points.length > 0) as MacroSeries[];
+  // ---- Stage 4 additions: more FRED series, Yahoo monthly markets, optional BPS ----
+  const ym = (sym: string) => get(sym, async () => monthlyPoints(await fetchYahooMonthly(sym)), [] as MacroPoint[]);
+  const [fedFunds, exportsS, importsS, currentAccount, reer, govDebt, credit, house, confidence] = await Promise.all([
+    fred('DFEDTARU'),
+    fred('XTEXVA01IDM667S'),
+    fred('XTIMVA01IDM667S'),
+    fred('IDNB6BLTT02STSAQ'),
+    fred('CCRETT01IDM661N'),
+    fred('GGGDTAIDA188N'),
+    fred('CRDQIDAPABIS'),
+    fred('QIDN628BIS'),
+    fred('CSCICP03IDM665S'),
+  ]);
+  const yahooIds = ['MTF=F', 'HG=F', 'ALI=F', 'BZ=F', 'GC=F', '^VIX', '000001.SS', '^HSI', 'EIDO', '^JKLQ45', 'DX-Y.NYB', '^TNX', 'THBIDR=X', 'PHPIDR=X', 'INRIDR=X', 'MYRIDR=X', 'CNYIDR=X', 'SGDIDR=X'];
+  const yahoo = new Map<string, MacroPoint[]>();
+  for (let i = 0; i < yahooIds.length; i += 6) {
+    const batch = yahooIds.slice(i, i + 6);
+    const got = await Promise.all(batch.map(ym));
+    batch.forEach((id, k) => yahoo.set(id, got[k]));
+  }
+  // Fed funds (daily) → last value per month
+  const fedMonthly = monthlyPoints(new Map(fedFunds.map((p) => [p.date.slice(0, 7), p.value] as [string, number])));
+  const biPath = biRate.length ? [...biRate].sort((x, y) => x.date.localeCompare(y.date)) : interbank;
+
+  // BPS (optional key; searched by keyword so no variable id is hard-coded). The key is only
+  // sent to webapi.bps.go.id and never logged or returned.
+  const bpsKey = process.env.BPS_API_KEY?.trim();
+  const bps = async (id: string, keyword: string, pattern: RegExp): Promise<MacroPoint[]> => {
+    if (!bpsKey) return [];
+    return get(
+      id,
+      async () => {
+        const found = findBpsVar(JSON.parse(await fetchText(`https://webapi.bps.go.id/v1/api/list/model/var/domain/0000/keyword/${encodeURIComponent(keyword)}/key/${bpsKey}`)), pattern);
+        if (!found) throw new Error('variable not found');
+        return parseBpsDynData(JSON.parse(await fetchText(`https://webapi.bps.go.id/v1/api/list/model/data/domain/0000/var/${found.id}/key/${bpsKey}`)));
+      },
+      [] as MacroPoint[]
+    );
+  };
+  const [core, administered, volatile] = await Promise.all([
+    bps('bps-core', 'inflasi inti', /inti/i),
+    bps('bps-administered', 'harga diatur pemerintah', /diatur/i),
+    bps('bps-volatile', 'harga bergejolak', /bergejolak/i),
+  ]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const ser = (id: string, label: string, unit: string, frequency: MacroSeries['frequency'], source: string, sourceUrl: string, points: MacroPoint[], note?: string): MacroSeries => ({
+    id,
+    label,
+    unit,
+    frequency,
+    source,
+    sourceUrl,
+    points: since(points, '2014-01-01'),
+    note,
+  });
+  const yUrl = (sym: string) => `https://finance.yahoo.com/quote/${encodeURIComponent(sym)}`;
+  const byId = new Map(series.map((x) => [x.id, x]));
+  const ind: MacroIndicator[] = [];
+  const add = (x: MacroSeries | undefined, category: MacroCategory, higherIsBetter: boolean | null, requiresKey?: string) => {
+    if (x && (x.points.length || requiresKey)) ind.push(toIndicator(x, category, higherIsBetter, today, requiresKey));
+  };
+  const BPS_URL = 'https://webapi.bps.go.id/developer/';
+  // Monetary & rates
+  if (biRate.length) add(ser('biRate', 'BI-Rate', '%', 'decision', 'Bank Indonesia', 'https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx', biPath), 'monetary', false);
+  add(byId.get('policyRate'), 'monetary', false);
+  add(ser('biFedSpread', 'BI-Rate minus Fed funds (upper bound)', 'pts', 'monthly', 'Bank Indonesia, FRED (DFEDTARU)', FRED_PAGE('DFEDTARU'), spreadSeries(biPath, fedMonthly)), 'monetary', true);
+  // Inflation & prices
+  add(byId.get('inflationYoy'), 'inflation', false);
+  add(byId.get('inflationMom'), 'inflation', false);
+  add(ser('coreInflation', 'Core inflation', '%', 'monthly', 'BPS', BPS_URL, core), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  add(ser('administeredInflation', 'Administered-price inflation', '%', 'monthly', 'BPS', BPS_URL, administered), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  add(ser('volatileFoodInflation', 'Volatile-food inflation', '%', 'monthly', 'BPS', BPS_URL, volatile), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  // Growth & activity
+  add(byId.get('gdpYoy'), 'growth', true);
+  add(byId.get('gdpAnnual'), 'growth', true);
+  add(ser('consumerConfidence', 'Consumer confidence (OECD)', 'index', 'monthly', 'OECD via FRED', FRED_PAGE('CSCICP03IDM665S'), confidence), 'growth', true);
+  // External
+  add(byId.get('reserves'), 'external', true);
+  add(byId.get('tradeBalance'), 'external', true);
+  add(ser('exports', 'Exports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD via FRED', FRED_PAGE('XTEXVA01IDM667S'), exportsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', true);
+  add(ser('imports', 'Imports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD via FRED', FRED_PAGE('XTIMVA01IDM667S'), importsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', null);
+  add(ser('currentAccount', 'Current account, % of GDP', '%', 'quarterly', 'OECD via FRED', FRED_PAGE('IDNB6BLTT02STSAQ'), currentAccount), 'external', true);
+  add(ser('reer', 'Real effective exchange rate', 'index', 'monthly', 'BIS via FRED', FRED_PAGE('CCRETT01IDM661N'), reer), 'external', null);
+  add(byId.get('usdIdr'), 'external', false);
+  for (const [sym, label] of [['THBIDR=X', 'THB/IDR'], ['PHPIDR=X', 'PHP/IDR'], ['INRIDR=X', 'INR/IDR'], ['MYRIDR=X', 'MYR/IDR'], ['CNYIDR=X', 'CNY/IDR'], ['SGDIDR=X', 'SGD/IDR']] as const) {
+    add(ser(`fx-${label.slice(0, 3).toLowerCase()}`, `${label} (monthly)`, 'Rp', 'monthly', 'Yahoo Finance', yUrl(sym), yahoo.get(sym) ?? []), 'external', null);
+  }
+  add(ser('eido', 'iShares MSCI Indonesia ETF (EIDO), foreign-flow proxy', 'US$', 'monthly', 'Yahoo Finance', yUrl('EIDO'), yahoo.get('EIDO') ?? []), 'external', true);
+  // Fiscal
+  add(ser('govDebt', 'Government debt, % of GDP', '%', 'annual', 'IMF via FRED', FRED_PAGE('GGGDTAIDA188N'), govDebt), 'fiscal', false);
+  // Financial
+  add(ser('privateCredit', 'Credit to the private non-financial sector', 'index', 'quarterly', 'BIS via FRED', FRED_PAGE('CRDQIDAPABIS'), credit), 'financial', true);
+  add(ser('housePrices', 'Residential property prices', 'index', 'quarterly', 'BIS via FRED', FRED_PAGE('QIDN628BIS'), house), 'financial', null);
+  add(ser('lq45', 'LQ45 index', 'pts', 'monthly', 'Yahoo Finance', yUrl('^JKLQ45'), yahoo.get('^JKLQ45') ?? []), 'financial', true);
+  // Commodities important for Indonesia (exporter of coal, copper, aluminium; net oil importer)
+  add(ser('coal', 'Coal, API2 Rotterdam futures (proxy)', 'US$/t', 'monthly', 'Yahoo Finance', yUrl('MTF=F'), yahoo.get('MTF=F') ?? []), 'commodities', true);
+  add(ser('copper', 'Copper futures', 'US$/lb', 'monthly', 'Yahoo Finance', yUrl('HG=F'), yahoo.get('HG=F') ?? []), 'commodities', true);
+  add(ser('aluminium', 'Aluminium futures', 'US$/t', 'monthly', 'Yahoo Finance', yUrl('ALI=F'), yahoo.get('ALI=F') ?? []), 'commodities', true);
+  add(ser('brent', 'Brent crude oil', 'US$/bbl', 'monthly', 'Yahoo Finance', yUrl('BZ=F'), yahoo.get('BZ=F') ?? []), 'commodities', false);
+  add(ser('goldMonthly', 'Gold futures', 'US$/oz', 'monthly', 'Yahoo Finance', yUrl('GC=F'), yahoo.get('GC=F') ?? []), 'commodities', null);
+  // Global
+  add(ser('fedFunds', 'Fed funds target (upper bound)', '%', 'monthly', 'FRED', FRED_PAGE('DFEDTARU'), fedMonthly), 'global', false);
+  add(ser('ust10', 'US 10-year Treasury yield', '%', 'monthly', 'Yahoo Finance', yUrl('^TNX'), yahoo.get('^TNX') ?? []), 'global', false);
+  add(ser('dxy', 'US dollar index', 'pts', 'monthly', 'Yahoo Finance', yUrl('DX-Y.NYB'), yahoo.get('DX-Y.NYB') ?? []), 'global', false);
+  add(ser('vix', 'VIX (US equity volatility)', 'pts', 'monthly', 'Yahoo Finance', yUrl('^VIX'), yahoo.get('^VIX') ?? []), 'global', false);
+  add(ser('sse', 'China SSE Composite', 'pts', 'monthly', 'Yahoo Finance', yUrl('000001.SS'), yahoo.get('000001.SS') ?? []), 'global', true);
+  add(ser('hsi', 'Hang Seng index', 'pts', 'monthly', 'Yahoo Finance', yUrl('^HSI'), yahoo.get('^HSI') ?? []), 'global', true);
+
+  const fomc = nextMeeting(today);
   return {
     series,
     biRate,
     unavailable: [
-      { label: '10-year government bond (SBN) yield', reason: 'No free source with current data was found.' },
-      { label: 'Manufacturing PMI', reason: 'PMI data is licensed (S&P Global) and not free.' },
+      { id: 'sbn', label: '10-year government bond (SBN) yield', reason: 'No free source with current data was found (DJPPR timed out from the server).' },
+      { id: 'pmi', label: 'Manufacturing PMI', reason: 'PMI data is licensed (S&P Global) and not free.' },
+      { id: 'indonia', label: 'IndONIA / JIBOR, JISDOR', reason: 'bi.go.id pages not yet parsed reliably; to be checked from the laptop.' },
+      { id: 'food', label: 'Daily food prices (Badan Pangan)', reason: 'The official data endpoint could not be confirmed from the server.' },
+      { id: 'pinksheet', label: 'CPO, nickel, tin, rubber (World Bank Pink Sheet)', reason: 'Monthly xlsx file; a spreadsheet parser package is needed (owner decision).' },
+      { id: 'debt', label: 'External debt, budget deficit, M2', reason: 'Only PDF/xls releases or series that stopped (FRED M2 ends 2018).' },
+      { id: 'sales', label: 'Car, motorcycle and cement sales', reason: 'No free API (Gaikindo, AISI, ASI).' },
+      { id: 'calendar', label: 'BI board meeting and BPS release calendar', reason: 'Published as documents, not data; the FOMC date is shown instead.' },
     ],
     failed,
     generatedAt: Date.now(),
+    indicators: ind,
+    pulse: macroPulse(ind),
+    idxValuation: null,
+    calendar: fomc ? [{ type: 'fomc', date: fomc }] : [],
+    bpsConfigured: Boolean(bpsKey),
+  };
+}
+
+
+/** Median P/E and P/B of the scanned IDX stocks, earnings yield vs the BI-Rate, and today's breadth. */
+function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
+  const pe: number[] = [];
+  const pb: number[] = [];
+  for (const a of ALL_ASSETS) {
+    if (a.group !== 'idStock') continue;
+    const monthly = crossSections.idx.monthlyOf(a.symbol);
+    const st = crossSections.idx.statementsOf(a.symbol);
+    const last = st?.annual.filter((p) => p.months === 12).at(-1);
+    const price = monthly?.at(-1)?.close;
+    if (!last || !price) continue;
+    const shares = last.values.shares ?? a.supply;
+    const eps = last.values.eps ?? (last.values.netIncome !== undefined && shares ? last.values.netIncome / shares : undefined);
+    if (eps !== undefined && eps > 0) pe.push(price / eps);
+    if (last.values.equity !== undefined && shares && last.values.equity > 0) pb.push((price * shares) / last.values.equity);
+  }
+  let advancers = 0;
+  let decliners = 0;
+  let unchanged = 0;
+  for (const t of idxSweep.ticks.values()) {
+    const c = t.changePct24h;
+    if (c === undefined || !Number.isFinite(c)) continue;
+    if (c > 0) advancers++;
+    else if (c < 0) decliners++;
+    else unchanged++;
+  }
+  if (pe.length < 20 && advancers + decliners + unchanged === 0) return null;
+  const med = (x: number[]) => {
+    const v = [...x].sort((a, b) => a - b);
+    return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null;
+  };
+  const mPE = pe.length >= 20 ? med(pe) : null;
+  const bi = macroCache.entry?.data.biRate.at(-1)?.value ?? null;
+  const ey = mPE ? 100 / mPE : null;
+  return {
+    medianPE: mPE,
+    medianPB: pb.length >= 20 ? med(pb) : null,
+    earningsYield: ey,
+    eyMinusBiRate: ey !== null && bi !== null ? ey - bi : null,
+    advancers,
+    decliners,
+    unchanged,
+    n: pe.length,
   };
 }
 
@@ -3453,7 +3647,8 @@ async function startServer() {
   // 5h. Indonesia macro: BI-Rate, inflation, GDP growth, FX reserves, trade balance, USD/IDR
   app.get('/api/macro/indonesia', async (_req, res) => {
     try {
-      res.json(await getIndonesiaMacro());
+      crossSections.idx.touch();
+      res.json({ ...(await getIndonesiaMacro()), idxValuation: idxValuation() });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Macro data unavailable' });
     }

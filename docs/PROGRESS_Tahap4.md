@@ -40,7 +40,7 @@ Akibatnya semua fitur tahap 4 ditulis lengkap dengan deteksi kegagalan/blokir da
 - [x] 4. Proyeksi teknikal & kalkulator posisi
 - [x] 5. Validasi & cadence
 - [x] 6. Tampilan
-- [ ] 7. Makro Indonesia diperluas
+- [x] 7. Makro Indonesia diperluas
 - [ ] 8. Penutup
 
 ## Fase 1 — Dua bahasa
@@ -102,9 +102,21 @@ Modul murni di `src/sentiment/` (semua dengan test, data sintetis):
 - Endpoint tambahan sesuai nama di rencana: `/api/crypto/binance/overview` (alias), `/api/crypto/binance/pair?symbol=&tf=`, `/api/sentiment/rankings?market=idx|idStock|us|usStock|crypto&sector=` (+ desil per baris).
 - Cek tampilan headless (Chromium, satu tab per halaman): 8 halaman (Radar, detail BBCA/ZEC/BTC, `#/crypto`, `#/crypto/BTCUSDT`, Terminal, Settings) × EN/ID × terang/gelap × 375/1440 → **tanpa scroll horizontal**.
 
+## Fase 7 — Makro Indonesia diperluas
+
+- **Server** (`computeIndonesiaMacro` di `server.ts`, cache 6 jam): indikator dikelompokkan dalam 8 kategori (Moneter & suku bunga, Inflasi & harga, Pertumbuhan & aktivitas, Eksternal, Fiskal, Keuangan, Komoditas, Global). Tambahan: selisih BI-Rate − Fed funds (`DFEDTARU`), keyakinan konsumen OECD, ekspor & impor terpisah, transaksi berjalan % PDB, REER, Rupiah vs THB/PHP/INR/MYR/CNY/SGD, EIDO (proksi arus asing), utang pemerintah % PDB, kredit swasta & harga properti (BIS), LQ45, batu bara API2 (proksi), tembaga, aluminium, Brent, emas, Fed funds, UST 10Y, DXY, VIX, SSE, Hang Seng. Inflasi inti / administered / volatile food lewat **BPS API** bila `BPS_API_KEY` diisi (opsional, gratis; kunci tidak pernah dicatat ke log atau dikirim ke browser) — tanpa kunci kartunya menampilkan "Requires free BPS API key (see README)".
+- Setiap indikator: nilai terakhir, perubahan, tanggal data, frekuensi, sumber + tautan, grafik 10 tahun, **z-score vs 10 tahun** dengan arah per indikator (mis. inflasi tinggi = lebih buruk), label **"Stale — last data …"** bila datanya sudah lewat batas frekuensinya (tidak ikut dinilai). Logika di `src/utils/macro.ts` (`zScore10y`, `isStale`, `toIndicator`, `macroPulse`, `spreadSeries`, `parseBpsDynData`, `findBpsVar`) + test.
+- **Indonesia Macro Pulse**: satu lampu per kategori (rata-rata z-score yang sudah disesuaikan arah dari indikator yang masih segar: > +0,5 hijau, < −0,5 merah, selain itu kuning; tanpa data segar = abu-abu) + penjelasan edukatif "biasanya berarti apa untuk IHSG / Rupiah / bank" — menggambarkan kondisi, bukan ramalan. Klik lampu = buka tab kategorinya.
+- **Valuasi & breadth IDX** dari saham yang sudah dipindai (median P/E, median P/B, earnings yield − BI-Rate; imbal hasil SBN tidak tersedia, jadi pembandingnya BI-Rate) dan jumlah naik/turun/tetap hari ini. **Kalender**: tanggal FOMC berikutnya.
+- **Halaman `#/macro`**: Macro Pulse → blok BI-Rate (tetap) → valuasi & kalender → tab kategori → kartu indikator → daftar "tidak tersedia dari sumber gratis" (diterjemahkan).
+- Komponen Makro di sentimen tetap memakai jalur BI-Rate & inflasi (yang sudah diuji `compareIdMacro`); indikator baru hanya ditampilkan, belum dinilai di sentimen sampai lolos validasi.
+- **Tidak tersedia / belum**: imbal hasil SBN 10 tahun, PMI (berlisensi), IndONIA/JIBOR/JISDOR (halaman bi.go.id belum bisa dibaca andal dari server), harga pangan harian Badan Pangan (endpoint data resmi belum terkonfirmasi), Pink Sheet Bank Dunia (CPO, nikel, timah, karet — file xlsx; butuh paket pembaca spreadsheet, lihat "Butuh keputusan pemilik") sehingga indeks terms-of-trade juga belum, utang luar negeri / defisit APBN / M2 (hanya PDF/xls atau seri berhenti), penjualan mobil/motor/semen (tanpa API), jadwal RDG BI & rilis BPS (dokumen, bukan data).
+- Semua sumber terblokir dari cloud ini → **belum diverifikasi live**. Cek tampilan headless `#/macro` dengan data contoh (fixture, hanya untuk uji) dan dengan keadaan semua sumber gagal: EN/ID × terang/gelap × 375/1440 → **tanpa scroll horizontal**.
+
 ## Butuh keputusan pemilik
 
 - **Peer group saham AS**: untuk desil/percentile yang bermakna perlu daftar konstituen S&P 500 (mis. file holdings ETF IVV/SPY yang diunduh di laptop lalu disimpan statis seperti `idxStocks.json`). Sampai ada, peringkat AS memakai 29 saham inti + label "small peer group".
+- **Pink Sheet Bank Dunia (CPO, nikel, timah, karet)**: datanya hanya berupa file xlsx bulanan. Membacanya butuh paket tambahan (mis. `read-excel-file` yang kecil, atau `xlsx`/SheetJS yang lebih besar). Belum dipasang karena tidak bisa diuji dari cloud (situsnya terblokir) — pilihan pemilik: pasang paket kecil itu, atau lewati.
 - **Binance dari server produksi**: Cloud Run AI Studio kemungkinan di AS; bila Binance membalas 451, halaman crypto Binance akan menampilkan pesan wilayah. Pilihan (keputusan pemilik): biarkan, atau jalankan server di region lain.
 
 ## Laporan akhir

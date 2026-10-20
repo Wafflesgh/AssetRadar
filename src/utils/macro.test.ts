@@ -37,3 +37,36 @@ test('World Bank parsing, merging, m/m change and release shift', () => {
   assert.deepEqual(latest([{ date: 'a', value: 5 }, { date: 'b', value: 5.25 }]), { date: 'b', value: 5.25, change: 0.25 });
   assert.equal(latest([]), null);
 });
+
+test('stage 4 macro: 10-year z-score, staleness, Macro Pulse, spreads and BPS parsing', async () => {
+  const { zScore10y, isStale, toIndicator, macroPulse, spreadSeries, monthlyPoints, parseBpsDynData, findBpsVar } = await import('./macro.ts');
+  const pts = Array.from({ length: 24 }, (_, i) => ({ date: `${2015 + Math.floor(i / 2)}-0${(i % 2) * 6 + 1}-01`, value: i === 23 ? 10 : 5 + (i % 3) }));
+  const z = zScore10y(pts);
+  assert.ok(z !== null && z > 2);
+  assert.equal(zScore10y(pts.slice(0, 3)), null);
+  assert.equal(isStale({ frequency: 'monthly', points: [{ date: '2026-01-01', value: 1 }] }, '2026-10-20'), true);
+  assert.equal(isStale({ frequency: 'monthly', points: [{ date: '2026-08-01', value: 1 }] }, '2026-10-20'), false);
+  const base = { id: 'x', label: 'x', unit: '%', frequency: 'monthly' as const, source: 's', sourceUrl: 'u', points: pts.map((p, i) => ({ ...p, date: `2026-${String((i % 9) + 1).padStart(2, '0')}-01` })) };
+  const fresh = { ...base, points: pts.map((p, i) => ({ value: p.value, date: `${2016 + Math.floor(i / 3)}-${String((i % 3) * 3 + 1).padStart(2, '0')}-01` })) };
+  fresh.points[fresh.points.length - 1].date = '2026-09-01';
+  const infl = toIndicator(fresh, 'inflation', false, '2026-10-20');
+  const reserves = toIndicator({ ...fresh, id: 'r' }, 'external', true, '2026-10-20');
+  const pulse = Object.fromEntries(macroPulse([infl, reserves]).map((p) => [p.category, p]));
+  assert.equal(pulse.inflation.light, 'red'); // inflation far above normal
+  assert.equal(pulse.external.light, 'green'); // reserves far above normal
+  assert.equal(pulse.fiscal.light, null);
+  assert.deepEqual(spreadSeries([{ date: '2026-02-01', value: 5 }], [{ date: '2026-01-20', value: 4.5 }]), [{ date: '2026-02-01', value: 0.5 }]);
+  assert.deepEqual(monthlyPoints(new Map([['2026-02', 2], ['2026-01', 1]])), [{ date: '2026-01-01', value: 1 }, { date: '2026-02-01', value: 2 }]);
+  const bps = parseBpsDynData({
+    'data-availability': 'available',
+    var: [{ val: 1905 }],
+    vervar: [{ val: 9999, label: 'Indonesia' }],
+    turvar: [{ val: 0 }],
+    tahun: [{ val: 125, label: '2025' }],
+    turtahun: [{ val: 1, label: 'Januari' }, { val: 2, label: 'Februari' }, { val: 13, label: 'Tahunan' }],
+    datacontent: { '99991905012501': 2.36, '99991905012502': '2,18', '99991905012513': 2.5 },
+  });
+  assert.deepEqual(bps, [{ date: '2025-01-01', value: 2.36 }, { date: '2025-02-01', value: 2.18 }]);
+  assert.deepEqual(parseBpsDynData({ 'data-availability': 'list-not-available' }), []);
+  assert.deepEqual(findBpsVar({ data: [{ page: 1 }, [{ var_id: 1, title: 'Inflasi Umum' }, { var_id: 7, title: 'Inflasi Inti (persen)' }]] }, /inti/i), { id: '7', title: 'Inflasi Inti (persen)' });
+});

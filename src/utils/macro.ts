@@ -113,3 +113,137 @@ export function latest(points: MacroPoint[]): { date: string; value: number; cha
   const prev = points[points.length - 2];
   return { date: last.date, value: last.value, change: prev ? last.value - prev.value : null };
 }
+
+// ---- Stage 4: categories, z-scores, staleness, Macro Pulse, BPS --------------------------------
+
+export type MacroCategory = 'monetary' | 'inflation' | 'growth' | 'external' | 'fiscal' | 'financial' | 'commodities' | 'global';
+
+export const MACRO_CATEGORIES: MacroCategory[] = ['monetary', 'inflation', 'growth', 'external', 'fiscal', 'financial', 'commodities', 'global'];
+
+/** A series placed in a category, with how to read its direction for Indonesia. */
+export interface MacroIndicator extends MacroSeries {
+  category: MacroCategory;
+  /** true = higher is better for Indonesian assets, false = lower is better, null = neutral. */
+  higherIsBetter: boolean | null;
+  /** (last − 10-year mean) ÷ 10-year standard deviation. */
+  zScore10y: number | null;
+  /** Last data is older than the frequency allows: shown, never scored. */
+  stale: boolean;
+  /** Optional key the indicator needs (e.g. BPS_API_KEY) when it has no data without it. */
+  requiresKey?: string;
+}
+
+/** z-score of the latest value against the previous 10 years of the series (null under 8 points). */
+export function zScore10y(points: MacroPoint[]): number | null {
+  if (!points.length) return null;
+  const last = points[points.length - 1];
+  const from = `${Number(last.date.slice(0, 4)) - 10}${last.date.slice(4)}`;
+  const window = points.filter((p) => p.date >= from).map((p) => p.value);
+  if (window.length < 8) return null;
+  const mean = window.reduce((a, b) => a + b, 0) / window.length;
+  const sd = Math.sqrt(window.reduce((a, b) => a + (b - mean) ** 2, 0) / (window.length - 1));
+  return sd > 0 ? (last.value - mean) / sd : null;
+}
+
+/** Days after which the last value of a frequency counts as stale (publication delays included). */
+export const STALE_AFTER_DAYS: Record<MacroSeries['frequency'], number> = { decision: 400, monthly: 150, quarterly: 270, annual: 600 };
+
+export function isStale(series: Pick<MacroSeries, 'frequency' | 'points'>, today: string): boolean {
+  const last = series.points[series.points.length - 1];
+  if (!last) return true;
+  return (Date.parse(today) - Date.parse(last.date)) / 86_400_000 > STALE_AFTER_DAYS[series.frequency];
+}
+
+/** Adds category, direction, 10-year z-score and the stale flag to a series. */
+export function toIndicator(series: MacroSeries, category: MacroCategory, higherIsBetter: boolean | null, today: string, requiresKey?: string): MacroIndicator {
+  return { ...series, category, higherIsBetter, zScore10y: zScore10y(series.points), stale: isStale(series, today), requiresKey };
+}
+
+export type PulseLight = 'green' | 'amber' | 'red';
+
+export interface PulseCategory {
+  category: MacroCategory;
+  light: PulseLight | null;
+  /** Mean directional z-score (positive = better than usual for Indonesia). */
+  score: number | null;
+  used: number;
+  stale: number;
+}
+
+/**
+ * Indonesia Macro Pulse: per category, the mean of the direction-adjusted z-scores of its fresh
+ * indicators (stale and neutral ones are left out): > +0.5 green, < −0.5 red, otherwise amber.
+ */
+export function macroPulse(indicators: MacroIndicator[]): PulseCategory[] {
+  return MACRO_CATEGORIES.map((category) => {
+    const inCat = indicators.filter((i) => i.category === category);
+    const used = inCat.filter((i) => !i.stale && i.higherIsBetter !== null && i.zScore10y !== null);
+    const score = used.length ? used.reduce((s, i) => s + (i.zScore10y as number) * (i.higherIsBetter ? 1 : -1), 0) / used.length : null;
+    const light: PulseLight | null = score === null ? null : score > 0.5 ? 'green' : score < -0.5 ? 'red' : 'amber';
+    return { category, light, score, used: used.length, stale: inCat.filter((i) => i.stale && i.points.length > 0).length };
+  });
+}
+
+/** Yahoo monthly closes (YYYY-MM → close) as macro points (first day of the month). */
+export function monthlyPoints(byMonth: Map<string, number>): MacroPoint[] {
+  return [...byMonth.entries()]
+    .filter(([, v]) => Number.isFinite(v))
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, value]) => ({ date: `${m}-01`, value }));
+}
+
+/** Spread of two series on the dates both have (a − b), carrying b forward up to 45 days. */
+export function spreadSeries(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
+  const sb = [...b].sort((x, y) => x.date.localeCompare(y.date));
+  const out: MacroPoint[] = [];
+  let j = 0;
+  for (const p of [...a].sort((x, y) => x.date.localeCompare(y.date))) {
+    while (j + 1 < sb.length && sb[j + 1].date <= p.date) j++;
+    const q = sb[j];
+    if (q && q.date <= p.date && (Date.parse(p.date) - Date.parse(q.date)) / 86_400_000 <= 45) out.push({ date: p.date, value: p.value - q.value });
+  }
+  return out;
+}
+
+/**
+ * BPS WebAPI dynamic data ("list/model/data"): `datacontent` keys are vervar + var + turvar +
+ * tahun + turtahun ids; `tahun` gives the year labels and `turtahun` the month (1–12) or 13 for
+ * the annual figure. Returns monthly points for one vertical variable (vervar), oldest first.
+ */
+export function parseBpsDynData(json: unknown, vervar?: string): MacroPoint[] {
+  const o = (json ?? {}) as {
+    'data-availability'?: string;
+    var?: Array<{ val: number | string }>;
+    turvar?: Array<{ val: number | string }>;
+    vervar?: Array<{ val: number | string; label?: string }>;
+    tahun?: Array<{ val: number | string; label: string }>;
+    turtahun?: Array<{ val: number | string; label: string }>;
+    datacontent?: Record<string, number | string>;
+  };
+  if (o['data-availability'] && o['data-availability'] !== 'available') return [];
+  const v = String(o.var?.[0]?.val ?? '');
+  const vv = vervar ?? String(o.vervar?.[0]?.val ?? '');
+  const tv = String(o.turvar?.[0]?.val ?? '0');
+  const out: MacroPoint[] = [];
+  for (const y of o.tahun ?? []) {
+    const year = Number(String(y.label).match(/\d{4}/)?.[0]);
+    if (!year) continue;
+    for (const m of o.turtahun ?? []) {
+      const month = Number(m.val);
+      if (!(month >= 1 && month <= 12)) continue;
+      // Month ids appear both as "1" and "01" depending on the table
+      const key = `${vv}${v}${tv}${y.val}`;
+      const raw = o.datacontent?.[`${key}${m.val}`] ?? o.datacontent?.[`${key}${String(m.val).padStart(2, '0')}`];
+      const value = typeof raw === 'number' ? raw : Number(String(raw ?? '').replace(',', '.'));
+      if (raw !== undefined && raw !== '' && Number.isFinite(value)) out.push({ date: `${year}-${String(month).padStart(2, '0')}-01`, value });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** First variable whose title matches the pattern in a BPS "list/model/var" search result. */
+export function findBpsVar(json: unknown, pattern: RegExp): { id: string; title: string } | null {
+  const list = ((json as { data?: unknown[] })?.data?.[1] ?? []) as Array<{ var_id?: number | string; title?: string }>;
+  const hit = list.find((x) => typeof x.title === 'string' && pattern.test(x.title));
+  return hit && hit.var_id !== undefined ? { id: String(hit.var_id), title: hit.title as string } : null;
+}
