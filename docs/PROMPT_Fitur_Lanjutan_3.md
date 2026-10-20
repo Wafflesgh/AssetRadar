@@ -2,7 +2,7 @@
 
 > Cara pakai:
 > - **Di laptop** (Claude Code desktop, folder `D:\Asset Radar\assetradar`): kirim pesan **"Jalankan semua instruksi di docs/PROMPT_Fitur_Lanjutan_3.md dari awal sampai akhir."**
-> - **Di Claude Cloud**: kirim pesan yang sama. Di cloud tidak ada file `.env`, jadi semua fitur harus tetap jalan tanpa kunci; bagian yang butuh kunci dibuat lengkap tetapi diuji dengan test + mode tanpa kunci, dan dicatat "belum diuji live karena kunci belum dipasang".
+> - **Di Claude Cloud**: pakai `docs/PROMPT_Cloud_Tahap3.md` (aturan branch + pull request, tanpa kunci, uji tanpa browser).
 
 ---
 
