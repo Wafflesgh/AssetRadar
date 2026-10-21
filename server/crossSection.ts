@@ -4,7 +4,9 @@
  * universe (±960) and the US core stocks, collected by slow background queues so Yahoo and SEC
  * are never hammered. Cloud Run can sleep and lose memory, so every result carries its scan time
  * and the progress is reported; pages never wait for a full scan. Loaders are injected by
- * server.ts (they reuse its caches, cookies and timeouts).
+ * server.ts (they reuse its caches, cookies and timeouts). On a serverless host the queues do not
+ * run on demand ("passive"); scanStep() works through stale symbols until a deadline and keeps the
+ * data in the database, sharded so one step loads and saves only the shard it works on.
  */
 import type { AnalystData } from '../src/utils/analyst.ts';
 import type { PeriodValues } from '../src/utils/statements.ts';
@@ -54,6 +56,33 @@ const DEMAND_WINDOW_MS = 30 * 60_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const KINDS = ['monthly', 'statements', 'analyst'] as const;
+type Kind = (typeof KINDS)[number];
+/** A failed symbol is tried again after this long (not on every step). */
+const RETRY_MS = 2 * 3600_000;
+
+/** Durable storage for the serverless scans (packed values of the key/value table). */
+export interface CrossPersist {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+/** Shards per market: a scan step loads and saves only the shard it works on. */
+export const SHARDS: Record<CrossMarket, number> = { idx: 8, us: 4 };
+
+/** Stable shard of a symbol (independent of the order of the asset list). */
+export function shardOf(symbol: string, shards: number): number {
+  let h = 0;
+  for (let i = 0; i < symbol.length; i++) h = (h * 31 + symbol.charCodeAt(i)) >>> 0;
+  return h % shards;
+}
+
+/** When each symbol was last fetched (or failed), per kind; saved next to the shards. */
+interface CrossMeta {
+  at: Record<Kind, Record<string, number>>;
+  lastStepAt: number;
+}
+
 /** One market's cross-section with three paced queues. */
 export class CrossSection<A> {
   market: CrossMarket;
@@ -64,7 +93,10 @@ export class CrossSection<A> {
   analyst = new Map<string, Timed<AnalystData | null>>();
   progress: Record<ScanProgress['kind'], ScanProgress>;
   lastDemandAt = 0;
+  /** Serverless: touch() starts nothing (scanStep() from the cron tick does the work). */
+  passive = false;
   private pace: typeof PACE;
+  private meta: CrossMeta | null = null;
 
   constructor(market: CrossMarket, assets: () => A[], loaders: CrossLoaders<A>, pace: Partial<typeof PACE> = {}) {
     this.market = market;
@@ -78,6 +110,7 @@ export class CrossSection<A> {
   /** Records demand and starts any queue whose data is stale (callers need not await it). */
   touch(): Promise<void> {
     this.lastDemandAt = Date.now();
+    if (this.passive) return Promise.resolve();
     return Promise.all([this.run('monthly'), this.run('statements'), this.run('analyst')]).then(
       () => undefined,
       () => undefined
@@ -102,37 +135,136 @@ export class CrossSection<A> {
     if (!todo.length) return;
     Object.assign(pr, { running: true, total: all.length, done: all.length - todo.length, failed: 0, startedAt: Date.now(), finishedAt: null });
     try {
-      if (kind === 'monthly') {
-        for (let i = 0; i < todo.length && this.wanted(); i += 20) {
-          const batch = todo.slice(i, i + 20);
-          const got = await this.loaders.monthly(batch).catch(() => new Map<string, MonthlyClose[]>());
-          for (const a of batch) {
-            const sym = this.loaders.symbolOf(a);
-            const series = got.get(sym);
-            if (series && series.length) {
-              this.monthly.set(sym, { data: series, at: Date.now() });
-              pr.done++;
-            } else pr.failed++;
-          }
-          await sleep(this.pace.monthly);
-        }
-      } else {
-        for (const a of todo) {
-          if (!this.wanted()) break;
-          const sym = this.loaders.symbolOf(a);
-          try {
-            const data = kind === 'statements' ? await this.loaders.statements(a) : await this.loaders.analyst(a);
-            map.set(sym, { data, at: Date.now() });
-            pr.done++;
-          } catch {
-            pr.failed++;
-          }
-          await sleep(this.pace[kind]);
-        }
-      }
+      await this.fetchKind(kind, todo, () => this.wanted(), (ok) => (ok ? pr.done++ : pr.failed++));
     } finally {
       pr.running = false;
       pr.finishedAt = Date.now();
+    }
+  }
+
+  /** Fetches one kind for these assets (paced) while keepGoing() holds; returns symbol → success. */
+  private async fetchKind(kind: Kind, todo: A[], keepGoing: () => boolean, onEach?: (ok: boolean) => void): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    const map = this[kind] as Map<string, Timed<unknown>>;
+    if (kind === 'monthly') {
+      for (let i = 0; i < todo.length && keepGoing(); i += 20) {
+        const batch = todo.slice(i, i + 20);
+        const got = await this.loaders.monthly(batch).catch(() => new Map<string, MonthlyClose[]>());
+        for (const a of batch) {
+          const sym = this.loaders.symbolOf(a);
+          const series = got.get(sym);
+          const ok = Boolean(series && series.length);
+          if (ok) this.monthly.set(sym, { data: series as MonthlyClose[], at: Date.now() });
+          result.set(sym, ok);
+          onEach?.(ok);
+        }
+        await sleep(this.pace.monthly);
+      }
+    } else {
+      for (const a of todo) {
+        if (!keepGoing()) break;
+        const sym = this.loaders.symbolOf(a);
+        try {
+          const data = kind === 'statements' ? await this.loaders.statements(a) : await this.loaders.analyst(a);
+          map.set(sym, { data, at: Date.now() });
+          result.set(sym, true);
+          onEach?.(true);
+        } catch {
+          result.set(sym, false);
+          onEach?.(false);
+        }
+        await sleep(this.pace[kind]);
+      }
+    }
+    return result;
+  }
+
+  // ---- Serverless: database-backed, deadline-bound scan steps --------------------------------
+
+  private key(part: string): string {
+    return `xs:${this.market}:${part}`;
+  }
+
+  private async loadMeta(persist: CrossPersist): Promise<CrossMeta> {
+    const saved = await persist.get<Partial<CrossMeta>>(this.key('meta'));
+    const at = (kind: Kind) => ({ ...(saved?.at?.[kind] ?? {}) });
+    this.meta = { at: { monthly: at('monthly'), statements: at('statements'), analyst: at('analyst') }, lastStepAt: saved?.lastStepAt ?? 0 };
+    return this.meta;
+  }
+
+  /** Merges a saved shard into memory (newer entries win). */
+  private async loadShard(persist: CrossPersist, kind: Kind, shard: number): Promise<void> {
+    const saved = await persist.get<Record<string, Timed<unknown>>>(this.key(`${kind}:${shard}`));
+    const map = this[kind] as Map<string, Timed<unknown>>;
+    for (const [sym, t] of Object.entries(saved ?? {})) {
+      if (t && typeof t.at === 'number' && !((map.get(sym)?.at ?? 0) >= t.at)) map.set(sym, t);
+    }
+  }
+
+  private async saveShard(persist: CrossPersist, kind: Kind, shard: number): Promise<void> {
+    const n = SHARDS[this.market];
+    const out: Record<string, Timed<unknown>> = {};
+    for (const [sym, t] of this[kind] as Map<string, Timed<unknown>>) if (shardOf(sym, n) === shard) out[sym] = t;
+    await persist.set(this.key(`${kind}:${shard}`), out);
+  }
+
+  /**
+   * One serverless scan step: stale symbols shard by shard until the deadline; each worked shard
+   * and the fetch times are saved right away. Returns how many were fetched and how many stay stale.
+   */
+  async scanStep(persist: CrossPersist, deadline: number): Promise<{ fetched: number; pending: number }> {
+    const meta = await this.loadMeta(persist);
+    const n = SHARDS[this.market];
+    let fetched = 0;
+    let pending = 0;
+    for (const kind of KINDS) {
+      const now = Date.now();
+      const byShard = new Map<number, A[]>();
+      for (const a of this.assets()) {
+        const sym = this.loaders.symbolOf(a);
+        if (now - (meta.at[kind][sym] ?? 0) <= TTL[kind]) continue;
+        const sh = shardOf(sym, n);
+        byShard.set(sh, [...(byShard.get(sh) ?? []), a]);
+      }
+      for (const [shard, list] of byShard) {
+        if (Date.now() >= deadline) {
+          pending += list.length;
+          continue;
+        }
+        await this.loadShard(persist, kind, shard);
+        const done = await this.fetchKind(kind, list, () => Date.now() < deadline);
+        for (const [sym, ok] of done) {
+          meta.at[kind][sym] = ok ? Date.now() : Date.now() - TTL[kind] + RETRY_MS;
+          if (ok) fetched++;
+        }
+        pending += list.length - done.size;
+        if (done.size) {
+          await this.saveShard(persist, kind, shard);
+          meta.lastStepAt = Date.now();
+          await persist.set(this.key('meta'), meta);
+        }
+      }
+    }
+    this.progressFromMeta();
+    return { fetched, pending };
+  }
+
+  /** Loads every saved shard (to compute the market's pillars and validation). */
+  async loadAll(persist: CrossPersist): Promise<void> {
+    await this.loadMeta(persist);
+    for (const kind of KINDS) for (let shard = 0; shard < SHARDS[this.market]; shard++) await this.loadShard(persist, kind, shard);
+    this.progressFromMeta();
+  }
+
+  /** Progress as the saved fetch times describe it (serverless: no queue is running). */
+  private progressFromMeta(): void {
+    if (!this.meta) return;
+    const all = this.assets().map((a) => this.loaders.symbolOf(a));
+    const now = Date.now();
+    for (const kind of KINDS) {
+      const at = this.meta.at[kind];
+      const done = all.filter((sym) => at[sym] !== undefined && now - at[sym] <= TTL[kind]).length;
+      Object.assign(this.progress[kind], { done, failed: 0, total: all.length, running: false, startedAt: null, finishedAt: this.meta.lastStepAt || null });
     }
   }
 
@@ -150,16 +282,19 @@ export class CrossSection<A> {
 
   /** When each kind of data was last refreshed (oldest entry still in use). */
   freshness(): Record<ScanProgress['kind'], { oldest: number | null; newest: number | null; count: number }> {
-    const f = (m: Map<string, Timed<unknown>>) => {
+    const f = (times: number[]) => {
       let oldest: number | null = null;
       let newest: number | null = null;
-      for (const t of m.values()) {
-        oldest = oldest === null ? t.at : Math.min(oldest, t.at);
-        newest = newest === null ? t.at : Math.max(newest, t.at);
+      for (const at of times) {
+        oldest = oldest === null ? at : Math.min(oldest, at);
+        newest = newest === null ? at : Math.max(newest, at);
       }
-      return { oldest, newest, count: m.size };
+      return { oldest, newest, count: times.length };
     };
-    return { monthly: f(this.monthly), statements: f(this.statements), analyst: f(this.analyst) };
+    // Serverless: the saved fetch times cover every shard, memory only the loaded ones
+    const times = (kind: Kind) =>
+      this.meta ? Object.values(this.meta.at[kind]) : [...(this[kind] as Map<string, Timed<unknown>>).values()].map((t) => t.at);
+    return { monthly: f(times('monthly')), statements: f(times('statements')), analyst: f(times('analyst')) };
   }
 
   status() {

@@ -9,44 +9,45 @@ Baca file ini dulu di setiap sesi baru. Detail kode ada di `CLAUDE.md`; jangan b
 - Aplikasi web pribadi (non-komersial) pemantau 147 aset (saham IDX/AS/dunia, crypto, komoditas, indeks, kurs) + 962 saham IDX, dua bahasa (EN sumber, ID terjemahan), PWA.
 - Pemilik: Dilan. Balasan ke pemilik: Bahasa Indonesia sederhana. Kode, komentar, nilai internal: Bahasa Inggris.
 - Repo: https://github.com/Wafflesgh/AssetRadar (privat), cabang `main`. Commit terakhir sebelum migrasi: `7a22010`.
+- **Keputusan pemilik (21 Okt 2026): hanya GitHub + Supabase + Vercel** (tanpa Railway, tanpa AI Studio). Batasannya diterima: harga saham/kurs/emas ±10–15 dtk (polling), crypto Indodax tetap real-time, tanpa Finnhub, alert HP saat aplikasi tertutup tiap ±10 menit.
 
-## 2. Arsitektur target (sama dengan aplikasi Taktik FPL)
+## 2. Arsitektur (serverless)
 
 ```
-Browser / HP (PWA)
+Browser / HP (PWA) ── WebSocket langsung ke Indodax (crypto real-time)
    │  https://<app>.vercel.app
    ▼
-Vercel — front end statis (vite build → dist/), CDN
-   │  rewrite /api/*  ──►  Railway
-   ▼
-Railway — server Node selalu menyala (server.ts: Express API, SSE harga & berita,
-          WebSocket Indodax/Binance/Finnhub, pemindaian pasar, jadwal harian)
-   │  REST (kunci rahasia hanya di server)
+Vercel — front end statis (CDN) + SATU fungsi Node untuk semua /api/* (region sin1, ≤300 dtk)
+   │  dibuat oleh scripts/build-vercel.mjs (Build Output API: .vercel/output)
    ▼
 Supabase — Postgres, satu tabel key/value `assetradar_kv` (region Singapore)
+   └─ pg_cron + pg_net: tiap 10 menit POST /api/cron/tick (supabase/cron.sql)
 
-GitHub — sumber kode; Vercel & Railway deploy otomatis setiap push ke main.
-GitHub Actions — cadangan jadwal harian (POST /api/cron/daily).
+GitHub — sumber kode; Vercel deploy otomatis setiap push ke main.
+GitHub Actions — cadangan jadwal harian (POST /api/cron/daily 07:35 & 16:20 WIB).
 ```
 
-**Kenapa tidak Vercel saja?** Fungsi Vercel berhenti setelah satu permintaan selesai (batas waktu, tanpa proses latar). AssetRadar butuh proses yang terus jalan: aliran harga (SSE), WebSocket bursa, hub berita tiap 60 dtk, pemindaian ±500 saham AS (20–30 mnt), cache memori, dan tugas harian 1–3 menit. Karena itu Taktik FPL juga memakai Railway untuk worker-nya. Railway Hobby ±US$5/bulan.
+**Mode serverless** (`server/runtime.ts`, aktif otomatis saat `VERCEL=1`; coba lokal dengan `SERVERLESS=1`):
+- Tidak ada timer/WebSocket/SSE di server. `everyMs`/`afterMs` tidak jalan; pekerjaan yang dimulai saat request diserahkan ke `waitUntil` lewat `keepAlive()`.
+- Klien (build Vercel, `VITE_SERVERLESS=1` → `src/services/serverMode.ts`) tidak membuka SSE: harga polling 10 dtk, berita 60 dtk. Endpoint SSE menjawab 204.
+- **Tick** `POST /api/cron/tick` (Bearer `CRON_TOKEN`, menjawab 202 lalu bekerja ±240 dtk): alert server (web push) → tugas harian yang jatuh tempo → pemindaian bertahap (cross-section IDX & AS `scanStep`, screener, kalender IDX) → hitung ulang pilar/validasi/valuasi IDX tiap 6 jam (atau 1 jam setelah ada data baru). Ringkasan terakhir: `GET /api/cron/tick/last`.
+- Hasil berat disimpan di Supabase (gzip `{gz}` lewat `getPacked/setPacked`): halaman membaca hasil jadi, bukan data mentah. Hari pertama data sentimen/screener/kalender terisi bertahap.
+- Server selalu-menyala (`npm run dev` / `npm start`) tetap bekerja seperti dulu (timer, SSE, Finnhub) — kode yang sama.
 
-**Status:** kode sudah disiapkan (21 Okt 2026); akun Vercel/Railway/Supabase belum dibuat → langkah §9.
-Hosting lama (Google AI Studio → Cloud Run) masih bisa dipakai sementara sampai Railway jalan.
+**Kenapa harga saham tidak per detik?** Vercel tidak punya proses yang menyala terus untuk mendorong harga; polling per detik akan menghabiskan kuota gratis (±1 juta permintaan/bulan) dan berisiko diblokir Yahoo. Kalau suatu saat butuh per detik: tambah server selalu-menyala (mis. Railway) — kodenya sudah mendukung.
 
 ## 3. File konfigurasi hosting
 
 | File | Isi |
 |---|---|
-| `vercel.json` | Framework Vite, `npm ci`, `npm run build`, output `dist`, rewrite `/api/:path*` → `https://ASSETRADAR-RAILWAY-DOMAIN/api/:path*` (**ganti placeholder** dengan domain Railway), header no-cache untuk `sw.js` & manifest. |
-| `.vercelignore` | Vercel hanya membangun front end; `server.ts`, `server/`, `supabase/`, `docs/` tidak diunggah. |
-| `railway.toml` | Builder Railpack, `npm run build`, start `NODE_ENV=production npm start` (tsx server.ts; `tsx` kini dependency biasa), health check `/api/health`, restart otomatis. |
-| `supabase/schema.sql`, `supabase/migrations/20261021000100_kv.sql` | Tabel `assetradar_kv` (key text PK, value jsonb, updated_at), RLS aktif tanpa policy (kunci publik tidak bisa baca/tulis). |
-| `.github/workflows/daily-jobs.yml` | Cadangan jadwal: 07:35 & 16:20 WIB setiap hari → `POST {APP_URL}/api/cron/daily`. |
-| `.mcp.json` | MCP proyek: Supabase & Vercel (lihat §8). |
-| `src/utils/hosting.ts` | Deteksi host (railway / cloudRun / vercel / local), timer jadwal internal, pilihan kunci Supabase. |
-
-Perilaku server per host: di **Railway** jadwal harian berjalan dari timer internal tiap 5 menit (`INTERNAL_SCHEDULER`, default aktif di Railway); di Cloud Run/lokal tugas berjalan pada permintaan pertama setelah jamnya atau lewat cron.
+| `vercel.json` | `framework: null`, `npm ci`, `npm run build`, region `sin1`. Rute & header ada di `.vercel/output/config.json` yang dibuat build. |
+| `scripts/build-vercel.mjs` | Setelah `vite build` (hanya saat `VERCEL=1` atau `--force`): salin `dist/` → `.vercel/output/static`, bundel `server/vercelEntry.ts` (+ server.ts) dengan esbuild → `functions/api/index.func` (nodejs22.x, maxDuration 300, region sin1), rute `/api/*` → fungsi, sisanya → `index.html`. |
+| `server/vercelEntry.ts` | Handler fungsi: `createApp()` dari server.ts; `originalApiUrl` memulihkan path asli dari `?__p=`. |
+| `.vercelignore` | Hanya docs/backups/supabase/.env yang tidak diunggah (kode server ikut dibangun). |
+| `supabase/schema.sql` | Tabel `assetradar_kv` (key text PK, value jsonb, updated_at), RLS aktif tanpa policy. |
+| `supabase/cron.sql` | Jadwal tick tiap 10 menit (pg_cron + pg_net), alamat & token disimpan di Supabase Vault. |
+| `.github/workflows/daily-jobs.yml` | Cadangan jadwal harian → `POST {APP_URL}/api/cron/daily`. |
+| `src/utils/hosting.ts` | Deteksi host, `serverlessFrom`, `originalApiUrl`, pilihan kunci Supabase. |
 
 ## 4. Database (Supabase)
 
@@ -64,6 +65,9 @@ Satu tabel `assetradar_kv`. Kunci yang dipakai:
 | `sbn:series` | Semua seri SBN ritel yang pernah terlihat |
 | `screener:fundamentals` | Rasio fundamental saham IDX untuk screener |
 | `alerts:state`, push subscriptions | Status alert server & langganan web push |
+| `xs:<idx/us>:meta`, `xs:<idx/us>:<monthly/statements/analyst>:<shard>` | Data mentah pemindaian cross-section (gzip, 8 shard IDX / 4 AS) |
+| `xs:<idx/us/crypto>:derived`, `xs:<…>:status` | Hasil jadi: pilar sentimen, validasi, valuasi IDX; status pindaian |
+| `calendar:idx`, `ai:outlook:20` / `:60`, `tick:last` | Kalender semua emiten, hasil AI Advisor terakhir, ringkasan tick terakhir |
 
 Tanpa Supabase server memakai memori (hilang saat restart) — fitur tetap jalan, riwayat tidak.
 
@@ -71,19 +75,18 @@ Tanpa Supabase server memakai memori (hilang saat restart) — fitur tetap jalan
 
 | Nama | Wajib? | Dipasang di | Fungsi |
 |---|---|---|---|
-| `SUPABASE_URL` | ya (untuk riwayat) | Railway | Alamat proyek Supabase |
-| `SUPABASE_SECRET_KEY` | ya | Railway | Kunci rahasia baru `sb_secret_…` (atau `SUPABASE_SERVICE_ROLE_KEY` lama) |
-| `CRON_TOKEN` | ya | Railway + GitHub Actions | Melindungi `/api/cron/daily`, `/api/analyst/run`, `/api/analyst/notes` |
-| `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET` | untuk sinkron | Railway | Login pemilik antar perangkat |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | untuk notifikasi HP | Railway | Web push |
-| `GEMINI_API_KEY` | disarankan | Railway | Narasi AI (analisis harian, ringkasan, sentimen) — buat di aistudio.google.com → Get API key |
-| `GEMINI_MODELS` | opsional | Railway | Urutan model cadangan saat kuota habis |
-| `FINNHUB_API_KEY`, `BPS_API_KEY` | opsional | Railway | Trade real-time saham AS; inflasi BPS |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | opsional | Railway | Ringkasan pagi ke Telegram |
-| `INTERNAL_SCHEDULER` | opsional | Railway | `0` mematikan timer jadwal internal |
-| `APP_URL` | ya | GitHub Actions | Alamat aplikasi (Vercel atau Railway) |
+| `SUPABASE_URL` | ya (untuk riwayat) | Vercel | Alamat proyek Supabase |
+| `SUPABASE_SECRET_KEY` | ya | Vercel | Kunci rahasia baru `sb_secret_…` (atau `SUPABASE_SERVICE_ROLE_KEY` lama) |
+| `CRON_TOKEN` | ya | Vercel + Supabase Vault (cron.sql) + GitHub Actions | Melindungi `/api/cron/daily`, `/api/analyst/run`, `/api/analyst/notes` |
+| `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET` | untuk sinkron | Vercel | Login pemilik antar perangkat |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | untuk notifikasi HP | Vercel | Web push |
+| `GEMINI_API_KEY` | disarankan | Vercel | Narasi AI (analisis harian, ringkasan, sentimen) — buat di aistudio.google.com → Get API key |
+| `GEMINI_MODELS` | opsional | Vercel | Urutan model cadangan saat kuota habis |
+| `BPS_API_KEY` | opsional | Vercel | Inflasi BPS (`FINNHUB_API_KEY` tidak dipakai di Vercel: butuh server selalu-menyala) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | opsional | Vercel | Ringkasan pagi ke Telegram |
+| `APP_URL` | ya | GitHub Actions | Alamat aplikasi Vercel |
 
-Nilai buatan sendiri ada di `.env` lokal (dibuat `node scripts/generate-secrets.mjs`, tidak di-commit). Vercel **tidak** butuh secret apa pun.
+Nilai buatan sendiri ada di `.env` lokal (dibuat `node scripts/generate-secrets.mjs`, tidak di-commit). Semua secret dipasang di Vercel → Project → Settings → Environment Variables (Production).
 
 ## 6. Sumber data eksternal (semua tanpa kunci kecuali disebut)
 
@@ -93,11 +96,12 @@ Yahoo Finance (harga, chart, riwayat penuh `period1/period2`, fundamental, kalen
 
 | Waktu (WIB) | Tugas |
 |---|---|
+| tiap 10 menit | Tick (pg_cron): alert, tugas jatuh tempo, pemindaian bertahap, hitung ulang hasil |
 | ≥07:30 setiap hari | Ringkasan pagi (`brief`) |
 | ≥16:15 hari kerja | Forward test AI Advisor (`forward`) |
 | ≥16:15 setiap hari | Analisis AI harian (`analyst`): foto aset, penilaian rekomendasi, pemeriksaan data, narasi Gemini |
 
-Endpoint operasi: `GET /api/health` · `GET /api/diagnostics[?refresh=1]` (sumber, host/region, Gemini, jobs) · `POST /api/cron/daily` · `GET /api/analyst[?date=]` · `POST /api/analyst/run` · `POST /api/analyst/notes` · `GET /api/analyst/export?from=&to=` · `GET /api/track/summary` · `GET /api/track/asset?symbol=` · `GET /api/sbn/retail`. (Bearer `CRON_TOKEN` untuk yang POST.)
+Endpoint operasi: `GET /api/health` (`serverless: true` di Vercel) · `POST /api/cron/tick` · `GET /api/cron/tick/last` · `GET /api/diagnostics[?refresh=1]` (sumber, host/region, Gemini, jobs) · `POST /api/cron/daily` · `GET /api/analyst[?date=]` · `POST /api/analyst/run` · `POST /api/analyst/notes` · `GET /api/analyst/export?from=&to=` · `GET /api/track/summary` · `GET /api/track/asset?symbol=` · `GET /api/sbn/retail`. (Bearer `CRON_TOKEN` untuk yang POST.)
 
 Halaman: Radar, IDX, Terminal, AI Advisor (+ rekam jejak), Analisis AI Harian (`#/analyst`), Ringkasan Pagi, Binance Crypto, Screener, Compare, Portofolio, Alerts, Kalender, ID Macro (+ SBN ritel), Quant Lab, Backtest, Watchlist, Profil Risiko, Settings.
 
@@ -113,19 +117,19 @@ Halaman: Radar, IDX, Terminal, AI Advisor (+ rekam jejak), Analisis AI Harian (`
 | Browser bawaan (Claude Browser) | bawaan aplikasi | Uji tampilan 375px/1440px, terang/gelap |
 | Bash/PowerShell, git, `gh` | bawaan | Tes, build, commit, push |
 
-Railway belum punya MCP resmi yang dipakai di sini → status Railway dibaca lewat `/api/health` dan `/api/diagnostics`.
 
 **Tidak dipakai — sebaiknya dimatikan agar hemat token** (di aplikasi Claude: Customize / Settings → Plugins, Skills, Connectors → matikan): plugin `sentry-skills`, `last30days`, `write-a-skill`, `statistical-analyst`, `cowork-plugin-management`; skill dokumen `docx`/`pptx`/`xlsx`/`pdf`/`google-workspace`/`morning`; connector Gmail, Google Calendar, Google Drive/Docs, rapat (meeting notes). Yang tetap berguna: `codebase-memory` (skill), `run`, `code-review`, `security-review`, artifact (untuk laporan bila diminta).
 
 ## 9. Langkah migrasi (pemilik; Claude tidak boleh membuat akun atau menempel kunci)
 
-1. **Supabase** (supabase.com): New project `assetradar`, region **Southeast Asia (Singapore)** → SQL Editor → jalankan isi `supabase/schema.sql` → Project Settings → API Keys: salin **Project URL** dan **Secret key** (`sb_secret_…`).
-2. **Railway** (railway.app, login GitHub): New Project → Deploy from GitHub repo → `Wafflesgh/AssetRadar` → Settings: Region **Singapore**, Networking → **Generate Domain** → Variables: isi secrets §5 (nilai dari `.env` + Supabase). Tunggu deploy hijau → buka `https://<domain>/api/health` → harus `{"ok":true,"host":"railway"}`.
-3. **Vercel** (vercel.com, login GitHub): beri tahu Claude domain Railway → Claude mengganti placeholder di `vercel.json` dan push. Lalu Add New Project → import repo → Deploy (pengaturan dibaca dari `vercel.json`, tanpa secret).
-4. **GitHub** → Settings → Secrets → Actions: `APP_URL` = alamat Vercel (atau Railway), `CRON_TOKEN` = sama dengan Railway → Actions → Run workflow.
-5. Cek: aplikasi → Settings → Server diagnostics (host "Railway", database ✓, scheduler ✓) dan menu Analisis AI Harian.
-6. Opsional: login MCP — di terminal `claude` jalankan `/mcp` → supabase / vercel → Authenticate.
-7. Setelah semuanya jalan, aplikasi lama di Google AI Studio boleh dihapus/ditinggalkan. **Jangan** menekan Push/Sync GitHub dari AI Studio.
+1. **Supabase** (supabase.com, login GitHub): New project `assetradar`, region **Southeast Asia (Singapore)** → SQL Editor → jalankan isi `supabase/schema.sql` → Project Settings → Data API: salin **Project URL**; API Keys: salin **Secret key** (`sb_secret_…`).
+2. **Vercel** (vercel.com, login GitHub, paket Hobby gratis): Add New → Project → import `Wafflesgh/AssetRadar` (beri akses repo privat) → **Environment Variables**: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `CRON_TOKEN`, `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `GEMINI_API_KEY` (disarankan), opsional `BPS_API_KEY`, `TELEGRAM_*` → **Deploy**. Pengaturan build dibaca dari `vercel.json`. Pastikan Settings → Functions → **Fluid Compute aktif** (default proyek baru; perlu untuk 300 dtk).
+3. Cek `https://<app>.vercel.app/api/health` → `{"ok":true,"host":"vercel","serverless":true,…}`.
+4. **Jadwal Supabase**: buka `supabase/cron.sql`, ganti alamat Vercel dan `CRON_TOKEN`, jalankan di SQL Editor. Setelah ±10 menit: `/api/cron/tick/last` berisi hasil.
+5. **GitHub** → Settings → Secrets → Actions: `APP_URL` = alamat Vercel, `CRON_TOKEN` = sama → Actions → Run workflow (cadangan).
+6. Cek: Settings → Server diagnostics (host "Vercel", region sin1, database ✓). Data sentimen saham, screener dan kalender terisi bertahap dalam ±1 hari.
+7. Opsional: login MCP — di terminal `claude` jalankan `/mcp` → supabase / vercel → Authenticate.
+8. Setelah semuanya jalan, aplikasi lama di Google AI Studio boleh ditinggalkan. **Jangan** menekan Push/Sync GitHub dari AI Studio.
 
 ## 10. Aturan kerja (ringkas)
 

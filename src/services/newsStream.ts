@@ -5,6 +5,7 @@
  * (for "NEW" badges), and falls back to polling /api/market/news-feed every 60 s when the
  * stream is blocked or stalls (some proxies buffer SSE). Framework-free; see useLiveNews.
  */
+import { SERVER_PUSH } from './serverMode.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
 import { fetchNewsFeed } from './marketDataService.ts';
 
@@ -58,7 +59,8 @@ class NewsStore {
 
   private start(): void {
     if (typeof window === 'undefined') return;
-    if (typeof EventSource === 'undefined') {
+    // Serverless build: the server has no stream, poll right away
+    if (typeof EventSource === 'undefined' || !SERVER_PUSH) {
       this.startPolling();
       return;
     }

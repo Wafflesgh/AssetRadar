@@ -7,13 +7,14 @@
  * the IDX calendar, Indonesia macro data and the AI Advisor; plus owner sync (/api/sync/*,
  * server/sync.ts), the daily server AI forward test and the protected cron endpoint.
  * All upstream data is cached in memory; durable data goes to the optional database
- * (server/store.ts). API keys stay on the server.
+ * (server/store.ts). API keys stay on the server. Runs as an always-on Node server (npm start)
+ * or as one Vercel serverless function (createApp(), server/vercelEntry.ts): there timers and
+ * streams are off and the long scans run from POST /api/cron/tick (server/runtime.ts).
  */
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { Type, ThinkingLevel } from '@google/genai';
 import { geminiGenerate, geminiStatus } from './server/gemini.ts';
 import {
@@ -60,6 +61,7 @@ import { convertedTick, pickUsdQuote, type UsdQuote } from './src/crypto/cryptoP
 import {
   binanceStatus,
   binanceUniverse,
+  scanBinanceUntil,
   cachedClosedKlines,
   fundingFor,
   futuresQuotes,
@@ -70,9 +72,9 @@ import {
   spotQuotes,
   warmBinance,
 } from './server/binanceFeed.ts';
-import { CrossSection, monthlyFromBars, type CrossMarket } from './server/crossSection.ts';
+import { CrossSection, monthlyFromBars, type CrossMarket, type CrossPersist } from './server/crossSection.ts';
 import { ANALYST_MODULES, parseAnalystData, type AnalystData } from './src/utils/analyst.ts';
-import { marketPillars, type MarketPillars } from './src/sentiment/pillars.ts';
+import { marketPillars, type MarketPillars, type StockPillars } from './src/sentiment/pillars.ts';
 import { newsByHorizon, HORIZONS, type Horizon } from './src/sentiment/newsHorizon.ts';
 import { derivativesScore, scoreHorizon, shortTechnical, trendScore, tsMomentumScore, type HorizonScore } from './src/sentiment/horizons.ts';
 import { nextCatalyst, type Catalyst } from './src/sentiment/cadence.ts';
@@ -169,7 +171,8 @@ import {
 } from './src/ai/forwardTest.ts';
 import { dailyJobDue, wibDate } from './src/utils/sync.ts';
 import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
-import { createStore } from './server/store.ts';
+import { createStore, getPacked, setPacked } from './server/store.ts';
+import { SERVERLESS, afterMs, everyMs, keepAlive } from './server/runtime.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
 import { diagnosticsProbes, registerDiagnosticsRoute } from './server/diagnostics.ts';
@@ -405,7 +408,11 @@ async function pollNews(force = false): Promise<void> {
 async function ensureNewsFresh(): Promise<void> {
   newsHub.lastDemandAt = Date.now();
   if (!newsHub.initialized) await pollNews(true);
-  else if (Date.now() - newsHub.lastPollAt >= FEED_INTERVAL_MS) await pollNews();
+  else if (Date.now() - newsHub.lastPollAt >= FEED_INTERVAL_MS) {
+    // Serverless (no background loop): answer with what the hub has, refresh behind the response
+    if (SERVERLESS) keepAlive(pollNews()).catch(() => {});
+    else await pollNews();
+  }
 }
 
 function broadcastNews(event: 'news' | 'snapshot', items: MarketNewsItem[]): void {
@@ -426,7 +433,7 @@ async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
 }
 
 // Background loop: keeps polling while browsers are connected or recently asked for news
-setInterval(() => {
+everyMs(() => {
   const active =
     newsHub.clients.size > 0 || Date.now() - newsHub.lastDemandAt < NEWS_IDLE_AFTER_MS;
   if (active) pollNews().catch(() => {});
@@ -1098,7 +1105,7 @@ async function streamTick(): Promise<void> {
   }
 }
 
-setInterval(() => {
+everyMs(() => {
   streamTick().catch(() => {});
 }, 1000);
 
@@ -1212,7 +1219,7 @@ function flushFinnhubTrades(): Record<string, PriceTick> {
   return out;
 }
 
-setInterval(() => {
+everyMs(() => {
   if (finnhub.state === 'off') return;
   if (priceStream.clients.size === 0) {
     if (finnhub.ws && Date.now() - priceStream.lastDemandAt > 5 * 60_000) disconnectFinnhub();
@@ -1772,7 +1779,8 @@ Return a sentiment score (0-100), a label ("Bullish", "Neutral", or "Bearish"), 
 const AI_HISTORY_TTL_MS = 6 * 3600_000;
 /** Daily bars the AI model uses (10 years of trading days; crypto trades every day, so ~7 years). */
 const AI_MODEL_MAX_BARS = 2520;
-const AI_OUTLOOK_TTL_MS = 10 * 60_000;
+/** Serverless recomputes less often (each cold instance downloads 10 years of data again). */
+const AI_OUTLOOK_TTL_MS = (SERVERLESS ? 30 : 10) * 60_000;
 const AI_HORIZONS = [20, 60] as const;
 type AiHorizon = (typeof AI_HORIZONS)[number];
 
@@ -2462,11 +2470,11 @@ async function runIdxSweep(): Promise<void> {
 }
 
 // Sweep in the background while someone looked at IDX data in the last 10 minutes
-setInterval(() => {
+everyMs(() => {
   const now = Date.now();
   if (now - idxSweep.lastDemandAt > 10 * 60_000) return;
   const every = isExchangeOpen('IDX', now) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS;
-  if (now - idxSweep.lastRunAt >= every) runIdxSweep().catch(() => {});
+  if (now - idxSweep.lastRunAt >= every) keepAlive(runIdxSweep()).catch(() => {});
 }, 30_000);
 
 // ---- IDX corporate calendar (Yahoo calendarEvents + chart dividend/split events) ----------
@@ -2551,6 +2559,9 @@ const crossSections: Record<CrossMarket, CrossSection<Asset>> = {
   us: new CrossSection('us', () => US_UNIVERSE, crossLoaders()),
 };
 
+// Serverless: the scans run from the cron tick (scanStep) and pages read the computed results
+for (const cs of Object.values(crossSections)) cs.passive = SERVERLESS;
+
 /** The cross-section a stock belongs to (null for other asset classes). */
 function crossSectionOf(asset: Asset): CrossSection<Asset> | null {
   return asset.group === 'idStock' ? crossSections.idx : asset.group === 'usStock' ? crossSections.us : null;
@@ -2601,18 +2612,78 @@ function stockInputs(cs: CrossSection<Asset>, assets: Asset[], market: 'idx' | '
 
 /** Pillar scores of a market for the current month (cache 10 min; rebuilt as scans fill in). */
 function currentPillars(market: 'idx' | 'us'): MarketPillars | null {
-  const cs = crossSections[market];
-  cs.touch();
-  const key = market;
-  const cached = pillarsCache.get(key);
+  // Serverless: computed by the cron tick (see ensureCrossDerived)
+  if (SERVERLESS) return crossDerived[market]?.pillars ?? null;
+  crossSections[market].touch();
+  const cached = pillarsCache.get(market);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
-  const inputs = stockInputs(cs, assets, market);
-  if (inputs.length < 5) return null;
-  const month = new Date().toISOString().slice(0, 7);
-  const data = marketPillars(inputs, market, month, true);
-  pillarsCache.set(key, { data, expiresAt: Date.now() + 10 * 60_000 });
+  const data = computePillars(market);
+  if (data) pillarsCache.set(market, { data, expiresAt: Date.now() + 10 * 60_000 });
   return data;
+}
+
+/** Pillar scores from the scan data in memory (null with fewer than 5 scanned stocks). */
+function computePillars(market: 'idx' | 'us'): MarketPillars | null {
+  const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
+  const inputs = stockInputs(crossSections[market], assets, market);
+  if (inputs.length < 5) return null;
+  return marketPillars(inputs, market, new Date().toISOString().slice(0, 7), true);
+}
+
+// ---- Serverless: results the cron tick computed from the saved scans --------------------------
+
+type DerivedMarket = CrossMarket | 'crypto';
+type CrossStatus = ReturnType<CrossSection<Asset>['status']>;
+
+/** Saved by the tick under xs:<market>:derived (packed); pillars with their stocks as entries. */
+interface SavedDerived {
+  at: number;
+  pillars: (Omit<MarketPillars, 'stocks'> & { stocks: Array<[string, StockPillars]> }) | null;
+  valuation: { pe: number[]; pb: number[] } | null;
+  validation: unknown;
+}
+
+/** Saved under xs:<market>:status (small): scan progress, when the results were computed. */
+interface SavedStatus {
+  status: CrossStatus | null;
+  derivedAt: number;
+  /** Symbols fetched since the results were computed. */
+  fetchedSince: number;
+}
+
+const crossDerived: Partial<Record<DerivedMarket, { at: number; pillars: MarketPillars | null; valuation: SavedDerived['valuation'] }>> = {};
+const crossStatusSaved: Partial<Record<DerivedMarket, SavedStatus>> = {};
+const crossCheckedAt = new Map<DerivedMarket, number>();
+
+function applyDerived(market: DerivedMarket, d: SavedDerived): void {
+  crossDerived[market] = { at: d.at, pillars: d.pillars ? { ...d.pillars, stocks: new Map(d.pillars.stocks) } : null, valuation: d.valuation };
+  const v = d.validation as { horizons?: Parameters<typeof storeValidation>[1] } | null;
+  if (v?.horizons) {
+    storeValidation(market, v.horizons);
+    validationCache.set(market, { data: v, expiresAt: Number.POSITIVE_INFINITY });
+  }
+}
+
+/** Serverless: reads the tick's status every 5 minutes and its results whenever they are newer. */
+async function ensureCrossDerived(market: DerivedMarket): Promise<void> {
+  if (!SERVERLESS || Date.now() - (crossCheckedAt.get(market) ?? 0) < 5 * 60_000) return;
+  crossCheckedAt.set(market, Date.now());
+  try {
+    const st = await store.get<SavedStatus>(`xs:${market}:status`);
+    if (!st) return;
+    crossStatusSaved[market] = st;
+    if (st.derivedAt && st.derivedAt !== crossDerived[market]?.at) {
+      const d = await getPacked<SavedDerived>(store, `xs:${market}:derived`);
+      if (d) applyDerived(market, d);
+    }
+  } catch (err) {
+    console.warn(`[Cross] ${market} results unavailable:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/** Scan progress of a market (serverless: as the last tick saved it). */
+function crossStatus(market: CrossMarket): CrossStatus {
+  return (SERVERLESS ? crossStatusSaved[market]?.status : null) ?? crossSections[market].status();
 }
 
 /** Macro component from the cached Indonesia macro data (never waits for a fresh download). */
@@ -2620,7 +2691,7 @@ function macroComponent(asset: Asset) {
   if (!isMacroLinked(asset.group, asset.symbol)) return null;
   const macro = macroCache.entry?.data;
   if (!macro) {
-    getIndonesiaMacro().catch(() => {});
+    keepAlive(getIndonesiaMacro()).catch(() => {});
     return null;
   }
   const rate = macro.biRate.length ? [...macro.biRate].sort((a, b) => a.date.localeCompare(b.date)) : macro.series.find((x) => x.id === 'policyRate')?.points ?? [];
@@ -2640,6 +2711,8 @@ function catalystsFor(asset: Asset): Catalyst[] {
 }
 
 async function computeSentimentV2(asset: Asset) {
+  const derived = asset.group === 'idStock' ? 'idx' : asset.group === 'usStock' ? 'us' : asset.group === 'crypto' ? 'crypto' : null;
+  if (derived) await ensureCrossDerived(derived);
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
   const bars = await recentHistoryFor(asset).catch(() => [] as DailyBar[]);
@@ -2691,7 +2764,6 @@ async function computeSentimentV2(asset: Asset) {
     const vc = (validationCache.get(market ?? '')?.data as MarketValidation | undefined)?.cadence?.[h];
     horizons[h] = { ...r, cadence: vc?.cadence ?? r.cadence, cadenceReason: vc?.reason ?? null, nextCatalyst: nextCatalyst(events, h, today) };
   }
-  const cs = market ? crossSections[market] : null;
   return {
     symbol: asset.symbol,
     code: asset.code,
@@ -2726,7 +2798,7 @@ async function computeSentimentV2(asset: Asset) {
       prices: lastBar,
       statements: sp?.raw.statementsDate ?? null,
       news: newsHub.lastPollAt || null,
-      scans: cs ? cs.status() : null,
+      scans: market ? crossStatus(market) : null,
     },
     disclaimer: SENTIMENT_DISCLAIMER,
   };
@@ -2835,36 +2907,44 @@ function storeValidation(market: string, horizons: Partial<Record<Horizon, { mea
   );
 }
 
+/** Back-test of one market from the data in memory (also stores the IC per horizon); null = too little data. */
+function computeValidation(market: 'idx' | 'us' | 'crypto'): unknown {
+  let data: unknown = null;
+  if (market === 'crypto') {
+    const series = binanceUniverse()
+      .map((p) => ({ symbol: p.symbol, closes: cachedClosedKlines(p.symbol, '1d').map((k) => k.close) }))
+      .filter((s) => s.closes.length >= 300);
+    const panel =
+      series.length >= 20
+        ? validatePanel(series, (c, h) =>
+            scoreHorizon(h, { group: 'crypto', technicalShort: shortTechnical(c)?.score ?? null, tsMomentum: tsMomentumScore(c, 365), trend: trendScore(c) }).score
+          )
+        : null;
+    if (panel) {
+      storeValidation('crypto', panel);
+      data = { market, generatedAt: Date.now(), pairs: series.length, horizons: panel, scope: ['Binance top-100 USDT pairs, closed daily candles (about 500 days); funding and news have no stored history.'] };
+    }
+  } else {
+    const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
+    const inputs = stockInputs(crossSections[market], assets, market);
+    const lastMonth = new Date(new Date().setUTCDate(0)).toISOString().slice(0, 7);
+    const v: MarketValidation | null = inputs.length >= 20 ? validateMarket(inputs, market, lastMonth) : null;
+    if (v) {
+      storeValidation(market, v.horizons);
+      data = { ...v, stocks: inputs.length };
+    }
+  }
+  return data;
+}
+
 function runValidation(market: 'idx' | 'us' | 'crypto'): void {
+  // Serverless: the cron tick computes it from the saved scans (ensureCrossDerived reads it)
+  if (SERVERLESS) return;
   if (validationRunning.has(market) || Date.now() - (validationNoData.get(market) ?? 0) < 10 * 60_000) return;
   validationRunning.add(market);
   setTimeout(() => {
     try {
-      let data: unknown = null;
-      if (market === 'crypto') {
-        const series = binanceUniverse()
-          .map((p) => ({ symbol: p.symbol, closes: cachedClosedKlines(p.symbol, '1d').map((k) => k.close) }))
-          .filter((s) => s.closes.length >= 300);
-        const panel =
-          series.length >= 20
-            ? validatePanel(series, (c, h) =>
-                scoreHorizon(h, { group: 'crypto', technicalShort: shortTechnical(c)?.score ?? null, tsMomentum: tsMomentumScore(c, 365), trend: trendScore(c) }).score
-              )
-            : null;
-        if (panel) {
-          storeValidation('crypto', panel);
-          data = { market, generatedAt: Date.now(), pairs: series.length, horizons: panel, scope: ['Binance top-100 USDT pairs, closed daily candles (about 500 days); funding and news have no stored history.'] };
-        }
-      } else {
-        const assets = market === 'idx' ? IDX_UNIVERSE_STOCKS() : US_UNIVERSE;
-        const inputs = stockInputs(crossSections[market], assets, market);
-        const lastMonth = new Date(new Date().setUTCDate(0)).toISOString().slice(0, 7);
-        const v: MarketValidation | null = inputs.length >= 20 ? validateMarket(inputs, market, lastMonth) : null;
-        if (v) {
-          storeValidation(market, v.horizons);
-          data = { ...v, stocks: inputs.length };
-        }
-      }
+      const data = computeValidation(market);
       if (data) validationCache.set(market, { data, expiresAt: Date.now() + 24 * 3600_000 });
       else validationNoData.set(market, Date.now());
     } catch (err) {
@@ -2950,18 +3030,70 @@ function runCalendarScan(): Promise<void> {
   return calendarScan.running;
 }
 
-setInterval(() => {
+everyMs(() => {
   const now = Date.now();
   if (now - calendarScan.lastDemandAt > 60 * 60_000) return;
   if (!calendarScan.running && now - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
 }, 60_000);
+
+// Serverless: the cron tick scans in steps and saves every stock's events; pages load them
+const CALENDAR_STORE_KEY = 'calendar:idx';
+let calendarLoadedAt = 0;
+
+async function loadCalendarFromStore(force = false): Promise<void> {
+  if (!force && Date.now() - calendarLoadedAt < 10 * 60_000) return;
+  calendarLoadedAt = Date.now();
+  try {
+    const saved = await getPacked<Record<string, CacheEntry<CalendarEvent[]>>>(store, CALENDAR_STORE_KEY);
+    for (const [sym, e] of Object.entries(saved ?? {})) {
+      if (e && Array.isArray(e.data) && !((calendarCache.get(sym)?.expiresAt ?? 0) >= e.expiresAt)) calendarCache.set(sym, e);
+    }
+  } catch (err) {
+    console.warn('[Calendar] could not load saved events:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** One serverless calendar step: stale stocks until the deadline, then everything is saved. */
+async function calendarStep(until: number): Promise<{ fetched: number; pending: number }> {
+  await loadCalendarFromStore(true);
+  const stale = IDX_ALL.filter((a) => (calendarCache.get(a.symbol)?.expiresAt ?? 0) <= Date.now());
+  let fetched = 0;
+  await mapLimit(stale, 2, async (a) => {
+    if (Date.now() >= until) return;
+    await getCalendarFor(a).catch(() => []);
+    fetched += 1;
+    await new Promise((r) => setTimeout(r, 250));
+  });
+  if (fetched) {
+    const out: Record<string, CacheEntry<CalendarEvent[]>> = {};
+    for (const a of IDX_ALL) {
+      const e = calendarCache.get(a.symbol);
+      if (e) out[a.symbol] = e;
+    }
+    await setPacked(store, CALENDAR_STORE_KEY, out);
+    calendarScan.finishedAt = Date.now();
+  }
+  return { fetched, pending: stale.length - fetched };
+}
+
+/** One serverless screener step (the scan itself stops at the deadline and saves its progress). */
+async function screenerStep(until: number): Promise<{ pending: number }> {
+  // Always the saved state first: another instance may have saved progress since
+  screenerScan.loadedAt = 0;
+  await loadScreenerFromStore();
+  const stale = () => IDX_ALL.filter((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS).length;
+  if (stale() === 0) return { pending: 0 };
+  screenerScan.lastDemandAt = Date.now();
+  await runScreenerScan(until);
+  return { pending: stale() };
+}
 
 // ---- IDX screener: slow scan of the statements of every listed stock (24 h) -----------------------
 
 const SCREENER_TTL_MS = 24 * 3600_000;
 const SCREENER_STORE_KEY = 'screener:fundamentals';
 const screenerFund = new Map<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>();
-const screenerScan = { running: null as Promise<void> | null, lastDemandAt: 0, startedAt: 0, finishedAt: 0, done: 0, loaded: false };
+const screenerScan = { running: null as Promise<void> | null, lastDemandAt: 0, startedAt: 0, finishedAt: 0, done: 0, loadedAt: 0 };
 
 /** Ratios from the latest annual / trailing-12-month statements, valued at today's price. */
 async function screenerFundamentalsFor(asset: Asset): Promise<{ f: ScreenerFundamentals | null; price: number | null }> {
@@ -2980,31 +3112,32 @@ async function screenerFundamentalsFor(asset: Asset): Promise<{ f: ScreenerFunda
 }
 
 async function loadScreenerFromStore(): Promise<void> {
-  if (screenerScan.loaded) return;
-  screenerScan.loaded = true;
+  // Serverless: reloaded now and then, the cron tick keeps filling the saved data
+  if (screenerScan.loadedAt && !(SERVERLESS && Date.now() - screenerScan.loadedAt > 10 * 60_000)) return;
+  screenerScan.loadedAt = Date.now();
   try {
-    const saved = await store.get<Record<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>>(SCREENER_STORE_KEY);
+    const saved = await getPacked<Record<string, { f: ScreenerFundamentals | null; fetchedAt: number; price: number | null }>>(store, SCREENER_STORE_KEY);
     for (const [sym, v] of Object.entries(saved ?? {})) if (v && typeof v.fetchedAt === 'number') screenerFund.set(sym, v);
   } catch (err) {
     console.warn('[Screener] could not load saved data:', err instanceof Error ? err.message : err);
   }
 }
 
-/** Two stocks at a time with a pause; stocks fetched in the last 24 h are skipped; stops without viewers. */
-function runScreenerScan(): Promise<void> {
+/** Two stocks at a time with a pause; stocks fetched in the last 24 h are skipped; stops without viewers or at the deadline. */
+function runScreenerScan(until = Number.POSITIVE_INFINITY): Promise<void> {
   if (screenerScan.running) return screenerScan.running;
   screenerScan.done = 0;
   screenerScan.startedAt = Date.now();
   screenerScan.running = (async () => {
     // A fresh price sweep first, so P/E and P/B use today's prices
-    if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+    if (idxSweep.ticks.size === 0) await keepAlive(runIdxSweep()).catch(() => {});
     await mapLimit(IDX_ALL, 2, async (a) => {
       const prev = screenerFund.get(a.symbol);
       if (prev && Date.now() - prev.fetchedAt < SCREENER_TTL_MS) {
         screenerScan.done += 1;
         return;
       }
-      if (Date.now() - screenerScan.lastDemandAt > 60 * 60_000) return; // nobody is looking any more
+      if (Date.now() - screenerScan.lastDemandAt > 60 * 60_000 || Date.now() >= until) return; // nobody is looking any more
       try {
         const { f, price } = await screenerFundamentalsFor(a);
         // Nothing found may also be a failed request: try again after 2 hours instead of 24
@@ -3014,10 +3147,10 @@ function runScreenerScan(): Promise<void> {
       }
       screenerScan.done += 1;
       // Save progress now and then so a restart does not start over
-      if (screenerScan.done % 50 === 0) await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+      if (screenerScan.done % 50 === 0) await setPacked(store, SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
       await new Promise((r) => setTimeout(r, 300));
     });
-    await store.set(SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
+    await setPacked(store, SCREENER_STORE_KEY, Object.fromEntries(screenerFund)).catch(() => {});
     screenerScan.finishedAt = Date.now();
   })().finally(() => {
     screenerScan.running = null;
@@ -3025,7 +3158,7 @@ function runScreenerScan(): Promise<void> {
   return screenerScan.running;
 }
 
-setInterval(() => {
+everyMs(() => {
   const now = Date.now();
   if (now - screenerScan.lastDemandAt > 60 * 60_000 || screenerScan.running) return;
   const stale = IDX_ALL.some((a) => now - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS);
@@ -3339,8 +3472,8 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
 }
 
 
-/** Median P/E and P/B of the scanned IDX stocks, earnings yield vs the BI-Rate, and today's breadth. */
-function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
+/** P/E and P/B of every scanned IDX stock (latest annual statements, latest monthly close). */
+function idxValuationLists(): { pe: number[]; pb: number[] } {
   const pe: number[] = [];
   const pb: number[] = [];
   for (const a of ALL_ASSETS) {
@@ -3355,6 +3488,12 @@ function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
     if (eps !== undefined && eps > 0) pe.push(price / eps);
     if (last.values.equity !== undefined && shares && last.values.equity > 0) pb.push((price * shares) / last.values.equity);
   }
+  return { pe, pb };
+}
+
+/** Median P/E and P/B of the scanned IDX stocks, earnings yield vs the BI-Rate, and today's breadth. */
+function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
+  const { pe, pb } = SERVERLESS ? crossDerived.idx?.valuation ?? { pe: [], pb: [] } : idxValuationLists();
   let advancers = 0;
   let decliners = 0;
   let unchanged = 0;
@@ -3525,16 +3664,25 @@ async function computeAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
 
 /** Cached outlook; recomputes in the background when stale (first call waits). */
 async function getAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
-  const cached = aiOutlookCache.get(horizon);
+  let cached = aiOutlookCache.get(horizon);
+  if (!cached && SERVERLESS) {
+    // A cold serverless instance answers with the last saved result (≤24 h) and refreshes it
+    const saved = await getPacked<AiOutlookPayload>(store, `ai:outlook:${horizon}`).catch(() => null);
+    if (saved?.generatedAt && Date.now() - saved.generatedAt < 24 * 3600_000) {
+      cached = { data: saved, expiresAt: saved.generatedAt + AI_OUTLOOK_TTL_MS };
+      aiOutlookCache.set(horizon, cached);
+    }
+  }
   const refresh = () => {
     if (!aiComputing.has(horizon)) {
       const job = computeAiOutlook(horizon)
-        .then((data) => {
+        .then(async (data) => {
           aiOutlookCache.set(horizon, { data, expiresAt: Date.now() + AI_OUTLOOK_TTL_MS });
+          if (SERVERLESS) await setPacked(store, `ai:outlook:${horizon}`, data).catch(() => {});
           return data;
         })
         .finally(() => aiComputing.delete(horizon));
-      aiComputing.set(horizon, job);
+      aiComputing.set(horizon, keepAlive(job));
     }
     return aiComputing.get(horizon) as Promise<AiOutlookPayload>;
   };
@@ -3634,7 +3782,8 @@ const jobs = {
 };
 
 async function loadJobState(): Promise<void> {
-  if (jobs.loaded) return;
+  // Serverless: another instance may have run a job since; the state is one small row
+  if (jobs.loaded && !SERVERLESS) return;
   try {
     const saved = await store.get<Record<string, string | null>>('jobs:state');
     if (saved) Object.assign(jobs.state, saved);
@@ -4100,29 +4249,29 @@ async function runMorningBrief(): Promise<{ date: string; telegram: boolean; pus
 }
 
 /** Runs the daily jobs that are due (called on API requests and by POST /api/cron/daily). */
-async function runDueJobs(trigger: 'request' | 'cron'): Promise<Record<string, unknown>> {
+async function runDueJobs(trigger: 'request' | 'cron' | 'tick'): Promise<Record<string, unknown>> {
   await loadJobState();
   const now = Date.now();
   const results: Record<string, unknown> = {};
   const allowed = (name: string) => trigger === 'cron' || (jobs.retryAfter.get(name) ?? 0) <= now;
   if (dailyJobDue(now, jobs.state.forward ?? null, FORWARD_TIME, true) && allowed('forward')) {
     const job = runJob('forward', runServerForwardTest);
-    results.forward = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
-    if (trigger === 'request') job.catch(() => {});
+    results.forward = trigger !== 'request' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') keepAlive(job).catch(() => {});
   } else {
     results.forward = { skipped: jobs.state.forward === wibDate(now) ? 'already ran today' : `not due (weekdays after ${FORWARD_TIME} WIB)` };
   }
   if (dailyJobDue(now, jobs.state.analyst ?? null, ANALYST_TIME) && allowed('analyst')) {
     const job = runJob('analyst', runDailyAnalyst);
-    results.analyst = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
-    if (trigger === 'request') job.catch(() => {});
+    results.analyst = trigger !== 'request' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') keepAlive(job).catch(() => {});
   } else {
     results.analyst = { skipped: jobs.state.analyst === wibDate(now) ? 'already ran today' : `not due (after ${ANALYST_TIME} WIB)` };
   }
   if (dailyJobDue(now, jobs.state.brief ?? null, BRIEF_TIME) && allowed('brief')) {
     const job = runJob('brief', runMorningBrief);
-    results.brief = trigger === 'cron' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
-    if (trigger === 'request') job.catch(() => {});
+    results.brief = trigger !== 'request' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') keepAlive(job).catch(() => {});
   } else {
     results.brief = { skipped: jobs.state.brief === wibDate(now) ? 'already ran today' : `not due (after ${BRIEF_TIME} WIB)` };
   }
@@ -4201,7 +4350,7 @@ function checkDueJobsSoon(): void {
   const now = Date.now();
   if (now - lastDueCheck < 60_000) return;
   lastDueCheck = now;
-  runDueJobs('request').catch(() => {});
+  keepAlive(runDueJobs('request')).catch(() => {});
 }
 
 // ---- Server-side alerts (web push; needs a database, VAPID keys and the owner login) ------------
@@ -4254,15 +4403,15 @@ async function refreshServerAlerts(): Promise<void> {
     // News and geopolitical alerts need the news hub running
     if (serverAlerts.active && enabled.some((a) => a.kind === 'news' || a.kind === 'geo')) {
       newsHub.lastDemandAt = Date.now();
-      ensureNewsFresh().catch(() => {});
+      keepAlive(ensureNewsFresh()).catch(() => {});
     }
   } catch (err) {
     console.warn('[Alerts] refresh failed:', err instanceof Error ? err.message : err);
   }
 }
 
-setInterval(() => refreshServerAlerts().catch(() => {}), 60_000);
-setTimeout(() => refreshServerAlerts().catch(() => {}), 5_000);
+everyMs(() => refreshServerAlerts().catch(() => {}), 60_000);
+afterMs(() => refreshServerAlerts().catch(() => {}), 5_000);
 
 const calendarCheckedAt = new Map<string, number>();
 /** Corporate events for alert symbols, fetched at most once per hour per stock (12 h cache behind it). */
@@ -4349,14 +4498,95 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
     }
     if (fire) await deliverServerAlert(alert, fire, now);
   }
-  if (serverAlerts.statesDirty && now - serverAlerts.lastSavedAt > 30_000) {
+  if (serverAlerts.statesDirty && now - serverAlerts.lastSavedAt > (SERVERLESS ? 0 : 30_000)) {
     serverAlerts.statesDirty = false;
     serverAlerts.lastSavedAt = now;
     await store.set('alerts:state', serverAlerts.states).catch(() => {});
   }
 }
 
-async function startServer() {
+// ---- Cron tick (serverless): alerts, daily jobs and the long scans in deadline-bound steps ----------
+
+/** Work time of one tick (the function may run up to 300 s). */
+const TICK_BUDGET_MS = 240_000;
+const crossPersist: CrossPersist = { get: (k) => getPacked(store, k), set: (k, v) => setPacked(store, k, v) };
+const tickState = { running: null as Promise<Record<string, unknown>> | null };
+
+async function saveCrossStatus(market: DerivedMarket, patch: Partial<SavedStatus>, addFetched = 0): Promise<void> {
+  const prev = (await store.get<SavedStatus>(`xs:${market}:status`).catch(() => null)) ?? { status: null, derivedAt: 0, fetchedSince: 0 };
+  const next: SavedStatus = { ...prev, ...patch, fetchedSince: (patch.fetchedSince ?? prev.fetchedSince ?? 0) + addFetched };
+  await store.set(`xs:${market}:status`, next);
+  crossStatusSaved[market] = next;
+}
+
+/** Recomputes a market's pillars, validation (and IDX valuation) from every saved shard when due. */
+async function deriveIfDue(market: DerivedMarket, deadline: number): Promise<unknown> {
+  const st = await store.get<SavedStatus>(`xs:${market}:status`).catch(() => null);
+  const age = Date.now() - (st?.derivedAt ?? 0);
+  // Every 6 hours, or one hour after new data arrived (the first days fill in step by step)
+  if (!(age > 6 * 3600_000 || ((st?.fetchedSince ?? 0) > 0 && age > 3600_000))) return 'fresh';
+  if (market === 'crypto') await scanBinanceUntil(deadline);
+  else await crossSections[market].loadAll(crossPersist);
+  const mp = market === 'crypto' ? null : computePillars(market);
+  const validation = computeValidation(market);
+  if (market === 'crypto' ? !validation : !mp) return 'waiting for data';
+  const saved: SavedDerived = {
+    at: Date.now(),
+    // Only the app's own stocks are read back (US peers only shaped the percentiles)
+    pillars: mp ? { ...mp, stocks: [...mp.stocks.entries()].filter(([sym]) => Boolean(getAssetBySymbol(sym))) } : null,
+    valuation: market === 'idx' ? idxValuationLists() : null,
+    validation,
+  };
+  await setPacked(store, `xs:${market}:derived`, saved);
+  await saveCrossStatus(market, { status: market === 'crypto' ? null : crossSections[market].status(), derivedAt: saved.at, fetchedSince: 0 });
+  applyDerived(market, saved);
+  return { stocks: mp?.n ?? null, validation: Boolean(validation) };
+}
+
+/** One tick: alerts, due daily jobs, then each scan gets a fair share of the time left. */
+async function runTick(): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
+  const deadline = startedAt + TICK_BUDGET_MS;
+  const left = () => deadline - Date.now();
+  const failed = (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) });
+  const out: Record<string, unknown> = { startedAt };
+  try {
+    await refreshServerAlerts();
+    if (serverAlerts.active) {
+      recomputePriority();
+      await checkServerAlerts(await buildStreamTicks());
+      out.alerts = 'checked';
+    } else out.alerts = serverAlertsReady() ? 'no active alerts' : 'not configured';
+  } catch (err) {
+    out.alerts = failed(err);
+  }
+  out.jobs = await runDueJobs('tick').catch(failed);
+  const crossStep = (market: CrossMarket) => async (until: number) => {
+    const r = await crossSections[market].scanStep(crossPersist, until);
+    await saveCrossStatus(market, { status: crossSections[market].status() }, r.fetched);
+    return r;
+  };
+  const steps: Array<[string, (until: number) => Promise<unknown>]> = [
+    ['scanIdx', crossStep('idx')],
+    ['scanUs', crossStep('us')],
+    ['screener', screenerStep],
+    ['calendar', calendarStep],
+  ];
+  for (let i = 0; i < steps.length; i++) {
+    // One share stays for the results below
+    const share = left() / (steps.length - i + 1);
+    out[steps[i][0]] = share < 10_000 ? 'no time left' : await steps[i][1](Date.now() + share).catch(failed);
+  }
+  for (const m of ['idx', 'us', 'crypto'] as const) {
+    out[`results_${m}`] = left() > 40_000 ? await deriveIfDue(m, deadline - 20_000).catch(failed) : 'no time left';
+  }
+  out.finishedAt = Date.now();
+  await store.set('tick:last', out).catch(() => {});
+  return out;
+}
+
+/** The Express app with every route, without listening (the Vercel function imports this). */
+export async function createApp(): Promise<express.Express> {
   const app = express();
   // Small JSON bodies everywhere; the sync endpoint parses its own (larger) body after the login check
   const smallJson = express.json();
@@ -4377,17 +4607,29 @@ async function startServer() {
     res.json({ history: serverAlerts.history, active: serverAlerts.active, ready: serverAlertsReady() });
   });
 
-  // Daily jobs for an external scheduler (Cloud Scheduler, cron-job.org): Authorization: Bearer CRON_TOKEN
+  // Serverless scheduler (Supabase pg_cron every 10 minutes): alerts, daily jobs and one step of the
+  // long scans. Answers at once (202); the work goes on in the background up to the function's limit.
+  app.post('/api/cron/tick', (req, res) => {
+    if (!cronAuthorized(req, res)) return;
+    if (tickState.running) {
+      res.status(202).json({ ok: true, running: true });
+      return;
+    }
+    tickState.running = runTick().finally(() => {
+      tickState.running = null;
+    });
+    keepAlive(tickState.running).catch((err) => console.warn('[Tick] failed:', err instanceof Error ? err.message : err));
+    res.status(202).json({ ok: true, started: Date.now() });
+  });
+
+  // What the last tick did (no secrets: counts, statuses and short error texts)
+  app.get('/api/cron/tick/last', async (_req, res) => {
+    res.json({ serverless: SERVERLESS, last: await store.get('tick:last').catch(() => null) });
+  });
+
+  // Daily jobs for an external scheduler (GitHub Actions, cron-job.org): Authorization: Bearer CRON_TOKEN
   app.post('/api/cron/daily', async (req, res) => {
-    const expected = process.env.CRON_TOKEN?.trim();
-    if (!expected) {
-      res.status(503).json({ error: 'CRON_TOKEN is not configured; daily jobs run on the first request after their time instead' });
-      return;
-    }
-    if (!passphraseMatches(bearerToken(req.headers.authorization) ?? '', expected)) {
-      res.status(401).json({ error: 'Invalid cron token' });
-      return;
-    }
+    if (!cronAuthorized(req, res)) return;
     try {
       res.json({ ok: true, ranAt: Date.now(), results: await runDueJobs('cron') });
     } catch (err) {
@@ -4805,7 +5047,7 @@ async function startServer() {
     try {
       if (idxSweep.ticks.size === 0) await runIdxSweep();
       else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) {
-        runIdxSweep().catch(() => {});
+        keepAlive(runIdxSweep()).catch(() => {});
       }
       const usdIdr = yahooCache.get('USD/IDR')?.data.price ?? 0;
       const rows = IDX_ALL.map((a) => {
@@ -4842,9 +5084,9 @@ async function startServer() {
     idxSweep.lastDemandAt = Date.now();
     try {
       await loadScreenerFromStore();
-      if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
-      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) runIdxSweep().catch(() => {});
-      if (!screenerScan.running && IDX_ALL.some((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS)) {
+      if (idxSweep.ticks.size === 0) await keepAlive(runIdxSweep()).catch(() => {});
+      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) keepAlive(runIdxSweep()).catch(() => {});
+      if (!SERVERLESS && !screenerScan.running && IDX_ALL.some((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS)) {
         runScreenerScan().catch(() => {});
       }
       const rows: ScreenerRow[] = IDX_ALL.map((a) => {
@@ -4897,7 +5139,8 @@ async function startServer() {
         return;
       }
       calendarScan.lastDemandAt = Date.now();
-      if (!calendarScan.running && Date.now() - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
+      if (SERVERLESS) await loadCalendarFromStore();
+      else if (!calendarScan.running && Date.now() - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
       const from = addDays(today, -30);
       const to = addDays(today, 90);
@@ -4924,6 +5167,7 @@ async function startServer() {
   app.get('/api/macro/indonesia', async (_req, res) => {
     try {
       crossSections.idx.touch();
+      await ensureCrossDerived('idx');
       res.json({ ...(await getIndonesiaMacro()), idxValuation: idxValuation() });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Macro data unavailable' });
@@ -5054,9 +5298,10 @@ async function startServer() {
   });
 
   // Progress of the cross-section scans (starts them when stale)
-  app.get('/api/sentiment/scan-status', (_req, res) => {
+  app.get('/api/sentiment/scan-status', async (_req, res) => {
+    await Promise.all([ensureCrossDerived('idx'), ensureCrossDerived('us')]);
     for (const cs of Object.values(crossSections)) cs.touch();
-    res.json({ markets: Object.values(crossSections).map((cs) => cs.status()), binance: binanceStatus(), serverTime: Date.now() });
+    res.json({ markets: (['idx', 'us'] as const).map(crossStatus), binance: binanceStatus(), serverTime: Date.now() });
   });
 
 
@@ -5075,7 +5320,7 @@ async function startServer() {
   });
 
   // Sentiment leaders of a market for one horizon (cross-section of the scanned stocks)
-  app.get('/api/sentiment/rankings', (req, res) => {
+  app.get('/api/sentiment/rankings', async (req, res) => {
     const m = String(req.query.market || 'idx');
     const h: Horizon = req.query.horizon === 'short' || req.query.horizon === 'long' ? req.query.horizon : 'medium';
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
@@ -5095,6 +5340,7 @@ async function startServer() {
       return;
     }
     const market = m === 'us' || m === 'usStock' ? 'us' : 'idx';
+    await ensureCrossDerived(market);
     const sector = String(req.query.sector || '').toLowerCase();
     const all = rankingsFor(market, h);
     const n = all.n;
@@ -5109,7 +5355,7 @@ async function startServer() {
       n,
       top: rows.filter((r) => r.score !== null).slice(0, limit),
       bottom: rows.filter((r) => r.score !== null).slice(-limit).reverse(),
-      scans: crossSections[market].status(),
+      scans: crossStatus(market),
       note: 'Full-universe rankings use the pillars, news and macro; short-term technicals are added on each stock page.',
       disclaimer: SENTIMENT_DISCLAIMER,
       serverTime: Date.now(),
@@ -5133,17 +5379,18 @@ async function startServer() {
 
 
   // Evidence: point-in-time back-test of the sentiment scores per market (IC, hit rate, spread)
-  app.get('/api/sentiment/validation', (req, res) => {
+  app.get('/api/sentiment/validation', async (req, res) => {
     const market = req.query.market === 'us' ? 'us' : req.query.market === 'crypto' ? 'crypto' : 'idx';
+    await ensureCrossDerived(market);
     if (market === 'crypto') noteBinanceDemand();
     else crossSections[market].touch();
     const cached = validationCache.get(market);
     if (!cached || cached.expiresAt <= Date.now()) runValidation(market);
     res.json({
       market,
-      status: cached ? 'ready' : validationNoData.has(market) && !validationRunning.has(market) ? 'waiting-for-data' : 'computing',
+      status: cached ? 'ready' : SERVERLESS || (validationNoData.has(market) && !validationRunning.has(market)) ? 'waiting-for-data' : 'computing',
       result: cached?.data ?? null,
-      scans: market === 'crypto' ? binanceStatus() : crossSections[market].status(),
+      scans: market === 'crypto' ? binanceStatus() : crossStatus(market),
       disclaimer: SENTIMENT_DISCLAIMER,
     });
   });
@@ -5269,6 +5516,11 @@ async function startServer() {
 
   // 9. Live news stream (Server-Sent Events): a snapshot first, then every new headline
   app.get('/api/market/news-stream', async (req, res) => {
+    // Serverless: no long-lived responses; 204 tells EventSource not to reconnect (the client polls)
+    if (SERVERLESS) {
+      res.status(204).end();
+      return;
+    }
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -5301,6 +5553,10 @@ async function startServer() {
 
   // 9b. Live price stream (Server-Sent Events): a snapshot first, then only the changed quotes
   app.get('/api/market/price-stream', async (req, res) => {
+    if (SERVERLESS) {
+      res.status(204).end();
+      return;
+    }
     const id = String(req.query.client || '').slice(0, 64) || `anon-${Math.random().toString(36).slice(2)}`;
     res.set({
       'Content-Type': 'text/event-stream',
@@ -5344,13 +5600,19 @@ async function startServer() {
     res.status(204).end();
   });
 
-  // Health check for the host (Railway): answers without touching any data source
+  // Health check for the host: answers without touching any data source
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, host: hostingFrom(process.env).host, uptimeSec: Math.round(process.uptime()) });
+    res.json({ ok: true, host: hostingFrom(process.env).host, serverless: SERVERLESS, uptimeSec: Math.round(process.uptime()) });
   });
 
-  // Vite middleware in development, static dist in production
+  return app;
+}
+
+/** Always-on server: the app plus the front end (Vite middleware in development, dist in production). */
+async function startServer() {
+  const app = await createApp();
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -5377,4 +5639,5 @@ async function startServer() {
   });
 }
 
-startServer();
+// On a serverless host the function imports createApp() instead (server/vercelEntry.ts)
+if (!SERVERLESS) startServer();

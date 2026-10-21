@@ -1,9 +1,10 @@
 # daily-jobs.yml — Free daily scheduler for AssetRadar: calls POST /api/cron/daily on the
 # published app at 07:35 WIB every day (morning brief) and 16:20 WIB every day (AI forward test on
 # weekdays, then the daily snapshot + AI analysis that is stored for later), so they run even when
-# nobody opens the app; it also keeps a free Supabase project from pausing.
+# nobody opens the app; it also keeps a free Supabase project from pausing. On Vercel the main
+# scheduler is Supabase pg_cron (supabase/cron.sql, every 10 minutes); this stays as a backup.
 # Needs two repository secrets (GitHub → Settings → Secrets and variables → Actions):
-#   APP_URL    — the published app address, e.g. https://xxxx.run.app
+#   APP_URL    — the published app address, e.g. https://assetradar.vercel.app
 #   CRON_TOKEN — the same value as the app's CRON_TOKEN secret
 # Without them the job skips quietly. Run it by hand with "Run workflow" to test.
 name: AssetRadar daily jobs
@@ -31,7 +32,7 @@ jobs:
             exit 0
           fi
           url="${APP_URL%/}/api/cron/daily"
-          # The server may be asleep (Cloud Run cold start): try a few times
+          # The server may be asleep (cold start): try a few times
           for attempt in 1 2 3; do
             code=$(curl -s -o response.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_TOKEN" --max-time 290 "$url" || echo 000)
             echo "Attempt $attempt: HTTP $code"

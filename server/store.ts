@@ -5,6 +5,7 @@
  * SUPABASE_URL and SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY) are set; otherwise an in-memory map that is lost
  * on restart. The key never leaves the server and is never logged.
  */
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { supabaseHeaders, supabaseKey } from '../src/utils/hosting.ts';
 
 export interface KvStore {
@@ -104,6 +105,29 @@ export function createStore(env: NodeJS.ProcessEnv = process.env): KvStore {
   const key = supabaseKey(env);
   if (url && key && /^https:\/\//.test(url)) return new SupabaseStore(url, key);
   return new MemoryStore();
+}
+
+/**
+ * Large values (scan data, computed rankings) are stored gzip-compressed as {gz: base64}, which
+ * cuts the database egress several times; values saved plain are still read.
+ */
+export async function getPacked<T>(store: KvStore, key: string): Promise<T | null> {
+  return unpack<T>(await store.get<unknown>(key));
+}
+
+export async function setPacked(store: KvStore, key: string, value: unknown): Promise<void> {
+  await store.set(key, pack(value));
+}
+
+export function pack(value: unknown): { gz: string } {
+  return { gz: gzipSync(Buffer.from(JSON.stringify(value), 'utf8')).toString('base64') };
+}
+
+export function unpack<T>(raw: unknown): T | null {
+  if (raw && typeof raw === 'object' && typeof (raw as { gz?: unknown }).gz === 'string') {
+    return JSON.parse(gunzipSync(Buffer.from((raw as { gz: string }).gz, 'base64')).toString('utf8')) as T;
+  }
+  return (raw ?? null) as T | null;
 }
 
 /** Runs async jobs one at a time per key (read-modify-write of one stored document). */

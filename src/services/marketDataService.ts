@@ -7,8 +7,10 @@
  * and reconnects with backoff. Reports the connection state and feed mode, keeps an offline
  * price snapshot, and exports fetch helpers for sentiment, history, correlation and news.
  * Views register symbols they show (IDX universe stocks, watchlist, portfolio, detail page) with
- * trackSymbols(); the stream refreshes those first.
+ * trackSymbols(); the stream refreshes those first. The serverless build (Vercel, serverMode.ts)
+ * has no stream: prices come from the 10 s polling there.
  */
+import { SERVER_PUSH } from './serverMode.ts';
 import type { ProbeResult, SetupItem } from '../utils/diagnostics.ts';
 import type { StatementPeriod, StatementRow } from '../utils/statements.ts';
 import {
@@ -428,6 +430,11 @@ export class MarketDataManager {
   /** Opens the price stream; while it is healthy the Yahoo / gold / quote polling pauses. */
   private connectPriceStream(): void {
     if (this.isDestroyed || typeof EventSource === 'undefined' || this.isOffline()) return;
+    // Serverless build: no push stream, the polling timers carry the prices
+    if (!SERVER_PUSH) {
+      this.callbacks.onFeedModeChange?.('polling');
+      return;
+    }
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     this.disconnectPriceStream();
     const es = new EventSource(`/api/market/price-stream?client=${encodeURIComponent(this.clientId)}`);

@@ -4,7 +4,9 @@
  * (one WebSocket to !miniTicker@arr, or REST ticker/24hr polling when the WebSocket is unavailable),
  * futures tickers and funding (premiumIndex), and a background candle queue for the top pairs that
  * stays inside 20% of the per-IP weight. Polls only while someone looked at Binance data in the
- * last 10 minutes. Every failure is recorded in `binanceStatus()` so the UI can say why.
+ * last 10 minutes. Every failure is recorded in `binanceStatus()` so the UI can say why. On a
+ * serverless host there is no socket or timer: each request runs one REST round and the cron tick
+ * fills the candle series with scanBinanceUntil().
  */
 import {
   BinanceClient,
@@ -32,6 +34,7 @@ import {
   type SpotSymbol,
 } from '../src/crypto/binance.ts';
 import type { UsdQuote } from '../src/crypto/cryptoPricing.ts';
+import { SERVERLESS, everyMs, keepAlive } from './runtime.ts';
 
 const DEMAND_WINDOW_MS = 10 * 60_000;
 const TICKER_POLL_MS = 15_000;
@@ -96,7 +99,9 @@ const state = {
 /** Marks that someone looked at Binance data (starts/keeps the background loop). */
 export function noteBinanceDemand(): void {
   state.lastDemandAt = Date.now();
-  connectMiniTickers();
+  // Serverless: no socket between requests; one REST round per request (paced by the loop itself)
+  if (SERVERLESS) keepAlive(loop()).catch(() => {});
+  else connectMiniTickers();
 }
 
 const hasDemand = (now: number) => now - state.lastDemandAt <= DEMAND_WINDOW_MS;
@@ -200,7 +205,7 @@ async function loop(): Promise<void> {
   }
 }
 
-setInterval(() => {
+everyMs(() => {
   loop().catch(() => {});
 }, 5_000);
 
@@ -367,6 +372,21 @@ export async function getDerivatives(contract: string): Promise<DerivativesSnaps
 /** True when the pair exists in the current exchangeInfo (protects the candle endpoint). */
 export function isKnownSpotPair(symbol: string): boolean {
   return state.pairs.some((p) => p.symbol === symbol) || state.tickers.has(symbol);
+}
+
+/** Serverless (cron tick): rounds of the loop until every scanned candle series is fresh or the deadline. */
+export async function scanBinanceUntil(deadline: number): Promise<void> {
+  while (Date.now() < deadline) {
+    state.lastDemandAt = Date.now();
+    await loop();
+    const now = Date.now();
+    const pending =
+      !state.universe.length ||
+      state.universe.some((p) => SCAN_SERIES.some((s) => now - (state.klines.get(`${p.symbol}|${s.interval}`)?.at ?? 0) >= s.everyMs));
+    if (!pending || state.lastError) return;
+    // The weight governor paces the candle requests; wait for its budget to refill
+    await new Promise((r) => setTimeout(r, 3000));
+  }
 }
 
 /** Waits briefly for the first ticker snapshot (used by the first page load). */

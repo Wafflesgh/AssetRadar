@@ -1,10 +1,10 @@
-# .vercelignore — Vercel only builds and hosts the static front end (vite build → dist/);
-# the API server runs on Railway, so its files are left out of the Vercel upload.
-server.ts
-server/
-supabase/
+# .vercelignore — Files Vercel does not need to build the app. The build (npm run build) makes the
+# front end and bundles server.ts + server/ into one function (scripts/build-vercel.mjs), so the
+# server code IS uploaded; only documents, backups and local secrets stay out.
 docs/
-railway.toml
+backups/
+supabase/
+PROMPT_*.md
 .env
 .env.*
 !.env.example

@@ -40,6 +40,12 @@ function serviceWorkerManifest(): Plugin {
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss(), serviceWorkerManifest()],
+    // Serverless build (Vercel, or SERVERLESS=1): the client polls instead of opening SSE streams
+    define: {
+      'import.meta.env.VITE_SERVERLESS': JSON.stringify(
+        process.env.SERVERLESS === '1' || (process.env.VERCEL && process.env.SERVERLESS !== '0') ? '1' : ''
+      ),
+    },
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

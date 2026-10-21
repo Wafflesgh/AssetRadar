@@ -428,7 +428,19 @@ free — add the repository secrets `APP_URL` and `CRON_TOKEN` (same value as th
 
 ## Deploy
 
-The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
+**Vercel + Supabase (current hosting, free tiers).** Import the GitHub repository into Vercel; the
+settings come from `vercel.json`. `npm run build` builds the front end and, on Vercel, bundles the
+whole API into one Node function in Singapore (`scripts/build-vercel.mjs`, Build Output API). Set the
+secrets (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `CRON_TOKEN`, `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET`,
+`VAPID_*`, `GEMINI_API_KEY`, optional `BPS_API_KEY`, `TELEGRAM_*`) under Project → Settings →
+Environment Variables. Run `supabase/schema.sql`, then `supabase/cron.sql` (with your app address and
+`CRON_TOKEN`) in the Supabase SQL Editor: pg_cron calls `POST /api/cron/tick` every 10 minutes for
+alerts, daily jobs and the step-by-step market scans. On this serverless host there are no server
+streams: prices are polled every 10 s (crypto stays live through the Indodax WebSocket) and Finnhub
+is not used. Owner guide: `docs/BLUEPRINT.md` §9. To try serverless mode locally: `SERVERLESS=1 npm run build`
+then `node scripts/build-vercel.mjs --force`.
+
+**Google AI Studio / Cloud Run (old hosting).** The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
 runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY`, `FINNHUB_API_KEY`, `BPS_API_KEY` and the optional
 stage 3 keys (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SYNC_PASSPHRASE`, `CRON_TOKEN`,
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
@@ -461,6 +473,11 @@ instead (as a new app), then Publish.
 | `scripts/update-sp500.mjs` | Rebuilds `src/config/sp500.json` (S&P 500 peer group, Wikipedia API). |
 | `scripts/generate-secrets.mjs` | Fills self-made secrets (cron token, sync passphrase, VAPID keys) in the local `.env` without printing them. |
 | `supabase/schema.sql` | The single table needed in Supabase. |
+| `supabase/cron.sql` | pg_cron job that calls `POST /api/cron/tick` every 10 minutes (address and token kept in Supabase Vault). |
+| `scripts/build-vercel.mjs` | On Vercel: static front end + the whole API bundled as one function (Build Output API, region sin1). |
+| `server/vercelEntry.ts` | The Vercel function handler around `createApp()`. |
+| `server/runtime.ts` | Serverless mode: timers only on always-on hosts, `keepAlive()` (waitUntil) for work started in a request. |
+| `src/services/serverMode.ts` | Client switch: SSE streams on always-on servers, polling on the serverless build. |
 | `.github/workflows/daily-jobs.yml` | Free daily scheduler: calls `POST /api/cron/daily` at 07:35 and 16:20 WIB every day. |
 | `server/diagnostics.ts` | `GET /api/diagnostics`: source reachability, Cloud Run region, optional-feature status. |
 | `server/xlsx.ts` | Minimal .xlsx reader (node:zlib) for the World Bank Pink Sheet. |
