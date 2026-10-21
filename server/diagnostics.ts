@@ -7,6 +7,7 @@
  */
 import type { Express } from 'express';
 import { classifyProbe, PROBES, regionFromMetadata, setupStatus, type ProbeResult } from '../src/utils/diagnostics.ts';
+import { hostingFrom, type HostKind } from '../src/utils/hosting.ts';
 
 const TTL_MS = 5 * 60_000;
 const TIMEOUT_MS = 8000;
@@ -14,7 +15,7 @@ const TIMEOUT_MS = 8000;
 interface DiagnosticsReport {
   checkedAt: number;
   region: string | null;
-  runtime: { node: string; cloudRun: boolean };
+  runtime: { node: string; cloudRun: boolean; host: HostKind };
   probes: ProbeResult[];
   setup: ReturnType<typeof setupStatus>;
 }
@@ -60,11 +61,13 @@ async function cloudRegion(): Promise<string | null> {
 }
 
 async function runDiagnostics(): Promise<DiagnosticsReport> {
-  const [region, probes] = await Promise.all([cloudRegion(), Promise.all(PROBES.map(probe))]);
+  const hosting = hostingFrom(process.env);
+  const [cloud, probes] = await Promise.all([cloudRegion(), Promise.all(PROBES.map(probe))]);
+  const region = cloud ?? hosting.region;
   return {
     checkedAt: Date.now(),
     region,
-    runtime: { node: process.version, cloudRun: Boolean(process.env.K_SERVICE) },
+    runtime: { node: process.version, cloudRun: Boolean(process.env.K_SERVICE), host: hosting.host },
     probes,
     setup: setupStatus(process.env),
   };

@@ -203,6 +203,7 @@ import {
   type TraceLabel,
 } from './src/ai/recommendationTrace.ts';
 import { registerSbnRoute } from './server/sbn.ts';
+import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
 import { findPinkSheetLink, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
@@ -5343,6 +5344,11 @@ async function startServer() {
     res.status(204).end();
   });
 
+  // Health check for the host (Railway): answers without touching any data source
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, host: hostingFrom(process.env).host, uptimeSec: Math.round(process.uptime()) });
+  });
+
   // Vite middleware in development, static dist in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -5359,9 +5365,15 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`AssetRadar server listening on http://localhost:${PORT}`);
-    // Warm up the AI outlook so the first visitor does not wait for 5 years of data
+    console.log(`AssetRadar server listening on http://localhost:${PORT} (host: ${hostingFrom(process.env).host})`);
+    // Warm up the AI outlook so the first visitor does not wait for 10 years of data
     setTimeout(() => getAiOutlook(20).catch((err) => console.warn('[AI] warm-up failed:', err)), 3000);
+    // Always-on hosts (Railway) run the daily jobs from a timer; the cron endpoint stays as a backup
+    if (internalSchedulerOn(process.env)) {
+      console.log('[Jobs] internal scheduler on (checks every 5 minutes)');
+      setInterval(() => checkDueJobsSoon(), 5 * 60_000);
+      setTimeout(() => checkDueJobsSoon(), 60_000);
+    }
   });
 }
 

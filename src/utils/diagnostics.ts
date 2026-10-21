@@ -76,9 +76,9 @@ export interface SetupItem {
 /** Optional setup read from the environment: which features are switched on (no values exposed). */
 export function setupStatus(env: Record<string, string | undefined>): SetupItem[] {
   const has = (k: string) => Boolean(env[k]?.trim());
-  const db = has('SUPABASE_URL') && has('SUPABASE_SERVICE_ROLE_KEY') && /^https:\/\//.test(env.SUPABASE_URL?.trim() ?? '');
+  const db = has('SUPABASE_URL') && (has('SUPABASE_SECRET_KEY') || has('SUPABASE_SERVICE_ROLE_KEY')) && /^https:\/\//.test(env.SUPABASE_URL?.trim() ?? '');
   return [
-    { id: 'database', configured: db, secrets: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] },
+    { id: 'database', configured: db, secrets: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'] },
     { id: 'sync', configured: db && (env.SYNC_PASSPHRASE?.trim().length ?? 0) >= 8, secrets: ['SYNC_PASSPHRASE'] },
     { id: 'push', configured: db && has('VAPID_PUBLIC_KEY') && has('VAPID_PRIVATE_KEY'), secrets: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'] },
     { id: 'cron', configured: has('CRON_TOKEN'), secrets: ['CRON_TOKEN'] },

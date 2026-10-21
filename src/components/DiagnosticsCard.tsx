@@ -77,7 +77,8 @@ export function DiagnosticsCard() {
           <p style={muted}>
             {t('diag.checked', { time: new Intl.DateTimeFormat(dateLocale(lang), { timeStyle: 'short', dateStyle: 'medium' }).format(data.checkedAt) })}
             {' · '}
-            {data.region ? t('diag.region', { region: data.region }) : data.runtime.cloudRun ? t('diag.regionUnknown') : t('diag.local')}
+            {data.runtime.host === 'railway' ? `Railway · ` : ''}
+            {data.region ? t('diag.region', { region: data.region }) : data.runtime.cloudRun ? t('diag.regionUnknown') : data.runtime.host === 'railway' ? '' : t('diag.local')}
           </p>
           <p className="font-semibold" style={{ color: problems.length ? 'var(--color-gold)' : 'var(--color-up)' }}>
             {problems.length ? t('diag.someProblems', { n: problems.length, total: data.probes.length }) : t('diag.allOk', { total: data.probes.length })}

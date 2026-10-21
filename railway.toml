@@ -1,0 +1,13 @@
+# railway.toml — Railway runs the always-on AssetRadar server (Express API, price/news streams,
+# market scans and the daily jobs) and also serves the built front end. Region: set Singapore
+# (asia-southeast1) in the Railway service settings. Variables (secrets) are set in Railway, never here.
+[build]
+builder = "RAILPACK"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "NODE_ENV=production npm start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

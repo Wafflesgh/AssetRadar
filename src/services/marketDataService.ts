@@ -881,7 +881,7 @@ export async function fetchBriefDates(): Promise<string[]> {
 export type DiagnosticsReport = {
   checkedAt: number;
   region: string | null;
-  runtime: { node: string; cloudRun: boolean };
+  runtime: { node: string; cloudRun: boolean; host?: string };
   probes: ProbeResult[];
   setup: SetupItem[];
   /** Live server state (no secrets): Gemini model chain and the daily jobs. */

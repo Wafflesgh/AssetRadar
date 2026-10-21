@@ -4,6 +4,8 @@ Semua fitur tetap jalan **tanpa** langkah di bawah (versi lokal: data hanya di p
 
 **Aturan keamanan:** nilai kunci hanya disalin ke `.env` di laptop, ke **Secrets** di Google AI Studio, dan ke **Secrets** repo GitHub. Jangan pernah menempelkannya di chat, kode, atau file lain.
 
+> Rencana hosting baru (Vercel + Railway + Supabase): lihat `docs/BLUEPRINT.md` §9. Panduan di bawah untuk hosting lama (Google AI Studio / Cloud Run).
+
 ## 0. Kunci yang sudah dibuat otomatis
 
 Skrip `node scripts/generate-secrets.mjs` sudah mengisi `.env` di laptop dengan:

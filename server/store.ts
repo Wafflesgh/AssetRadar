@@ -2,9 +2,10 @@
  * store.ts — Server-side key/value storage for data that must survive Cloud Run restarts:
  * synced user data, the server AI forward-test log, alerts state, push subscriptions and daily
  * morning briefs. Uses Supabase (Postgres via its REST API, one table `assetradar_kv`) when
- * SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set; otherwise an in-memory map that is lost
+ * SUPABASE_URL and SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY) are set; otherwise an in-memory map that is lost
  * on restart. The key never leaves the server and is never logged.
  */
+import { supabaseHeaders, supabaseKey } from '../src/utils/hosting.ts';
 
 export interface KvStore {
   provider: 'supabase' | 'memory';
@@ -54,7 +55,7 @@ class SupabaseStore implements KvStore {
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return { apikey: this.key, Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json', ...extra };
+    return { ...supabaseHeaders(this.key), 'Content-Type': 'application/json', ...extra };
   }
 
   private async call(url: string, init: RequestInit): Promise<Response> {
@@ -100,7 +101,7 @@ class SupabaseStore implements KvStore {
 /** Supabase when configured, otherwise memory. */
 export function createStore(env: NodeJS.ProcessEnv = process.env): KvStore {
   const url = env.SUPABASE_URL?.trim();
-  const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const key = supabaseKey(env);
   if (url && key && /^https:\/\//.test(url)) return new SupabaseStore(url, key);
   return new MemoryStore();
 }
