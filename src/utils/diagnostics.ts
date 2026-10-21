@@ -48,6 +48,10 @@ export const PROBES: ProbeDef[] = [
   { id: 'goldApi', name: 'gold-api.com', url: 'https://api.gold-api.com/price/XAU', features: ['gold'] },
   { id: 'googleNews', name: 'Google News', url: 'https://news.google.com/rss/search?q=IHSG&hl=id&gl=ID&ceid=ID:id', features: ['news', 'sentiment'] },
   { id: 'fred', name: 'FRED (St. Louis Fed)', url: 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=IRSTCI01IDM156N', headers: { 'User-Agent': 'AssetRadar/1.0 (personal research; non-commercial)' }, features: ['macro'] },
+  // Alternatives when fredgraph.csv is unreachable (it times out from Vercel's Singapore servers)
+  { id: 'fredApi', name: 'FRED API (needs a free key)', url: 'https://api.stlouisfed.org/fred/series?series_id=IRSTCI01IDM156N&file_type=json', okStatuses: [400], features: ['macro'] },
+  { id: 'oecd', name: 'OECD Data API', url: 'https://sdmx.oecd.org/public/rest/dataflow/OECD.SDD.STES/DSD_STES@DF_FINMARK/latest', features: ['macro'] },
+  { id: 'imf', name: 'IMF DataMapper', url: 'https://www.imf.org/external/datamapper/api/v1/PCPIPCH/IDN', features: ['macro'] },
   { id: 'worldBank', name: 'World Bank', url: 'https://api.worldbank.org/v2/country/IDN/indicator/FP.CPI.TOTL.ZG?format=json&per_page=1', features: ['macro'] },
   { id: 'worldBankCmo', name: 'World Bank commodity prices', url: 'https://www.worldbank.org/en/research/commodity-markets', features: ['commodities'] },
   { id: 'bi', name: 'Bank Indonesia', url: 'https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx', features: ['macro'] },
