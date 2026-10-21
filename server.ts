@@ -209,6 +209,7 @@ import {
 import { registerSbnRoute } from './server/sbn.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
+import { BIS_EXPLORER, BIS_SERIES, OECD_EXPLORER, OECD_SERIES, bisUrl, oecdUrl, parseOecdCsv, type OecdSeriesDef } from './src/utils/oecd.ts';
 import { findPinkSheetLink, monthlyCommodities, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type MonthlyCommodity, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
   addHistory,
@@ -3247,6 +3248,31 @@ async function fetchFred(id: string): Promise<string> {
   throw lastError instanceof Error ? lastError : new Error('FRED unavailable');
 }
 
+/**
+ * OECD / BIS csv (the OECD answers 500 without an explicit Accept-Language). The OECD answers 429
+ * to bursts, so its requests go one at a time with a pause, and a 429 waits and tries again.
+ */
+let statsQueue: Promise<unknown> = Promise.resolve();
+async function fetchStatsCsv(url: string): Promise<string> {
+  const once = async () => fetchWithTimeout(url, { headers: { 'User-Agent': FRED_USER_AGENT, Accept: 'text/csv', 'Accept-Language': 'en' } }, 25_000);
+  const run = async (): Promise<string> => {
+    let res = await once();
+    for (let attempt = 0; res.status === 429 && attempt < 2; attempt++) {
+      await new Promise((r) => setTimeout(r, 6000 * (attempt + 1)));
+      res = await once();
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  };
+  if (!url.startsWith('https://sdmx.oecd.org/')) return run();
+  const job = statsQueue.then(run, run);
+  statsQueue = job.then(
+    () => new Promise((r) => setTimeout(r, 1200)),
+    () => new Promise((r) => setTimeout(r, 1200))
+  );
+  return job;
+}
+
 /** World Bank Pink Sheet (monthly commodity prices; xlsx of ±600 KB, updated early each month). Cache 24 h. */
 const pinkCache: { entry: CacheEntry<PinkSheet> | null } = { entry: null };
 async function getPinkSheet(): Promise<PinkSheet> {
@@ -3303,20 +3329,40 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     }
   };
   const fred = (id: string) => get(id, async () => parseFredCsv(await fetchFred(id)), [] as MacroPoint[]);
+  // FRED does not answer from Vercel's servers: the same data straight from the OECD / BIS, FRED only
+  // as a fallback on hosts that reach it (never on serverless, where it only times out)
+  const stats = (id: string, url: string, fredId?: string) =>
+    get(
+      id,
+      async () => {
+        try {
+          const pts = parseOecdCsv(await fetchStatsCsv(url));
+          if (pts.length) return pts;
+          throw new Error('no observations');
+        } catch (err) {
+          if (!fredId || SERVERLESS) throw err;
+          return parseFredCsv(await fetchFred(fredId));
+        }
+      },
+      [] as MacroPoint[]
+    );
+  const oecd = (id: string, def: OecdSeriesDef, fredId?: string) => stats(id, oecdUrl(def, '2014-01'), fredId);
   const wb = (id: string) =>
     get(id, async () => parseWorldBank(JSON.parse(await fetchText(`https://api.worldbank.org/v2/country/IDN/indicator/${id}?format=json&per_page=60`))), [] as MacroPoint[]);
-  const [biRate, biInflation, interbank, cpiYoy, cpiIndex, gdp, reserves, trade, usdIdr, wbInfl, wbGdp] = await Promise.all([
+  const [biRate, biInflation, interbank, cpiYoy, cpiIndex, gdp, reserves, trade, usdIdr, wbInfl, wbGdp, wbReserves] = await Promise.all([
     get('bi-rate', async () => parseBiTable(await fetchText('https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx')), [] as MacroPoint[]),
     get('bi-inflation', async () => parseBiTable(await fetchText('https://www.bi.go.id/en/statistik/indikator/data-inflasi.aspx')), [] as MacroPoint[]),
-    fred('IRSTCI01IDM156N'),
-    fred('CPALTT01IDM659N'),
-    fred('IDNCPIALLMINMEI'),
-    fred('IDNGDPRQPSMEI'),
-    fred('TRESEGIDM052N'),
-    fred('XTNTVA01IDM667S'),
-    fred('CCUSMA02IDM618N'),
+    oecd('oecd-interbank', OECD_SERIES.interbank, 'IRSTCI01IDM156N'),
+    oecd('oecd-cpi-yoy', OECD_SERIES.cpiYoy, 'CPALTT01IDM659N'),
+    oecd('oecd-cpi-index', OECD_SERIES.cpiIndex, 'IDNCPIALLMINMEI'),
+    oecd('oecd-gdp', OECD_SERIES.gdpYoy, 'IDNGDPRQPSMEI'),
+    // Monthly reserves are IMF data (FRED, IMF block Vercel): FRED where it answers, else annual World Bank
+    SERVERLESS ? Promise.resolve([] as MacroPoint[]) : fred('TRESEGIDM052N'),
+    oecd('oecd-trade', OECD_SERIES.tradeBalance, 'XTNTVA01IDM667S'),
+    oecd('oecd-usdidr', OECD_SERIES.usdIdr, 'CCUSMA02IDM618N'),
     wb('FP.CPI.TOTL.ZG'),
     wb('NY.GDP.MKTP.KD.ZG'),
+    wb('FI.RES.XGLD.CD'),
   ]);
   const since = (pts: MacroPoint[], from = '2014-01-01') => pts.filter((p) => p.date >= from);
   const series: MacroSeries[] = [
@@ -3325,8 +3371,8 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
       label: 'Interbank overnight rate (follows the BI-Rate)',
       unit: '%',
       frequency: 'monthly',
-      source: 'OECD via FRED',
-      sourceUrl: FRED_PAGE('IRSTCI01IDM156N'),
+      source: 'OECD',
+      sourceUrl: OECD_EXPLORER,
       points: since(interbank),
       note: 'Monthly average of the overnight interbank rate, which tracks Bank Indonesia\'s policy rate.',
     },
@@ -3335,56 +3381,67 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
       label: 'Inflation, CPI year-on-year',
       unit: '%',
       frequency: 'monthly',
-      source: 'OECD via FRED; latest months from Bank Indonesia',
+      source: 'OECD; latest months from Bank Indonesia',
       sourceUrl: 'https://www.bi.go.id/en/statistik/indikator/data-inflasi.aspx',
       points: since(mergeSeries(cpiYoy, biInflation)),
-      note: 'FRED stops in April 2025 and bi.go.id lists only the latest 10 months, so months in between may be missing.',
+      note: 'OECD monthly CPI, completed with the latest months listed on bi.go.id.',
     },
     {
       id: 'inflationMom',
       label: 'Inflation, CPI month-on-month',
       unit: '%',
       frequency: 'monthly',
-      source: 'OECD via FRED',
-      sourceUrl: FRED_PAGE('IDNCPIALLMINMEI'),
+      source: 'OECD',
+      sourceUrl: OECD_EXPLORER,
       points: since(periodChange(cpiIndex)),
-      note: 'Computed from the CPI index; the free series currently ends in April 2025.',
+      note: 'Computed from the OECD CPI index.',
     },
-    { id: 'gdpYoy', label: 'Real GDP growth, year-on-year', unit: '%', frequency: 'quarterly', source: 'OECD via FRED', sourceUrl: FRED_PAGE('IDNGDPRQPSMEI'), points: since(gdp) },
-    {
-      id: 'reserves',
-      label: 'FX reserves (excluding gold)',
-      unit: 'US$ bn',
-      frequency: 'monthly',
-      source: 'IMF via FRED',
-      sourceUrl: FRED_PAGE('TRESEGIDM052N'),
-      points: since(reserves.map((p) => ({ date: p.date, value: p.value / 1000 }))),
-    },
+    { id: 'gdpYoy', label: 'Real GDP growth, year-on-year', unit: '%', frequency: 'quarterly', source: 'OECD', sourceUrl: OECD_EXPLORER, points: since(gdp) },
+    reserves.length
+      ? {
+          id: 'reserves',
+          label: 'FX reserves (excluding gold)',
+          unit: 'US$ bn',
+          frequency: 'monthly',
+          source: 'IMF via FRED',
+          sourceUrl: FRED_PAGE('TRESEGIDM052N'),
+          points: since(reserves.map((p) => ({ date: p.date, value: p.value / 1000 }))),
+        }
+      : {
+          id: 'reserves',
+          label: 'FX reserves (excluding gold), annual',
+          unit: 'US$ bn',
+          frequency: 'annual',
+          source: 'World Bank',
+          sourceUrl: 'https://data.worldbank.org/indicator/FI.RES.XGLD.CD?locations=ID',
+          points: since(wbReserves.map((p) => ({ date: p.date, value: p.value / 1e9 })), '2000-01-01'),
+        },
     {
       id: 'tradeBalance',
       label: 'Trade balance (seasonally adjusted)',
       unit: 'US$ bn',
       frequency: 'monthly',
-      source: 'OECD via FRED',
-      sourceUrl: FRED_PAGE('XTNTVA01IDM667S'),
+      source: 'OECD',
+      sourceUrl: OECD_EXPLORER,
       points: since(trade.map((p) => ({ date: p.date, value: p.value / 1e9 }))),
     },
-    { id: 'usdIdr', label: 'USD/IDR (monthly average)', unit: 'Rp', frequency: 'monthly', source: 'OECD via FRED', sourceUrl: FRED_PAGE('CCUSMA02IDM618N'), points: since(usdIdr) },
+    { id: 'usdIdr', label: 'USD/IDR (monthly average)', unit: 'Rp', frequency: 'monthly', source: 'OECD', sourceUrl: OECD_EXPLORER, points: since(usdIdr) },
     { id: 'inflationAnnual', label: 'Inflation, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=ID', points: since(wbInfl, '2000-01-01') },
     { id: 'gdpAnnual', label: 'GDP growth, annual', unit: '%', frequency: 'annual', source: 'World Bank', sourceUrl: 'https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG?locations=ID', points: since(wbGdp, '2000-01-01') },
   ].filter((x) => x.points.length > 0) as MacroSeries[];
   // ---- Stage 4 additions: more FRED series, Yahoo monthly markets, optional BPS ----
   const ym = (sym: string) => get(sym, async () => monthlyPoints(await fetchYahooMonthly(sym)), [] as MacroPoint[]);
   const [fedFunds, exportsS, importsS, currentAccount, reer, govDebt, credit, house, confidence] = await Promise.all([
-    fred('DFEDTARU'),
-    fred('XTEXVA01IDM667S'),
-    fred('XTIMVA01IDM667S'),
-    fred('IDNB6BLTT02STSAQ'),
-    fred('CCRETT01IDM661N'),
-    fred('GGGDTAIDA188N'),
-    fred('CRDQIDAPABIS'),
-    fred('QIDN628BIS'),
-    fred('CSCICP03IDM665S'),
+    // US overnight rate (effective fed funds, monthly) stands in for the target upper bound
+    oecd('oecd-us-rate', OECD_SERIES.usCallRate, 'DFEDTARU'),
+    oecd('oecd-exports', OECD_SERIES.exports, 'XTEXVA01IDM667S'),
+    oecd('oecd-imports', OECD_SERIES.imports, 'XTIMVA01IDM667S'),
+    oecd('oecd-current-account', OECD_SERIES.currentAccount, 'IDNB6BLTT02STSAQ'),
+    oecd('oecd-reer', OECD_SERIES.reer, 'CCRETT01IDM661N'),
+    SERVERLESS ? Promise.resolve([] as MacroPoint[]) : fred('GGGDTAIDA188N'),
+    stats('bis-credit', bisUrl(BIS_SERIES.privateCredit, '2014'), 'CRDQIDAPABIS'),
+    stats('bis-property', bisUrl(BIS_SERIES.housePrices, '2014'), 'QIDN628BIS'),
+    oecd('oecd-confidence', OECD_SERIES.confidence, 'CSCICP03IDM665S'),
   ]);
   const pink = await get('pinksheet', getPinkSheet, { updated: null, series: new Map() } as PinkSheet);
   const yahooIds = ['MTF=F', 'HG=F', 'ALI=F', 'BZ=F', 'GC=F', '^VIX', '000001.SS', '^HSI', 'EIDO', '^JKLQ45', 'DX-Y.NYB', '^TNX', 'THBIDR=X', 'PHPIDR=X', 'INRIDR=X', 'MYRIDR=X', 'CNYIDR=X', 'SGDIDR=X'];
@@ -3440,7 +3497,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   // Monetary & rates
   if (biRate.length) add(ser('biRate', 'BI-Rate', '%', 'decision', 'Bank Indonesia', 'https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx', biPath), 'monetary', false);
   add(byId.get('policyRate'), 'monetary', false);
-  add(ser('biFedSpread', 'BI-Rate minus Fed funds (upper bound)', 'pts', 'monthly', 'Bank Indonesia, FRED (DFEDTARU)', FRED_PAGE('DFEDTARU'), spreadSeries(biPath, fedMonthly)), 'monetary', true);
+  add(ser('biFedSpread', 'BI-Rate minus US overnight rate (effective fed funds)', 'pts', 'monthly', 'Bank Indonesia, OECD', OECD_EXPLORER, spreadSeries(biPath, fedMonthly)), 'monetary', true);
   // Inflation & prices
   add(byId.get('inflationYoy'), 'inflation', false);
   add(byId.get('inflationMom'), 'inflation', false);
@@ -3450,14 +3507,14 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   // Growth & activity
   add(byId.get('gdpYoy'), 'growth', true);
   add(byId.get('gdpAnnual'), 'growth', true);
-  add(ser('consumerConfidence', 'Consumer confidence (OECD)', 'index', 'monthly', 'OECD via FRED', FRED_PAGE('CSCICP03IDM665S'), confidence), 'growth', true);
+  add(ser('consumerConfidence', 'Consumer confidence (OECD)', 'index', 'monthly', 'OECD', OECD_EXPLORER, confidence), 'growth', true);
   // External
   add(byId.get('reserves'), 'external', true);
   add(byId.get('tradeBalance'), 'external', true);
-  add(ser('exports', 'Exports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD via FRED', FRED_PAGE('XTEXVA01IDM667S'), exportsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', true);
-  add(ser('imports', 'Imports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD via FRED', FRED_PAGE('XTIMVA01IDM667S'), importsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', null);
-  add(ser('currentAccount', 'Current account, % of GDP', '%', 'quarterly', 'OECD via FRED', FRED_PAGE('IDNB6BLTT02STSAQ'), currentAccount), 'external', true);
-  add(ser('reer', 'Real effective exchange rate', 'index', 'monthly', 'BIS via FRED', FRED_PAGE('CCRETT01IDM661N'), reer), 'external', null);
+  add(ser('exports', 'Exports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD', OECD_EXPLORER, exportsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', true);
+  add(ser('imports', 'Imports (seasonally adjusted)', 'US$ bn', 'monthly', 'OECD', OECD_EXPLORER, importsS.map((p) => ({ date: p.date, value: p.value / 1e9 }))), 'external', null);
+  add(ser('currentAccount', 'Current account, % of GDP', '%', 'quarterly', 'OECD', OECD_EXPLORER, currentAccount), 'external', true);
+  add(ser('reer', 'Real effective exchange rate', 'index', 'monthly', 'OECD', OECD_EXPLORER, reer), 'external', null);
   add(byId.get('usdIdr'), 'external', false);
   for (const [sym, label] of [['THBIDR=X', 'THB/IDR'], ['PHPIDR=X', 'PHP/IDR'], ['INRIDR=X', 'INR/IDR'], ['MYRIDR=X', 'MYR/IDR'], ['CNYIDR=X', 'CNY/IDR'], ['SGDIDR=X', 'SGD/IDR']] as const) {
     add(ser(`fx-${label.slice(0, 3).toLowerCase()}`, `${label} (monthly)`, 'Rp', 'monthly', 'Yahoo Finance', yUrl(sym), yahoo.get(sym) ?? []), 'external', null);
@@ -3466,8 +3523,8 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   // Fiscal
   add(ser('govDebt', 'Government debt, % of GDP', '%', 'annual', 'IMF via FRED', FRED_PAGE('GGGDTAIDA188N'), govDebt), 'fiscal', false);
   // Financial
-  add(ser('privateCredit', 'Credit to the private non-financial sector', 'index', 'quarterly', 'BIS via FRED', FRED_PAGE('CRDQIDAPABIS'), credit), 'financial', true);
-  add(ser('housePrices', 'Residential property prices', 'index', 'quarterly', 'BIS via FRED', FRED_PAGE('QIDN628BIS'), house), 'financial', null);
+  add(ser('privateCredit', 'Credit to the private non-financial sector, % of GDP', '%', 'quarterly', 'BIS', BIS_EXPLORER, credit), 'financial', true);
+  add(ser('housePrices', 'Residential property prices (real)', 'index', 'quarterly', 'BIS', BIS_EXPLORER, house), 'financial', null);
   add(ser('lq45', 'LQ45 index', 'pts', 'monthly', 'Yahoo Finance', yUrl('^JKLQ45'), yahoo.get('^JKLQ45') ?? []), 'financial', true);
   // Commodities important for Indonesia (exporter of coal, copper, aluminium; net oil importer)
   add(ser('coal', 'Coal, API2 Rotterdam futures (proxy)', 'US$/t', 'monthly', 'Yahoo Finance', yUrl('MTF=F'), yahoo.get('MTF=F') ?? []), 'commodities', true);
@@ -3570,12 +3627,24 @@ function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
   };
 }
 
+const MACRO_STORE_KEY = 'macro:indonesia';
+
 async function getIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   if (macroCache.entry && macroCache.entry.expiresAt > Date.now()) return macroCache.entry.data;
+  if (!macroCache.entry && SERVERLESS) {
+    // A cold serverless instance starts from the last saved result (the OECD limits request bursts)
+    const saved = await getPacked<IndonesiaMacroPayload>(store, MACRO_STORE_KEY).catch(() => null);
+    const ttl = saved?.failed?.length ? 30 * 60_000 : MACRO_TTL_MS;
+    if (saved?.generatedAt && Date.now() - saved.generatedAt < ttl && saved.series?.length) {
+      macroCache.entry = { data: saved, expiresAt: saved.generatedAt + ttl };
+      return saved;
+    }
+  }
   if (!macroCache.pending) {
     macroCache.pending = computeIndonesiaMacro()
-      .then((data) => {
+      .then(async (data) => {
         macroCache.entry = { data, expiresAt: Date.now() + (data.failed.length ? 30 * 60_000 : MACRO_TTL_MS) };
+        if (SERVERLESS && data.series.length) await setPacked(store, MACRO_STORE_KEY, data).catch(() => {});
         return data;
       })
       .finally(() => {
