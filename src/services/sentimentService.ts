@@ -49,6 +49,8 @@ export interface SentimentV2 {
   code: string;
   group: string;
   generatedAt: number;
+  /** Today's live price used as the Short horizon's provisional candle (null: closed candles only). */
+  liveBar?: { price: number; at: number; date: string } | null;
   horizons: Record<Horizon, HorizonResult>;
   pillars: {
     scores: Record<PillarId, PillarScore>;

@@ -1383,6 +1383,7 @@ export const en = {
   "sent.refresh.now": "Refresh now",
   "sent.refresh.updated": "Updated {time}",
   "sent.refresh.note": "Prices in the score use closed daily candles; news and the stock pillars change during the day.",
+  "sent.refresh.noteLive": "Short uses the live price of {time} as a provisional candle; Medium and Long use closed daily candles. News and the stock pillars change during the day.",
   "sent.scan": "Scanning {market}: prices {m}, statements {s}, analyst data {a}",
   "sent.scanWaiting": "The cross-section scan is still running; pillar scores appear once enough stocks are collected.",
   "sent.evidence": "Back-test on {market}: IC {ic} (t {t}); the top 20% beat the base rate in {pct}% of months ({n} months, {from}–{to}).",

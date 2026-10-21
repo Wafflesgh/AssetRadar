@@ -1384,6 +1384,7 @@ export const id: Record<TranslationKey, string> = {
   "sent.refresh.now": "Segarkan sekarang",
   "sent.refresh.updated": "Diperbarui {time}",
   "sent.refresh.note": "Harga di skor memakai candle harian yang sudah ditutup; berita dan pilar saham berubah sepanjang hari.",
+  "sent.refresh.noteLive": "Pendek memakai harga live pukul {time} sebagai candle sementara; Menengah dan Panjang memakai candle harian yang sudah ditutup. Berita dan pilar saham berubah sepanjang hari.",
   "sent.scan": "Memindai {market}: harga {m}, laporan {s}, data analis {a}",
   "sent.scanWaiting": "Pemindaian cross-section masih berjalan; skor pilar muncul setelah cukup saham terkumpul.",
   "sent.evidence": "Uji historis di {market}: IC {ic} (t {t}); 20% teratas mengalahkan base rate di {pct}% bulan ({n} bulan, {from}–{to}).",

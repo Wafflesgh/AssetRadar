@@ -203,7 +203,9 @@ export function InvestmentSentimentPanel({ asset }: { asset: AssetConfig }) {
         <span className="font-mono-num">{t('sent.refresh.updated', { time: new Intl.DateTimeFormat(dateLocale(lang), { timeStyle: 'short' }).format(data.generatedAt) })}</span>
       </div>
       <p className="text-[11px] -mt-2" style={{ color: 'var(--text-secondary)' }}>
-        {t('sent.refresh.note')}
+        {data.liveBar
+          ? t('sent.refresh.noteLive', { time: new Intl.DateTimeFormat(dateLocale(lang), { timeStyle: 'short' }).format(data.liveBar.at) })
+          : t('sent.refresh.note')}
       </p>
 
       <div

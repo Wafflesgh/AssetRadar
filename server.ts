@@ -1857,8 +1857,7 @@ function livePriceFor(asset: Asset): { price: number; at: number } | null {
 }
 
 /** Puts the live price in as today's bar (replacing a same-day close) without mutating the cache. */
-function withLiveBar(bars: DailyBar[], asset: Asset): DailyBar[] {
-  const live = livePriceFor(asset);
+function withLiveBar(bars: DailyBar[], asset: Asset, live = livePriceFor(asset)): DailyBar[] {
   if (!live || bars.length === 0) return bars;
   const date = localDate(live.at, asset.exchange);
   const last = bars[bars.length - 1];
@@ -2716,14 +2715,18 @@ async function computeSentimentV2(asset: Asset) {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
   const bars = await recentHistoryFor(asset).catch(() => [] as DailyBar[]);
-  // Closed daily bars only (no live bar): indicators need finished candles
+  // Medium and Long use closed daily bars only; the Short technicals take today's live price as a
+  // provisional candle (owner's choice, 21 Oct 2026), so they move during the trading day
   const closes = bars.map((b) => b.close);
+  const live = await livePriceForSentiment(asset);
+  const shortBars = live ? withLiveBar(bars, asset, live) : bars;
+  const liveBar = shortBars !== bars && shortBars.length ? { price: live!.price, at: live!.at, date: shortBars[shortBars.length - 1].date } : null;
   const yearBars = asset.group === 'crypto' ? 365 : 252;
   const market = asset.group === 'idStock' ? 'idx' : asset.group === 'usStock' ? 'us' : null;
   const mp = market ? currentPillars(market) : null;
   const sp = mp?.stocks.get(asset.symbol) ?? null;
   if (market && !sp) crossSections[market].touch();
-  const tech = shortTechnical(closes);
+  const tech = shortTechnical(shortBars.map((b) => b.close));
   const macro = macroComponent(asset);
   let deriv: number | null = null;
   if (asset.group === 'crypto' && asset.binanceFutures) {
@@ -2751,7 +2754,7 @@ async function computeSentimentV2(asset: Asset) {
       macroLinked: isMacroLinked(asset.group, asset.symbol),
       validation: validationFor(market ?? (asset.group === 'crypto' ? 'crypto' : null), h),
       dates: {
-        technical: lastBar,
+        technical: liveBar?.date ?? lastBar,
         tsMomentum: lastBar,
         trend: lastBar,
         momentum: sp ? sp.raw.asOf : null,
@@ -2792,6 +2795,7 @@ async function computeSentimentV2(asset: Asset) {
         }
       : null,
     notApplicable: market ? null : 'no-statements',
+    liveBar,
     technicalParts: tech?.parts ?? null,
     macro,
     freshness: {
@@ -2802,6 +2806,19 @@ async function computeSentimentV2(asset: Asset) {
     },
     disclaimer: SENTIMENT_DISCLAIMER,
   };
+}
+
+/** Live price for the Short horizon's provisional candle: a cached quote, else one quick fetch (≤4 s). */
+async function livePriceForSentiment(asset: Asset): Promise<{ price: number; at: number } | null> {
+  const known = () => {
+    const sweep = idxSweep.ticks.get(asset.symbol);
+    return livePriceFor(asset) ?? (sweep && sweep.price > 0 ? { price: sweep.price, at: sweep.updatedAt } : null);
+  };
+  const have = known();
+  if (have) return have;
+  const fetching = asset.indodaxPair ? getIndodaxPrices() : getQuotesFor([asset]);
+  await Promise.race([fetching.catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
+  return known();
 }
 
 /** Cached 2 minutes; fresh (the panel's "Refresh now") recomputes once the result is 20 s old. */
