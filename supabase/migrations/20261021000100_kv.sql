@@ -9,3 +9,8 @@ create table if not exists assetradar_kv (
 );
 
 alter table assetradar_kv enable row level security;
+
+-- Explicit grants, so it works with or without "Automatically expose new tables":
+-- only the server key (service_role) may use the table; the public roles get nothing.
+revoke all on table assetradar_kv from anon, authenticated;
+grant select, insert, update, delete on table assetradar_kv to service_role;
