@@ -26,6 +26,7 @@ import {
 } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
+import { LiveIndication } from './LiveIndication.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { CorporateCalendarPanel } from './CorporateCalendarPanel.tsx';
@@ -321,6 +322,7 @@ export function AssetDetailView({
                   {t('detail.converted', { usdt: formatDecimal(tick.priceUsdt, tick.priceUsdt >= 1 ? 4 : 8) })}
                 </span>
               )}
+              {isLoaded && <LiveIndication code={asset.code} officialUsd={asset.currency === 'USD' && tick && Number.isFinite(tick.price) ? tick.price : null} />}
               <span
                 className="text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}

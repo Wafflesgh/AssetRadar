@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   BinanceClient,
   BinanceHttpError,
+  parseMarkPrices,
   SPOT_BASES,
   WeightGovernor,
   buildQuery,
@@ -180,4 +181,14 @@ test('window changes from hourly candles and the derivatives snapshot', async ()
   assert.ok(Math.abs((d.openInterestChange24h ?? 0) - 10) < 1e-9);
   assert.equal(d.longShortRatio, 1.8);
   assert.equal(d.basisRate, 5);
+});
+
+test('mark-price stream rows keep the index price', () => {
+  const rows = parseMarkPrices([
+    { e: 'markPriceUpdate', E: 1, s: 'XAUUSDT', p: '4140.6', i: '4139.38' },
+    { s: 'BADUSDT', p: '1', i: '0' },
+    { p: '1' },
+  ]);
+  assert.deepEqual(rows, [{ symbol: 'XAUUSDT', mark: 4140.6, index: 4139.38, eventTime: 1 }]);
+  assert.deepEqual(parseMarkPrices(null), []);
 });

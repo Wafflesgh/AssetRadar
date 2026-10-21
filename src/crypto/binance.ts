@@ -20,6 +20,8 @@ export const SPOT_BASES = [
 export const FUTURES_BASE = 'https://fapi.binance.com';
 /** All-market mini tickers (±1 s), public market streams only. */
 export const SPOT_MINI_TICKER_WS = 'wss://data-stream.binance.vision:443/ws/!miniTicker@arr';
+/** Futures mark and index prices of every contract, once a second (market streams moved under /market/ in 2026). */
+export const FUTURES_MARK_PRICE_WS = 'wss://fstream.binance.com/market/ws/!markPrice@arr@1s';
 
 /** Our own share of the per-IP weight limit (the server IP may be shared). */
 export const WEIGHT_BUDGET_SHARE = 0.2;
@@ -235,6 +237,28 @@ export function parseMiniTickers(json: unknown): MiniTicker[] {
     const close = num(r.c);
     if (!Number.isFinite(close)) continue;
     out.push({ symbol: r.s, close, open: num(r.o), high: num(r.h), low: num(r.l), volume: num(r.v), quoteVolume: num(r.q), eventTime: num(r.E) });
+  }
+  return out;
+}
+
+/** One futures contract from the mark-price stream: mark (p) and index (i, from the underlying markets). */
+export interface MarkPriceTick {
+  symbol: string;
+  mark: number;
+  index: number;
+  eventTime: number;
+}
+
+/** !markPrice@arr@1s payload: [{ e, E, s, p, i, … }, …]; entries without a usable index are skipped. */
+export function parseMarkPrices(json: unknown): MarkPriceTick[] {
+  const arr = Array.isArray(json) ? json : [];
+  const out: MarkPriceTick[] = [];
+  for (const t of arr) {
+    const r = t as Record<string, unknown>;
+    if (typeof r.s !== 'string') continue;
+    const index = num(r.i);
+    if (!Number.isFinite(index) || index <= 0) continue;
+    out.push({ symbol: r.s, mark: num(r.p), index, eventTime: num(r.E) });
   }
   return out;
 }

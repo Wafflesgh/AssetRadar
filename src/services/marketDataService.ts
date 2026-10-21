@@ -8,9 +8,12 @@
  * price snapshot, and exports fetch helpers for sentiment, history, correlation and news.
  * Views register symbols they show (IDX universe stocks, watchlist, portfolio, detail page) with
  * trackSymbols(); the stream refreshes those first. The serverless build (Vercel, serverMode.ts)
- * has no stream: prices come from the 10 s polling there.
+ * has no stream: prices come from the 10 s polling there. Coins priced from Binance (not Indodax) and spot gold
+ * follow Binance's public streams in the browser (binanceLive.ts, about once a second).
  */
 import { SERVER_PUSH } from './serverMode.ts';
+import { binanceFuturesLive, binanceSpotLive } from './binanceLive.ts';
+import { LIVE_MAIN_FUTURES, withLivePrice } from '../config/liveProxies.ts';
 import type { ProbeResult, SetupItem } from '../utils/diagnostics.ts';
 import type { StatementPeriod, StatementRow } from '../utils/statements.ts';
 import {
@@ -99,6 +102,11 @@ function newClientId(): string {
   }
 }
 
+/** Coins priced from Binance spot (not Indodax): their live price comes from the spot stream. */
+const LIVE_SPOT_COINS = ASSETS.filter((a) => a.binanceSpot && !a.indodaxPair && (a.priceSource ?? 'binance-spot') === 'binance-spot');
+/** Coins priced from Binance futures: their live price is the contract's mark price (÷ its multiplier). */
+const LIVE_FUTURES_COINS = ASSETS.filter((a) => a.binanceFutures && !a.indodaxPair && a.priceSource === 'binance-futures');
+
 export class MarketDataManager {
   private callbacks: MarketStreamCallbacks;
   private ticks: Record<string, PriceTick> = {};
@@ -122,6 +130,8 @@ export class MarketDataManager {
   private streamWatchdog: ReturnType<typeof setInterval> | null = null;
   private lastFocusKey = '';
   private lastFocusSentAt = 0;
+  private liveUnsubs: Array<() => void> = [];
+  private liveFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(callbacks: MarketStreamCallbacks) {
     this.callbacks = callbacks;
@@ -154,6 +164,7 @@ export class MarketDataManager {
     this.connectIndodaxWebSocket();
     this.connectPriceStream();
     this.startPollingTimers();
+    this.connectBinanceLive();
   }
 
   public stop(): void {
@@ -170,6 +181,62 @@ export class MarketDataManager {
     this.disconnectPriceStream();
     this.stopStreamWatchdog();
     this.clearPollingTimers();
+    for (const off of this.liveUnsubs) off();
+    this.liveUnsubs = [];
+    if (this.liveFlushTimer) clearTimeout(this.liveFlushTimer);
+    this.liveFlushTimer = null;
+  }
+
+  /** Binance coins and spot gold follow Binance's public streams (at most one update a second). */
+  private connectBinanceLive(): void {
+    const schedule = () => {
+      if (this.liveFlushTimer) return;
+      this.liveFlushTimer = setTimeout(() => {
+        this.liveFlushTimer = null;
+        if (!this.isDestroyed) this.mergeTicks({});
+      }, 1000);
+    };
+    if (LIVE_SPOT_COINS.length) this.liveUnsubs.push(binanceSpotLive.subscribe(schedule));
+    if (Object.keys(LIVE_MAIN_FUTURES).length || LIVE_FUTURES_COINS.length) this.liveUnsubs.push(binanceFuturesLive.subscribe(schedule));
+  }
+
+  /** Puts the latest live Binance values over the server prices (only while a stream is live). */
+  private applyLive(next: Record<string, PriceTick>): void {
+    const now = Date.now();
+    const spot = binanceSpotLive.snapshot();
+    if (spot.status === 'live') {
+      for (const a of LIVE_SPOT_COINS) {
+        const tk = spot.tickers.get(a.binanceSpot as string);
+        const t = next[a.symbol];
+        if (!tk || !t || !t.priceUsdt || !(t.price > 0)) continue;
+        // The server's own USDT → Rupiah rate (price ÷ priceUsdt) converts the live USDT price
+        const rate = t.price / t.priceUsdt;
+        next[a.symbol] = {
+          ...t,
+          price: tk.close * rate,
+          priceUsdt: tk.close,
+          changePct24h: tk.open > 0 ? (tk.close / tk.open - 1) * 100 : t.changePct24h,
+          updatedAt: now,
+          status: 'live',
+        };
+      }
+    }
+    const fut = binanceFuturesLive.snapshot();
+    if (fut.status === 'live') {
+      for (const a of LIVE_FUTURES_COINS) {
+        const tk = fut.tickers.get(a.binanceFutures as string);
+        const t = next[a.symbol];
+        if (!tk || !t || !t.priceUsdt || !(t.price > 0) || !(tk.mark > 0)) continue;
+        const usdt = tk.mark / (a.futuresMultiplier || 1);
+        next[a.symbol] = { ...t, ...withLivePrice(t.price, t.changePct24h, usdt * (t.price / t.priceUsdt)), priceUsdt: usdt, updatedAt: now, status: 'live' };
+      }
+      for (const [sym, contract] of Object.entries(LIVE_MAIN_FUTURES)) {
+        const tk = fut.tickers.get(contract);
+        const t = next[sym];
+        if (!tk || !t || !(t.price > 0)) continue;
+        next[sym] = { ...t, ...withLivePrice(t.price, t.changePct24h, tk.index), updatedAt: now, status: 'live', source: 'Binance index (live)' };
+      }
+    }
   }
 
   public async retrySymbol(symbol: string): Promise<void> {
@@ -254,6 +321,8 @@ export class MarketDataManager {
             : existing?.sparkline,
       };
     }
+
+    this.applyLive(next);
 
     // Recompute Gold IDR/gram whenever XAU/USD or USD/IDR updates
     const xau = next['XAU/USD'];
