@@ -126,7 +126,7 @@ export function GeoAlertBanner() {
         color: 'var(--text-primary)',
       }}
     >
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-start gap-3">
+      <div className="max-w-7xl 2xl:max-w-[1680px] mx-auto flex flex-col md:flex-row md:items-start gap-3">
         <AlertOctagon
           className={`w-7 h-7 shrink-0 ${breaking ? 'news-live-dot' : ''}`}
           style={{ color: 'var(--color-down)' }}

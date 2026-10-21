@@ -443,7 +443,7 @@ export default function App() {
         className={
           isTerminal
             ? 'flex-1 w-full min-w-0 pb-14 md:pb-0'
-            : 'flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10'
+            : 'flex-1 w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10'
         }
       >
         {isTerminal && (
@@ -654,7 +654,7 @@ export default function App() {
           color: 'var(--text-secondary)',
         }}
       >
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="max-w-7xl 2xl:max-w-[1680px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="font-medium">
             {t('footer.disclaimer')}
           </p>
