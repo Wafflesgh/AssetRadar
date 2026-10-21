@@ -3688,7 +3688,8 @@ async function getAiOutlook(horizon: AiHorizon): Promise<AiOutlookPayload> {
   if (!cached && SERVERLESS) {
     // A cold serverless instance answers with the last saved result (≤24 h) and refreshes it
     const saved = await getPacked<AiOutlookPayload>(store, `ai:outlook:${horizon}`).catch(() => null);
-    if (saved?.generatedAt && Date.now() - saved.generatedAt < 24 * 3600_000) {
+    // A result saved before the model arena existed is recomputed instead
+    if (saved?.generatedAt && Date.now() - saved.generatedAt < 24 * 3600_000 && saved.assets?.some((a) => a.arena)) {
       cached = { data: saved, expiresAt: saved.generatedAt + AI_OUTLOOK_TTL_MS };
       aiOutlookCache.set(horizon, cached);
     }
@@ -3847,7 +3848,15 @@ async function runArenaDay(date: string, history: Map<string, DailyClose[]>): Pr
   const key = `${ARENA_PREFIX}${date.slice(0, 7)}`;
   let log = parseArenaLog(await getPacked(store, key)) ?? emptyArenaLog();
   const before = log.entries.length;
-  for (const horizon of AI_HORIZONS) log = recordArenaDay(log, date, horizon, (await getAiOutlook(horizon)).assets);
+  for (const horizon of AI_HORIZONS) {
+    let payload = await getAiOutlook(horizon);
+    // An outlook from before the arena carries no model results: compute it again
+    if (!payload.assets.some((a) => a.arena)) {
+      aiOutlookCache.delete(horizon);
+      payload = await getAiOutlook(horizon);
+    }
+    log = recordArenaDay(log, date, horizon, payload.assets);
+  }
   const saved = log.entries.length - before;
   if (saved > 0) await setPacked(store, key, log);
   let scored = 0;
@@ -3866,7 +3875,9 @@ async function runArenaDay(date: string, history: Map<string, DailyClose[]>): Pr
     }
   }
   arenaLiveCache.clear();
-  await markJobDone('arena', date);
+  // Only a day with recorded predictions counts as done (arenaLog: the first state key was set
+  // on 21 Oct 2026 by a run that found no arena results)
+  if (log.entries.some((e) => e.date === date)) await markJobDone('arenaLog', date);
   return { saved, scored };
 }
 
@@ -4626,7 +4637,7 @@ async function runTick(): Promise<Record<string, unknown>> {
   }
   out.jobs = await runDueJobs('tick').catch(failed);
   // The arena records on the forward-test day; catches up when it started after that day's job
-  if (jobs.state.forward && jobs.state.arena !== jobs.state.forward) out.arena = await runArenaDay(jobs.state.forward, new Map()).catch(failed);
+  if (jobs.state.forward && jobs.state.arenaLog !== jobs.state.forward) out.arena = await runArenaDay(jobs.state.forward, new Map()).catch(failed);
   const crossStep = (market: CrossMarket) => async (until: number) => {
     const r = await crossSections[market].scanStep(crossPersist, until);
     await saveCrossStatus(market, { status: crossSections[market].status() }, r.fetched);
