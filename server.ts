@@ -2804,10 +2804,12 @@ async function computeSentimentV2(asset: Asset) {
   };
 }
 
-async function getSentimentV2(asset: Asset) {
+/** Cached 2 minutes; fresh (the panel's "Refresh now") recomputes once the result is 20 s old. */
+async function getSentimentV2(asset: Asset, fresh = false) {
   const key = asset.symbol;
   const cached = sentimentCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const age = cached ? Date.now() - (cached.expiresAt - 2 * 60_000) : Infinity;
+  if (cached && cached.expiresAt > Date.now() && !(fresh && age > 20_000)) return cached.data;
   const data = await computeSentimentV2(asset);
   sentimentCache.set(key, { data, expiresAt: Date.now() + 2 * 60_000 });
   return data;
@@ -5313,7 +5315,7 @@ export async function createApp(): Promise<express.Express> {
       return;
     }
     try {
-      res.json(await getSentimentV2(asset));
+      res.json(await getSentimentV2(asset, req.query.fresh === '1'));
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Sentiment unavailable' });
     }

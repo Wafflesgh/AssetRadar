@@ -4,12 +4,13 @@
  * catalyst, every component's contribution (with not-applicable reasons and rescaled weights),
  * the three pillars and their sub-factors for stocks, the re-estimated hybrid fair value, the
  * headlines behind the news score, back-test evidence, data freshness and scan progress.
+ * The owner chooses how it reloads: every 2 minutes, hourly or only with "Refresh now".
  * A summary of evidence, not a buy/sell signal; the disclaimer is always shown.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CalendarClock, Gauge, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { AssetConfig } from '../../config/assets.ts';
-import { tOr, useLang, useT, type TranslationKey } from '../../i18n/index.ts';
+import { dateLocale, tOr, useLang, useT, type TranslationKey } from '../../i18n/index.ts';
 import { Rich } from '../../i18n/Rich.tsx';
 import type { Horizon } from '../../sentiment/newsHorizon.ts';
 import type { ComponentResult } from '../../sentiment/horizons.ts';
@@ -24,8 +25,10 @@ import {
 } from '../../services/sentimentService.ts';
 import { formatAssetPrice, formatDecimal } from '../../utils/format.ts';
 import { formatRelativeTime } from '../../utils/marketHours.ts';
+import { getSentimentRefresh, saveSentimentRefresh, type SentimentRefresh } from '../../utils/storage.ts';
 
-const REFRESH_MS = 2 * 60_000;
+const REFRESH_MS: Record<SentimentRefresh, number | null> = { '2m': 2 * 60_000, '1h': 60 * 60_000, manual: null };
+const REFRESH_MODES: SentimentRefresh[] = ['2m', '1h', 'manual'];
 const HORIZONS: Horizon[] = ['short', 'medium', 'long'];
 
 /** Score color: red → grey → green. */
@@ -45,7 +48,8 @@ export function horizonRangeKey(group: string, h: Horizon): TranslationKey {
 
 /** "Scanning IDX: prices 120/962, …" or null when nothing is running. */
 export function scanText(t: ReturnType<typeof useT>, scans: ScanStatus | null): string | null {
-  if (!scans || !scans.progress.some((p) => p.running)) return null;
+  // Serverless hosts scan in steps between visits: unfinished counts as scanning
+  if (!scans || !scans.progress.some((p) => p.running || (p.total > 0 && p.done < p.total))) return null;
   const p = Object.fromEntries(scans.progress.map((x) => [x.kind, `${x.done}/${x.total}`]));
   return t('sent.scan', {
     market: t(`sent.market.${scans.market}` as TranslationKey),
@@ -62,12 +66,14 @@ export function InvestmentSentimentPanel({ asset }: { asset: AssetConfig }) {
   const [validation, setValidation] = useState<ValidationResponse | null>(null);
   const [error, setError] = useState(false);
   const [tab, setTab] = useState<Horizon>('medium');
+  const [mode, setMode] = useState<SentimentRefresh>(getSentimentRefresh);
+  const [refreshing, setRefreshing] = useState(false);
 
   const market = asset.group === 'idStock' ? 'idx' : asset.group === 'usStock' ? 'us' : asset.group === 'crypto' ? 'crypto' : null;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
-      const d = await fetchSentimentV2(asset.symbol);
+      const d = await fetchSentimentV2(asset.symbol, fresh);
       setData(d);
       setError(false);
       if (market)
@@ -82,9 +88,24 @@ export function InvestmentSentimentPanel({ asset }: { asset: AssetConfig }) {
   useEffect(() => {
     setData(null);
     load();
-    const timer = setInterval(load, REFRESH_MS);
-    return () => clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    const every = REFRESH_MS[mode];
+    if (every === null) return;
+    const timer = setInterval(() => load(), every);
+    return () => clearInterval(timer);
+  }, [load, mode]);
+
+  const refreshNow = async () => {
+    setRefreshing(true);
+    await load(true);
+    setRefreshing(false);
+  };
+  const chooseMode = (m: SentimentRefresh) => {
+    setMode(m);
+    saveSentimentRefresh(m);
+  };
 
   const card = 'p-5 md:p-6 rounded-xl border space-y-4';
   const cardStyle = {
@@ -123,7 +144,7 @@ export function InvestmentSentimentPanel({ asset }: { asset: AssetConfig }) {
             </p>
             <button
               type="button"
-              onClick={load}
+              onClick={() => load()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
               style={{
                 backgroundColor: 'var(--bg-surface-subtle)',
@@ -148,6 +169,42 @@ export function InvestmentSentimentPanel({ asset }: { asset: AssetConfig }) {
   return (
     <section aria-labelledby="sent-heading" className={card} style={cardStyle}>
       {header}
+
+      {/* How the card reloads, when it last did, and a manual refresh */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+        <span>{t('sent.refresh.label')}</span>
+        <div role="radiogroup" aria-label={t('sent.refresh.label')} className="inline-flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+          {REFRESH_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => chooseMode(m)}
+              className="px-2 py-1 font-semibold"
+              style={{
+                backgroundColor: mode === m ? 'var(--accent-radar-soft)' : 'var(--bg-surface)',
+                color: mode === m ? 'var(--accent-radar)' : 'var(--text-secondary)',
+              }}
+            >
+              {t(`sent.refresh.${m}` as TranslationKey)}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={refreshNow}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border font-semibold disabled:opacity-60"
+          style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+        >
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'motion-safe:animate-spin' : ''}`} /> {t('sent.refresh.now')}
+        </button>
+        <span className="font-mono-num">{t('sent.refresh.updated', { time: new Intl.DateTimeFormat(dateLocale(lang), { timeStyle: 'short' }).format(data.generatedAt) })}</span>
+      </div>
+      <p className="text-[11px] -mt-2" style={{ color: 'var(--text-secondary)' }}>
+        {t('sent.refresh.note')}
+      </p>
 
       <div
         role="tablist"

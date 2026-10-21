@@ -80,7 +80,9 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const fetchSentimentV2 = (symbol: string) => getJson<SentimentV2>(`/api/sentiment/v2?symbol=${encodeURIComponent(symbol)}`);
+/** fresh: ask the server to recompute instead of answering from its 2-minute cache. */
+export const fetchSentimentV2 = (symbol: string, fresh = false) =>
+  getJson<SentimentV2>(`/api/sentiment/v2?symbol=${encodeURIComponent(symbol)}${fresh ? '&fresh=1' : ''}`);
 
 export interface RankingRow {
   symbol: string;

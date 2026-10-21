@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
   AI_PREFS: 'assetradar_ai_prefs',
   SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
+  SENTIMENT_REFRESH: 'assetradar_sentiment_refresh_v1',
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
   PORTFOLIO: 'assetradar_portfolio_v1',
@@ -116,6 +117,19 @@ export function getSidebarCollapsed(): boolean {
 export function saveSidebarCollapsed(collapsed: boolean): void {
   if (collapsed) safeSet(STORAGE_KEYS.SIDEBAR_COLLAPSED, '1');
   else safeRemove(STORAGE_KEYS.SIDEBAR_COLLAPSED);
+}
+
+export type SentimentRefresh = '2m' | '1h' | 'manual';
+
+/** How often the sentiment card reloads by itself (default every 2 minutes). */
+export function getSentimentRefresh(): SentimentRefresh {
+  const v = safeGet(STORAGE_KEYS.SENTIMENT_REFRESH);
+  return v === '1h' || v === 'manual' ? v : '2m';
+}
+
+export function saveSentimentRefresh(mode: SentimentRefresh): void {
+  if (mode === '2m') safeRemove(STORAGE_KEYS.SENTIMENT_REFRESH);
+  else safeSet(STORAGE_KEYS.SENTIMENT_REFRESH, mode);
 }
 
 /** The "Install AssetRadar" banner on the Radar was closed. */
