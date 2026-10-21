@@ -172,6 +172,7 @@ import {
 import { dailyJobDue, wibDate } from './src/utils/sync.ts';
 import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore, getPacked, setPacked } from './server/store.ts';
+import { arenaLiveBoard, emptyArenaLog, evaluateArenaLog, parseArenaLog, pendingArenaSymbols, recordArenaDay, type ArenaLog } from './src/ai/arena.ts';
 import { SERVERLESS, afterMs, everyMs, keepAlive } from './server/runtime.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
@@ -3790,6 +3791,8 @@ DATA: ${JSON.stringify(facts)}`;
 const store = createStore();
 const ownerAuth = createOwnerAuth();
 const FORWARD_PREFIX = 'forward:';
+/** Model arena: every model's daily prediction per horizon (arena:YYYY-MM, packed). */
+const ARENA_PREFIX = 'arena:';
 const FORWARD_TIME = '16:15'; // WIB, after the IDX close
 
 /** Last run date (WIB) of each daily job; persisted so a restart does not repeat a job. */
@@ -3832,6 +3835,43 @@ function runJob<T>(name: string, job: () => Promise<T>): Promise<T> {
   return p;
 }
 
+async function loadArenaMonths(): Promise<Array<{ key: string; log: ArenaLog }>> {
+  const keys = await store.keys(ARENA_PREFIX);
+  const out: Array<{ key: string; log: ArenaLog }> = [];
+  for (const key of keys) out.push({ key, log: parseArenaLog(await getPacked(store, key)) ?? emptyArenaLog() });
+  return out;
+}
+
+/** Records today's prediction of every arena model and scores the ones that fell due. */
+async function runArenaDay(date: string, history: Map<string, DailyClose[]>): Promise<{ saved: number; scored: number }> {
+  const key = `${ARENA_PREFIX}${date.slice(0, 7)}`;
+  let log = parseArenaLog(await getPacked(store, key)) ?? emptyArenaLog();
+  const before = log.entries.length;
+  for (const horizon of AI_HORIZONS) log = recordArenaDay(log, date, horizon, (await getAiOutlook(horizon)).assets);
+  const saved = log.entries.length - before;
+  if (saved > 0) await setPacked(store, key, log);
+  let scored = 0;
+  for (const m of (await loadArenaMonths()).slice(-6)) {
+    const pending = pendingArenaSymbols(m.log);
+    if (!pending.length) continue;
+    for (const sym of pending) {
+      if (history.has(sym)) continue;
+      const asset = getAssetBySymbol(sym);
+      history.set(sym, asset ? await dailyHistoryFor(asset).catch(() => []) : []);
+    }
+    const next = evaluateArenaLog(m.log, history);
+    if (next !== m.log) {
+      scored += next.entries.filter((e) => e.outcome).length - m.log.entries.filter((e) => e.outcome).length;
+      await setPacked(store, m.key, next);
+    }
+  }
+  arenaLiveCache.clear();
+  await markJobDone('arena', date);
+  return { saved, scored };
+}
+
+const arenaLiveCache = new Map<string, CacheEntry<unknown>>();
+
 async function loadForwardMonths(): Promise<Array<{ key: string; log: ForwardLog }>> {
   const keys = await store.keys(FORWARD_PREFIX);
   const out: Array<{ key: string; log: ForwardLog }> = [];
@@ -3843,7 +3883,7 @@ async function loadForwardMonths(): Promise<Array<{ key: string; log: ForwardLog
  * Server forward test: today's AI verdicts for both horizons and all three risk profiles
  * (stored per month), then scores every snapshot whose horizon has passed with real daily closes.
  */
-async function runServerForwardTest(): Promise<{ date: string; saved: number; scored: number }> {
+async function runServerForwardTest(): Promise<{ date: string; saved: number; scored: number; arena: { saved: number; scored: number } | null }> {
   const date = wibDate(Date.now());
   const key = `${FORWARD_PREFIX}${date.slice(0, 7)}`;
   let log = parseForwardLog(await store.get(key)) ?? emptyLog();
@@ -3886,9 +3926,14 @@ async function runServerForwardTest(): Promise<{ date: string; saved: number; sc
     }
   }
   forwardTrackCache.clear();
+  // The model arena rides on the same daily job (same outlook, same price history)
+  const arena = await runArenaDay(date, history).catch((err) => {
+    console.warn('[Arena] failed:', err instanceof Error ? err.message : err);
+    return null;
+  });
   await markJobDone('forward', date);
-  console.log(`[Forward] ${date}: ${saved} verdicts saved, ${scored} results scored`);
-  return { date, saved, scored };
+  console.log(`[Forward] ${date}: ${saved} verdicts saved, ${scored} results scored; arena ${arena ? `${arena.saved} saved, ${arena.scored} scored` : 'failed'}`);
+  return { date, saved, scored, arena };
 }
 
 const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
@@ -4580,6 +4625,8 @@ async function runTick(): Promise<Record<string, unknown>> {
     out.alerts = failed(err);
   }
   out.jobs = await runDueJobs('tick').catch(failed);
+  // The arena records on the forward-test day; catches up when it started after that day's job
+  if (jobs.state.forward && jobs.state.arena !== jobs.state.forward) out.arena = await runArenaDay(jobs.state.forward, new Map()).catch(failed);
   const crossStep = (market: CrossMarket) => async (until: number) => {
     const r = await crossSections[market].scanStep(crossPersist, until);
     await saveCrossStatus(market, { status: crossSections[market].status() }, r.fetched);
@@ -4823,6 +4870,24 @@ export async function createApp(): Promise<express.Express> {
       res.json({ profile, database: store.persistent, methods: methodSummaries(data.calls, data.forward.flatMap((f) => f.log.snapshots), profile) });
     } catch {
       res.status(502).json({ error: 'Summary unavailable' });
+    }
+  });
+
+  // Model arena, live part: each model's recorded daily predictions scored when due
+  app.get('/api/ai/arena-live', async (req, res) => {
+    const horizon = Number(req.query.horizon) === 60 ? 60 : 20;
+    try {
+      const cached = arenaLiveCache.get(String(horizon));
+      if (cached && cached.expiresAt > Date.now()) {
+        res.json(cached.data);
+        return;
+      }
+      const all: ArenaLog = { version: 1, entries: (await loadArenaMonths()).flatMap((m) => m.log.entries) };
+      const data = { board: arenaLiveBoard(all, horizon), persistent: store.persistent, scheduleWib: `${FORWARD_TIME} on weekdays` };
+      arenaLiveCache.set(String(horizon), { data, expiresAt: Date.now() + 10 * 60_000 });
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Arena unavailable' });
     }
   });
 

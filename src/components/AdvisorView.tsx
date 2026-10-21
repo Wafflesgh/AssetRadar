@@ -34,6 +34,7 @@ import { getAiPrefs, getSavedRiskResult, saveAiPrefs, type AiPrefs } from '../ut
 import { profileForAnswers } from '../config/riskProfiles.ts';
 import { LiveTrackRecord } from './LiveTrackRecord.tsx';
 import { TraceSection } from './TraceSection.tsx';
+import { ModelArena } from './ModelArena.tsx';
 import { useLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { assetName, groupTitle } from '../i18n/assetNames.ts';
@@ -255,6 +256,7 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
               </section>
             )
           )}
+          <ModelArena assets={data.assets} horizonDays={data.horizonDays} />
           <LiveTrackRecord ranked={ranked} horizonDays={data.horizonDays} profile={prefs.profile} ticks={ticks} />
           <TraceSection ticks={ticks} profile={prefs.profile} />
           <Methodology open={showMethod} onToggle={() => setShowMethod((s) => !s)} />

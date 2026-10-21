@@ -12,6 +12,7 @@
  * fundamentals, news drivers). Every check is listed in `checks` so the UI can show why.
  * This is a statistical screen, not a guarantee or personal financial advice.
  */
+import { runArena, type ArenaAsset } from './arena.ts';
 import {
   type DailyBar,
   FEATURE_LABELS,
@@ -81,6 +82,8 @@ export interface AssetOutlook {
    * numbers (never used for that choice) show whether they really helped.
    */
   idMacroTest?: IdMacroTest | null;
+  /** Every arena model on the same days (arena.ts): out-of-sample scores and today's probability. */
+  arena?: ArenaAsset | null;
   /** Evidence-weighted analysis summary (see analysis.ts), if it could be computed. */
   evidence?: OutlookEvidence | null;
   note?: string;
@@ -208,6 +211,7 @@ export function buildAssetOutlook(input: {
     candidates: selection?.candidates ?? [],
     modelValidation: evaluatePredictions(modelPreds.slice(0, Math.floor(modelPreds.length * 0.6))),
     modelHoldout: evaluatePredictions(modelPreds.slice(Math.floor(modelPreds.length * 0.6))),
+    arena: runArena({ samples, horizon: horizonDays, current, logisticPreds: modelPreds, logistic: model }),
   };
 }
 
