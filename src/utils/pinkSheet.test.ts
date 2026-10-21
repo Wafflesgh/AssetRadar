@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { findPinkSheetLink, parsePinkSheet } from './pinkSheet.ts';
+import { findPinkSheetLink, monthlyCommodities, parsePinkSheet } from './pinkSheet.ts';
 import { parseSharedStrings, parseSheetRows, sheetPaths } from './xlsxSheet.ts';
 import { readXlsxSheet } from '../../server/xlsx.ts';
 
@@ -95,4 +95,19 @@ test('xlsx container: sheet found by name in stored and deflated zips', () => {
     assert.equal(rows?.get(8)?.get('D'), 15100);
   }
   assert.equal(readXlsxSheet(zip(files, true), 'Missing'), null);
+});
+
+test('monthly commodities: latest month with month and year changes', () => {
+  const months = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(Date.UTC(2025, 7 + i, 1));
+    return { date: d.toISOString().slice(0, 10), value: 100 + i * 10 };
+  });
+  const rows = monthlyCommodities({ series: new Map([['nickel', months], ['tin', []]]) }, ['nickel', 'tin', 'unknown']);
+  assert.equal(rows.length, 1);
+  const n = rows[0];
+  assert.equal(n.month, '2026-09-01');
+  assert.equal(n.value, 230);
+  assert.ok(Math.abs((n.changeMoM ?? 0) - (230 / 220 - 1) * 100) < 1e-9);
+  assert.ok(Math.abs((n.changeYoY ?? 0) - (230 / 110 - 1) * 100) < 1e-9);
+  assert.equal(n.history.length, 14);
 });

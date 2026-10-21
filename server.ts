@@ -209,7 +209,7 @@ import {
 import { registerSbnRoute } from './server/sbn.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
-import { findPinkSheetLink, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type PinkSheet } from './src/utils/pinkSheet.ts';
+import { findPinkSheetLink, monthlyCommodities, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type MonthlyCommodity, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
   addHistory,
   afterFire,
@@ -3265,6 +3265,32 @@ async function getPinkSheet(): Promise<PinkSheet> {
   return data;
 }
 
+/** Mining and plantation commodities shown monthly on the Radar (no free daily series exists). */
+const RADAR_MONTHLY = ['nickel', 'tin', 'coalAustralia', 'palmOil', 'rubber'];
+const MONTHLY_STORE_KEY = 'pink:radar';
+let monthlyMemo: { data: { updated: string | null; rows: MonthlyCommodity[]; fetchedAt: number }; at: number } | null = null;
+
+/** Latest Pink Sheet values for the Radar (memory, then the database, then the World Bank file; 24 h). */
+async function getMonthlyCommodities(): Promise<{ updated: string | null; rows: MonthlyCommodity[]; fetchedAt: number }> {
+  if (monthlyMemo && Date.now() - monthlyMemo.at < 3600_000) return monthlyMemo.data;
+  const saved = await store.get<{ updated: string | null; rows: MonthlyCommodity[]; fetchedAt: number }>(MONTHLY_STORE_KEY).catch(() => null);
+  if (saved?.rows?.length && Date.now() - saved.fetchedAt < 24 * 3600_000) {
+    monthlyMemo = { data: saved, at: Date.now() };
+    return saved;
+  }
+  try {
+    const sheet = await getPinkSheet();
+    const data = { updated: sheet.updated, rows: monthlyCommodities(sheet, RADAR_MONTHLY), fetchedAt: Date.now() };
+    if (data.rows.length) await store.set(MONTHLY_STORE_KEY, data).catch(() => {});
+    monthlyMemo = { data, at: Date.now() };
+    return data;
+  } catch (err) {
+    // An older saved copy beats nothing (the file is monthly anyway)
+    if (saved?.rows?.length) return saved;
+    throw err;
+  }
+}
+
 async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   const failed: string[] = [];
   const get = async <T,>(id: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -5693,6 +5719,15 @@ export async function createApp(): Promise<express.Express> {
     recomputePriority();
     // Newly focused symbols are priced on the next loop round (≤1 s)
     res.status(204).end();
+  });
+
+  // Monthly mining / plantation commodities (World Bank Pink Sheet) for the Radar
+  app.get('/api/commodities/monthly', async (_req, res) => {
+    try {
+      res.json({ ...(await getMonthlyCommodities()), source: 'World Bank Pink Sheet (monthly averages)' });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Monthly commodity prices unavailable' });
+    }
   });
 
   // Health check for the host: answers without touching any data source

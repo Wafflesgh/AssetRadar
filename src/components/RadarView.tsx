@@ -14,6 +14,7 @@ import { usePriceFlash } from '../hooks/usePriceFlash.ts';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { MarketTable } from './MarketTable.tsx';
+import { MonthlyCommodities } from './MonthlyCommodities.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
 
 const SentimentLeaders = lazy(() => import('./sentiment/SentimentLeaders.tsx').then((m) => ({ default: m.SentimentLeaders })));
@@ -248,6 +249,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                 {isOpen ? t('radar.showFewer') : t('radar.showAll', { count: all.length, group: groupTitle(groupMeta.key).toLowerCase() })}
               </button>
             )}
+            {groupMeta.key === 'commodity' && <MonthlyCommodities />}
           </section>
         );
       })}

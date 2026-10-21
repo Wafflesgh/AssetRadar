@@ -14,6 +14,8 @@ const ID_NAMES: Record<string, { name: string; short?: string }> = {
   'NG=F': { name: 'Gas Alam', short: 'Gas Alam' },
   'HG=F': { name: 'Tembaga', short: 'Tembaga' },
   'PL=F': { name: 'Platinum', short: 'Platinum' },
+  'PA=F': { name: 'Paladium', short: 'Paladium' },
+  'ALI=F': { name: 'Aluminium', short: 'Aluminium' },
   'KC=F': { name: 'Kopi (Arabika)', short: 'Kopi' },
   'ZW=F': { name: 'Gandum', short: 'Gandum' },
   '^JKSE': { name: 'IHSG — Indeks Harga Saham Gabungan' },

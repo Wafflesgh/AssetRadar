@@ -33,6 +33,7 @@ export const LIVE_INDICATIONS: Readonly<Record<string, LiveIndication>> = {
   COPPER: { contract: 'COPPERUSDT', kind: 'commodity' },
   SILVER: { contract: 'XAGUSDT', kind: 'commodity' },
   PLAT: { contract: 'XPTUSDT', kind: 'commodity' },
+  PALL: { contract: 'XPDUSDT', kind: 'commodity' },
 };
 
 /** Indications further than this from the official price are hidden (a wrong match, not a quote). */

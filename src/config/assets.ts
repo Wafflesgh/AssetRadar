@@ -462,6 +462,9 @@ export const ASSETS: AssetConfig[] = [
   }),
   commodity('copper', 'COPPER', 'HG=F', 'Copper', '/lb', 'USD', 'OANDA:XCUUSD', ['copper', 'tembaga'], { aliases: ['HG'], ai: true }),
   commodity('platinum', 'PLAT', 'PL=F', 'Platinum', '/oz', 'USD', 'OANDA:XPTUSD', ['platinum'], { aliases: ['PLATINUM', 'XPT'], ai: true }),
+  // Added 22 Oct 2026 (owner's request): the mining metals with a fresh free daily series
+  commodity('palladium', 'PALL', 'PA=F', 'Palladium', '/oz', 'USD', 'OANDA:XPDUSD', ['palladium', 'paladium'], { aliases: ['PALLADIUM', 'XPD'] }),
+  commodity('aluminium', 'ALU', 'ALI=F', 'Aluminium', '/t', 'USD', null, ['aluminium', 'aluminum price'], { aliases: ['ALUMINIUM', 'ALUMINUM', 'ALI'] }),
   commodity('coffee', 'COFFEE', 'KC=F', 'Coffee (Arabica)', '/lb', 'USX', null, ['coffee', 'kopi'], { aliases: ['KOPI'] }),
   commodity('wheat', 'WHEAT', 'ZW=F', 'Wheat', '/bu', 'USX', 'OANDA:WHEATUSD', ['wheat', 'gandum'], { aliases: ['GANDUM'] }),
 

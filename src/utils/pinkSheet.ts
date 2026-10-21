@@ -31,6 +31,40 @@ export const PINK_SERIES: PinkSeriesDef[] = [
   { id: 'riceThai', match: /^Rice, Thai 5%/i, label: 'Rice, Thai 5% (import price)', unit: 'US$/t', higherIsBetter: false },
 ];
 
+/** One monthly commodity for the Radar card: latest month, its change on the month and on the year. */
+export interface MonthlyCommodity {
+  id: string;
+  label: string;
+  unit: string;
+  /** YYYY-MM-DD (first day of the month the price belongs to). */
+  month: string;
+  value: number;
+  changeMoM: number | null;
+  changeYoY: number | null;
+  /** Last 24 monthly values (oldest first) for the small chart. */
+  history: number[];
+}
+
+/** The series asked for (in that order) with their latest values; missing ones are skipped. */
+export function monthlyCommodities(sheet: Pick<PinkSheet, 'series'>, ids: string[]): MonthlyCommodity[] {
+  const out: MonthlyCommodity[] = [];
+  for (const id of ids) {
+    const def = PINK_SERIES.find((d) => d.id === id);
+    const pts = [...(sheet.series.get(id) ?? [])].filter((p) => Number.isFinite(p.value)).sort((a, b) => a.date.localeCompare(b.date));
+    if (!def || pts.length === 0) continue;
+    const last = pts[pts.length - 1];
+    const back = (months: number) => {
+      const d = new Date(`${last.date}T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() - months);
+      const key = d.toISOString().slice(0, 7);
+      const p = pts.find((q) => q.date.startsWith(key));
+      return p && p.value !== 0 ? (last.value / p.value - 1) * 100 : null;
+    };
+    out.push({ id, label: def.label, unit: def.unit, month: last.date, value: last.value, changeMoM: back(1), changeYoY: back(12), history: pts.slice(-24).map((p) => p.value) });
+  }
+  return out;
+}
+
 /** The monthly xlsx link on the World Bank page (its address changes every month). */
 export function findPinkSheetLink(html: string): string | null {
   const m = html.match(/https?:\/\/[^"'\s>]*CMO-Historical-Data-Monthly\.xlsx/i);
