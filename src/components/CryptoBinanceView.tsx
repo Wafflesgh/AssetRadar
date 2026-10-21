@@ -4,7 +4,9 @@
  * non-Latin symbols) and a filter for coins AssetRadar also follows; a pair page with 1h/4h/1D
  * candles (the open candle marked), ranges and levels computed from closed candles, futures
  * positioning (open interest, long/short, taker ratio, basis, funding) and the position
- * calculator. Public market data only; Binance limits and region blocks are explained.
+ * calculator. Public market data only; Binance limits and region blocks are explained. The last
+ * price and 24h change come live from Binance's public stream in the browser (about every second,
+ * binanceLive.ts); the other columns from the server every 10 s.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createChart, CandlestickSeries, ColorType, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
@@ -18,6 +20,7 @@ import { formatDecimal, formatUsdCompact } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { scoreColor } from './sentiment/InvestmentSentimentPanel.tsx';
 import type { Kline } from '../crypto/binance.ts';
+import { useBinanceLive } from '../services/binanceLive.ts';
 
 const REFRESH_MS = 10_000;
 
@@ -81,6 +84,19 @@ export function CryptoBinanceView({
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
   const [linkedOnly, setLinkedOnly] = useState(false);
+  const live = useBinanceLive();
+
+  // Live price and 24h change over the server rows (the server still supplies everything else)
+  const liveRows = useMemo(
+    () =>
+      rows.map((r) => {
+        const tk = live.tickers.get(r.symbol);
+        if (!tk) return r;
+        const change24h = tk.open > 0 ? (tk.close / tk.open - 1) * 100 : r.change24h;
+        return { ...r, price: tk.close, change24h, updatedAt: tk.eventTime || r.updatedAt };
+      }),
+    [rows, live.tickers]
+  );
 
   useEffect(() => {
     let alive = true;
@@ -103,8 +119,8 @@ export function CryptoBinanceView({
 
   const shown = useMemo(() => {
     const q = query.trim().toUpperCase();
-    return rows.filter((r) => (!q || r.symbol.toUpperCase().includes(q) || r.base.toUpperCase().includes(q)) && (!linkedOnly || r.assetId));
-  }, [rows, query, linkedOnly]);
+    return liveRows.filter((r) => (!q || r.symbol.toUpperCase().includes(q) || r.base.toUpperCase().includes(q)) && (!linkedOnly || r.assetId));
+  }, [liveRows, query, linkedOnly]);
 
   const card = {
     backgroundColor: 'var(--bg-surface)',
@@ -112,7 +128,7 @@ export function CryptoBinanceView({
   };
 
   if (pair) {
-    const row = rows.find((r) => r.symbol === pair) ?? null;
+    const row = liveRows.find((r) => r.symbol === pair) ?? null;
     return <PairView pair={pair} row={row} status={status} onBack={() => onOpenPair()} onSelectAsset={onSelectAsset} theme={theme} />;
   }
 
@@ -127,6 +143,14 @@ export function CryptoBinanceView({
         </p>
       </header>
       <StatusNote status={status} />
+      <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+        <span
+          aria-hidden="true"
+          className="inline-block w-2 h-2 rounded-full"
+          style={{ backgroundColor: live.status === 'live' ? 'var(--color-up)' : live.status === 'connecting' ? 'var(--color-gold)' : 'var(--text-secondary)' }}
+        />
+        {t(`bn.live.${live.status}` as TranslationKey)}
+      </p>
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
         <label className="flex items-center gap-2 flex-1 rounded-lg border px-3" style={{ ...card }}>
           <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--text-secondary)' }} />
