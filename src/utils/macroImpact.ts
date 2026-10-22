@@ -8,7 +8,8 @@
  * and a sentiment for Indonesia from the chain that applies now and which direction is good for
  * Indonesia (`good`, matching the server's higherIsBetter). `impact.<concept>.link` (or the
  * per-series `impact.s.<id>.link`) gives dated facts on Indonesia's direct exposure, and
- * `IMPACT_RELATED` + `impact.<concept>.chain` link each indicator to the other cards on the page.
+ * `IMPACT_RELATED` + `impact.<concept>.chain` link each indicator to the other cards on the page
+ * (per series: `IMPACT_RELATED_BY_SERIES` + `impact.s.<id>.chain`).
  * Education only: real outcomes depend on many other conditions.
  */
 import { latest, zScore10y, type MacroPoint } from './macro.ts';
@@ -69,6 +70,12 @@ export const IMPACT_CONCEPTS = [
   'externalDebt',
   'openness',
   'military',
+  'foreignStocks',
+  'foreignBonds',
+  'foreignSrbi',
+  'portfolio',
+  'foreignHoldings',
+  'niip',
 ] as const;
 
 export type ImpactConcept = (typeof IMPACT_CONCEPTS)[number];
@@ -150,6 +157,14 @@ export const IMPACT_BY_SERIES: Record<string, ImpactConcept> = {
   tradeOpenness: 'openness',
   militarySpending: 'military',
   gdpDeflator: 'inflation',
+  foreignStockFlow: 'foreignStocks',
+  foreignGovBondFlow: 'foreignBonds',
+  foreignBiSecFlow: 'foreignSrbi',
+  portfolioFlow: 'portfolio',
+  fdiInflowQ: 'fdi',
+  foreignStockHoldings: 'foreignHoldings',
+  foreignDebtHoldings: 'foreignHoldings',
+  netIip: 'niip',
 };
 
 /** global = a world force felt everywhere; indonesia = felt inside Indonesia; both = world price or flow with a large Indonesian effect. */
@@ -212,30 +227,36 @@ export const IMPACT_INFO: Record<ImpactConcept, { scope: ImpactScope; good: 'up'
   externalDebt: { scope: 'both', good: 'down' },
   openness: { scope: 'both', good: null },
   military: { scope: 'indonesia', good: null },
+  foreignStocks: { scope: 'both', good: 'up' },
+  foreignBonds: { scope: 'both', good: 'up' },
+  foreignSrbi: { scope: 'both', good: null },
+  portfolio: { scope: 'both', good: 'up' },
+  foreignHoldings: { scope: 'both', good: null },
+  niip: { scope: 'both', good: 'up' },
 };
 
 /** Other macro cards each concept is linked with, in cause-and-effect order (series ids). */
 export const IMPACT_RELATED: Record<ImpactConcept, string[]> = {
   rate: ['inflationYoy', 'usdIdr', 'biFedSpread', 'privateCredit', 'housePrices', 'gdpYoy', 'lq45'],
-  fedSpread: ['biRate', 'fedFunds', 'usdIdr', 'reserves'],
+  fedSpread: ['biRate', 'fedFunds', 'foreignGovBondFlow', 'foreignBiSecFlow', 'usdIdr', 'reserves'],
   inflation: ['administeredInflation', 'volatileFoodInflation', 'coreInflation', 'usdIdr', 'biRate', 'consumerConfidence'],
   administered: ['brent', 'govDebt', 'inflationYoy'],
   volatileFood: ['riceThai', 'inflationYoy', 'consumerConfidence'],
   gdp: ['consumerConfidence', 'privateCredit', 'exports', 'biRate', 'lq45'],
   confidence: ['inflationYoy', 'biRate', 'gdpYoy', 'lq45'],
-  reserves: ['tradeBalance', 'currentAccount', 'usdIdr', 'ust10', 'goldMonthly'],
+  reserves: ['tradeBalance', 'currentAccount', 'portfolioFlow', 'usdIdr', 'ust10', 'goldMonthly'],
   tradeBalance: ['coal', 'palmOil', 'nickel', 'exports', 'imports', 'reserves', 'usdIdr'],
   exports: ['coal', 'palmOil', 'nickel', 'sse', 'tradeBalance'],
   imports: ['brent', 'fx-cny', 'usdIdr', 'tradeBalance'],
-  currentAccount: ['tradeBalance', 'biFedSpread', 'eido', 'usdIdr'],
-  usdIdr: ['dxy', 'fedFunds', 'biFedSpread', 'reserves', 'inflationYoy', 'govDebt'],
+  currentAccount: ['tradeBalance', 'biFedSpread', 'portfolioFlow', 'fdiInflowQ', 'eido', 'usdIdr'],
+  usdIdr: ['dxy', 'fedFunds', 'biFedSpread', 'portfolioFlow', 'reserves', 'inflationYoy', 'govDebt'],
   reer: ['usdIdr', 'inflationYoy', 'exports', 'imports'],
   regionalFx: ['usdIdr', 'dxy', 'exports'],
-  eido: ['vix', 'fedFunds', 'lq45', 'usdIdr'],
-  govDebt: ['biRate', 'ust10', 'usdIdr', 'brent'],
+  eido: ['vix', 'fedFunds', 'foreignStockFlow', 'lq45', 'usdIdr'],
+  govDebt: ['biRate', 'ust10', 'foreignGovBondFlow', 'usdIdr', 'brent'],
   privateCredit: ['biRate', 'housePrices', 'gdpYoy'],
   housePrices: ['biRate', 'privateCredit', 'consumerConfidence'],
-  lq45: ['eido', 'vix', 'biRate', 'gdpYoy'],
+  lq45: ['eido', 'foreignStockFlow', 'vix', 'biRate', 'gdpYoy'],
   coal: ['coalAustralia', 'sse', 'exports', 'tradeBalance', 'usdIdr'],
   metals: ['sse', 'nickel', 'exports'],
   oil: ['imports', 'tradeBalance', 'administeredInflation', 'govDebt', 'inflationYoy'],
@@ -266,11 +287,22 @@ export const IMPACT_RELATED: Record<ImpactConcept, string[]> = {
   financialDepth: ['privateCredit', 'm2Growth', 'lendingRate'],
   lending: ['biRate', 'privateCredit', 'investmentGdp'],
   deposit: ['biRate', 'inflationYoy', 'lendingRate'],
-  fdi: ['investmentGdp', 'currentAccount', 'usdIdr', 'fx-sgd'],
+  fdi: ['fdiGdp', 'fdiInflowQ', 'investmentGdp', 'currentAccount', 'usdIdr', 'fx-sgd'],
   remittances: ['currentAccount', 'fx-myr', 'householdConsumption'],
-  externalDebt: ['usdIdr', 'reserves', 'fedFunds', 'govDebt'],
+  externalDebt: ['usdIdr', 'reserves', 'fedFunds', 'govDebt', 'netIip'],
   openness: ['exports', 'imports', 'sse', 'coal'],
   military: ['govDebt'],
+  foreignStocks: ['fedFunds', 'dxy', 'vix', 'lq45', 'eido', 'usdIdr', 'foreignStockHoldings'],
+  foreignBonds: ['biFedSpread', 'ust10', 'foreignGovBondFlow', 'usdIdr', 'reserves', 'govDebt', 'foreignDebtHoldings'],
+  foreignSrbi: ['biRate', 'biFedSpread', 'usdIdr', 'reserves'],
+  portfolio: ['foreignStockFlow', 'foreignGovBondFlow', 'foreignBiSecFlow', 'currentAccount', 'usdIdr', 'reserves'],
+  foreignHoldings: ['foreignStockFlow', 'lq45', 'usdIdr', 'netIip'],
+  niip: ['fdiInflowQ', 'foreignStockHoldings', 'foreignDebtHoldings', 'externalDebt', 'reserves'],
+};
+
+/** Series whose links differ from their concept's (with `impact.s.<id>.chain`). */
+export const IMPACT_RELATED_BY_SERIES: Record<string, string[]> = {
+  foreignDebtHoldings: ['foreignGovBondFlow', 'foreignBiSecFlow', 'usdIdr', 'externalDebt', 'netIip'],
 };
 
 export type ImpactSentiment = 'strongPositive' | 'positive' | 'neutral' | 'negative' | 'strongNegative' | 'mixed';

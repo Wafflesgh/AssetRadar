@@ -116,9 +116,9 @@ export function latest(points: MacroPoint[]): { date: string; value: number; cha
 
 // ---- Stage 4: categories, z-scores, staleness, Macro Pulse, BPS --------------------------------
 
-export type MacroCategory = 'monetary' | 'inflation' | 'growth' | 'people' | 'external' | 'fiscal' | 'financial' | 'commodities' | 'global';
+export type MacroCategory = 'monetary' | 'inflation' | 'growth' | 'people' | 'external' | 'flows' | 'fiscal' | 'financial' | 'commodities' | 'global';
 
-export const MACRO_CATEGORIES: MacroCategory[] = ['monetary', 'inflation', 'growth', 'people', 'external', 'fiscal', 'financial', 'commodities', 'global'];
+export const MACRO_CATEGORIES: MacroCategory[] = ['monetary', 'inflation', 'growth', 'people', 'external', 'flows', 'fiscal', 'financial', 'commodities', 'global'];
 
 /**
  * Extra annual World Bank indicators (WDI, no key) shown next to the monthly series: labour and
@@ -158,6 +158,30 @@ export const WB_EXTRA: Array<{
   { id: 'externalDebt', code: 'DT.DOD.DECT.CD', label: 'External debt, total', unit: 'US$ bn', category: 'external', higherIsBetter: false, scale: 1e9 },
   { id: 'tradeOpenness', code: 'NE.TRD.GNFS.ZS', label: 'Trade (exports + imports), % of GDP', unit: '%', category: 'external', higherIsBetter: null },
   { id: 'militarySpending', code: 'MS.MIL.XPND.GD.ZS', label: 'Military spending, % of GDP', unit: '%', category: 'fiscal', higherIsBetter: null },
+];
+
+/**
+ * Foreign money flowing into and out of Indonesia, quarterly, from Bank Indonesia's SEKI tables
+ * (balance of payments V.6 / V.7 and the international investment position V.39, US$ million →
+ * US$ bn). `path` = the row labels top-down (src/utils/sekiTable.ts). Flows are net: positive =
+ * foreigners bought / brought money in, negative = they sold / took it out.
+ */
+export const SEKI_URL = 'https://www.bi.go.id/id/statistik/ekonomi-keuangan/seki/Default.aspx';
+export const SEKI_FLOWS: Array<{
+  id: string;
+  table: 'TABEL5_6' | 'TABEL5_7' | 'TABEL5_39';
+  path: string[];
+  label: string;
+  higherIsBetter: boolean | null;
+}> = [
+  { id: 'foreignStockFlow', table: 'TABEL5_7', path: ['B. Kewajiban', '2. Sektor swasta', 'a. Modal ekuitas'], label: 'Foreign net buying of Indonesian stocks (quarter)', higherIsBetter: true },
+  { id: 'foreignGovBondFlow', table: 'TABEL5_7', path: ['B. Kewajiban', '1. Sektor publik', 'b. Surat utang', '2) Pemerintah'], label: 'Foreign net buying of government bonds, SBN (quarter)', higherIsBetter: true },
+  { id: 'foreignBiSecFlow', table: 'TABEL5_7', path: ['B. Kewajiban', '1. Sektor publik', 'b. Surat utang', '1) Bank sentral'], label: 'Foreign net buying of Bank Indonesia securities, SRBI (quarter)', higherIsBetter: null },
+  { id: 'portfolioFlow', table: 'TABEL5_7', path: ['Investasi Portofolio'], label: 'Portfolio investment, net (quarter)', higherIsBetter: true },
+  { id: 'fdiInflowQ', table: 'TABEL5_6', path: ['Memorandum', 'Investasi langsung berdasarkan', 'B. Di Indonesia'], label: 'Foreign direct investment into Indonesia (quarter)', higherIsBetter: true },
+  { id: 'foreignStockHoldings', table: 'TABEL5_39', path: ['Kewajiban', 'Investasi Langsung', 'Investasi Portofolio', 'Modal Ekuitas'], label: 'Foreign holdings of Indonesian stocks', higherIsBetter: null },
+  { id: 'foreignDebtHoldings', table: 'TABEL5_39', path: ['Kewajiban', 'Investasi Portofolio', 'Surat Utang'], label: 'Foreign holdings of Indonesian bonds and bills', higherIsBetter: null },
+  { id: 'netIip', table: 'TABEL5_39', path: ['Posisi Investasi Internasional, bersih'], label: 'Net international investment position', higherIsBetter: true },
 ];
 
 /** World Bank central government debt (% of GDP): the fallback where the IMF series is blocked. */

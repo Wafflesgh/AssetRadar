@@ -1,7 +1,7 @@
 /** macroImpact.test.ts — Tests for the macro "what does it mean" readings and their texts. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, IMPACT_INFO, IMPACT_RELATED, impactBullets, impactReading } from './macroImpact.ts';
+import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, IMPACT_INFO, IMPACT_RELATED, IMPACT_RELATED_BY_SERIES, impactBullets, impactReading } from './macroImpact.ts';
 import { en } from '../i18n/en.ts';
 import { id } from '../i18n/id.ts';
 
@@ -35,6 +35,20 @@ test('every concept has dated links and a chain to other cards that exist', () =
     }
     assert.equal(impactBullets(en[`impact.${c}.link` as keyof typeof en]).length, impactBullets(id[`impact.${c}.link` as keyof typeof en]!).length, c);
     for (const target of IMPACT_RELATED[c]) assert.ok(known.has(target), `${c} links to unknown card ${target}`);
+  }
+  for (const [seriesId, targets] of Object.entries(IMPACT_RELATED_BY_SERIES)) {
+    assert.ok(en[`impact.s.${seriesId}.chain` as keyof typeof en] && seriesId in IMPACT_BY_SERIES, seriesId);
+    for (const target of targets) assert.ok(known.has(target), `${seriesId} links to unknown card ${target}`);
+  }
+});
+
+test('every foreign-funds indicator has an explanation whose good direction matches the server', async () => {
+  const { SEKI_FLOWS } = await import('./macro.ts');
+  for (const x of SEKI_FLOWS) {
+    const c = IMPACT_BY_SERIES[x.id];
+    assert.ok(c, `no concept for ${x.id}`);
+    assert.equal(IMPACT_INFO[c].good, x.higherIsBetter === null ? null : x.higherIsBetter ? 'up' : 'down', x.id);
+    assert.ok(en[`macro.s.${x.id}` as keyof typeof en] && id[`macro.s.${x.id}` as keyof typeof en], `no label for ${x.id}`);
   }
 });
 

@@ -123,6 +123,8 @@ import {
 } from './src/utils/priceStream.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
+  SEKI_FLOWS,
+  SEKI_URL,
   WB_EXTRA,
   WB_GOV_DEBT,
   macroPulse,
@@ -209,6 +211,8 @@ import {
 import { registerSbnRoute } from './server/sbn.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
+import { readXls } from './server/xls.ts';
+import { sekiSeries } from './src/utils/sekiTable.ts';
 import { BPS_INFLATION_TABLE_ID, parseBpsInflationTable, yoyFromMonthly } from './src/utils/bpsInflation.ts';
 import { BIS_EXPLORER, BIS_SERIES, OECD_EXPLORER, OECD_SERIES, bisUrl, oecdUrl, parseOecdCsv, type OecdSeriesDef } from './src/utils/oecd.ts';
 import { findPinkSheetLink, monthlyCommodities, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type MonthlyCommodity, type PinkSheet } from './src/utils/pinkSheet.ts';
@@ -3537,6 +3541,30 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     const pts = wbExtra[i].map((p) => ({ date: p.date, value: x.scale ? p.value / x.scale : p.value }));
     add(ser(x.id, x.label, x.unit, 'annual', 'World Bank', wbUrl(x.code), pts), x.category, x.higherIsBetter);
   });
+  // Foreign funds: Bank Indonesia SEKI tables (old .xls), one download per table
+  const sekiTables = [...new Set(SEKI_FLOWS.map((x) => x.table))];
+  const sekiRows = await Promise.all(
+    sekiTables.map((table) =>
+      get(
+        `seki-${table}`,
+        async () => {
+          const res = await fetchWithTimeout(`https://www.bi.go.id/SEKI/tabel/${table}.xls`, { headers: { 'User-Agent': FRED_USER_AGENT } }, 30_000);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const sheet = readXls(Buffer.from(await res.arrayBuffer())).at(-1);
+          if (!sheet) throw new Error('no sheet');
+          return sheet.rows;
+        },
+        [] as Array<Array<string | number | null>>
+      )
+    )
+  );
+  for (const x of SEKI_FLOWS) {
+    const rows = sekiRows[sekiTables.indexOf(x.table)];
+    const pts = rows.length ? sekiSeries(rows, x.path, 0.001) : [];
+    if (rows.length && !pts.length) failed.push(`seki-${x.id}`);
+    const note = x.table === 'TABEL5_39' ? 'Value at the end of the quarter, US$ bn; it also moves with prices and the rupiah.' : 'Net amount in the quarter, US$ bn: above 0 = foreigners bought / brought money in, below 0 = sold / took money out.';
+    add(ser(x.id, x.label, 'US$ bn', 'quarterly', 'Bank Indonesia (SEKI)', SEKI_URL, pts, note), 'flows', x.higherIsBetter);
+  }
   // Fiscal
   if (govDebt.length) add(ser('govDebt', 'Government debt, % of GDP', '%', 'annual', 'IMF via FRED', FRED_PAGE('GGGDTAIDA188N'), govDebt), 'fiscal', false);
   else add(ser('govDebt', 'Central government debt, % of GDP', '%', 'annual', 'World Bank', wbUrl(WB_GOV_DEBT), wbGovDebt), 'fiscal', false);
@@ -3646,7 +3674,7 @@ function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
 }
 
 // Versioned: a new set of indicators must not be served from an older saved result
-const MACRO_STORE_KEY = 'macro:indonesia:v2';
+const MACRO_STORE_KEY = 'macro:indonesia:v3';
 
 async function getIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   if (macroCache.entry && macroCache.entry.expiresAt > Date.now()) return macroCache.entry.data;

@@ -17,7 +17,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { fetchIndonesiaMacro, type IndonesiaMacro } from '../services/marketDataService.ts';
 import { SbnRetailSection } from './SbnRetailSection.tsx';
 import { formatDecimal, formatNumber } from '../utils/format.ts';
-import { IMPACT_INFO, IMPACT_RELATED, impactBullets, impactConcept, impactReading, type ImpactConcept, type ImpactSentiment } from '../utils/macroImpact.ts';
+import { IMPACT_INFO, IMPACT_RELATED, IMPACT_RELATED_BY_SERIES, impactBullets, impactConcept, impactReading, type ImpactConcept, type ImpactSentiment } from '../utils/macroImpact.ts';
 import { MACRO_CATEGORIES, latest, type MacroCategory, type MacroIndicator, type MacroSeries, type PulseCategory } from '../utils/macro.ts';
 
 const MONTH = {
@@ -403,11 +403,11 @@ function ImpactChips({ s }: { s: MacroSeries }) {
 function RelatedCards({ c, self }: { c: ImpactConcept; self: string }) {
   const t = useT();
   const { labels, jump } = useContext(MacroCardsContext);
-  const ids = IMPACT_RELATED[c].filter((id) => id !== self && labels.has(id));
+  const ids = (IMPACT_RELATED_BY_SERIES[self] ?? IMPACT_RELATED[c]).filter((id) => id !== self && labels.has(id));
   return (
     <div className="space-y-1">
       <p className="font-semibold">{t('impact.relatedTitle')}</p>
-      <p>{t(`impact.${c}.chain` as TranslationKey)}</p>
+      <p>{tOr(`impact.s.${self}.chain`, t(`impact.${c}.chain` as TranslationKey))}</p>
       {ids.length > 0 && (
         <>
           <div className="flex flex-wrap gap-1.5 pt-0.5">
