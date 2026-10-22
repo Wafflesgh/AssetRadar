@@ -517,7 +517,7 @@ export const id: Record<TranslationKey, string> = {
   "fallback.refreshFailed": "Gagal memperbarui · data terakhir",
   "fallback.interval": "Interval {interval} · WIB",
   "macro.title": "Makro Indonesia",
-  "macro.intro": "Suku bunga, inflasi, pertumbuhan, cadangan devisa dan perdagangan dari Bank Indonesia (bi.go.id), OECD, BIS dan Bank Dunia. Buka "Apa artinya bagi ekonomi?" di setiap kartu untuk melihat dampak umum saat indikator naik atau turun. Data makro terbit dengan jeda — setiap kartu menampilkan periode data terakhirnya. AI Advisor menguji jalur BI-Rate dan inflasi sebagai masukan untuk aset Indonesia.",
+  "macro.intro": "Suku bunga, inflasi, pertumbuhan, cadangan devisa dan perdagangan dari Bank Indonesia (bi.go.id), OECD, BIS dan Bank Dunia. Buka “Apa artinya bagi ekonomi?” di setiap kartu untuk melihat dampak umum saat indikator naik atau turun. Data makro terbit dengan jeda — setiap kartu menampilkan periode data terakhirnya. AI Advisor menguji jalur BI-Rate dan inflasi sebagai masukan untuk aset Indonesia.",
   "macro.biOfficial": "BI-Rate (resmi)",
   "macro.decided": "Diputuskan {date}",
   "macro.previous": "· level sebelumnya {value}%",

@@ -516,7 +516,7 @@ export const en = {
   "fallback.refreshFailed": "Refresh failed · last data",
   "fallback.interval": "Interval {interval} · WIB",
   "macro.title": "Indonesia Macro",
-  "macro.intro": "Interest rates, inflation, growth, reserves and trade from Bank Indonesia (bi.go.id), the OECD, the BIS and the World Bank. Open "What does it mean for the economy?" on a card for the typical effects of a rise or a fall. Macro data is published with a delay — each card shows its last data period. The AI Advisor tests the BI-Rate path and inflation as inputs for Indonesian assets.",
+  "macro.intro": "Interest rates, inflation, growth, reserves and trade from Bank Indonesia (bi.go.id), the OECD, the BIS and the World Bank. Open “What does it mean for the economy?” on a card for the typical effects of a rise or a fall. Macro data is published with a delay — each card shows its last data period. The AI Advisor tests the BI-Rate path and inflation as inputs for Indonesian assets.",
   "macro.biOfficial": "BI-Rate (official)",
   "macro.decided": "Decided {date}",
   "macro.previous": "· previous level {value}%",
