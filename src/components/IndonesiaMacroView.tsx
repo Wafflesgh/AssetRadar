@@ -4,18 +4,20 @@
  * indicator cards (latest value, change, z-score, stale flag, frequency, source, 10-year chart),
  * IDX valuation and breadth of the scanned stocks, the next FOMC date, and the indicators without
  * a free source. Free macro data is often published with a delay — every card shows how recent it is.
- * Each card can open "What does it mean for the economy?": the typical cause-and-effect chain when the
- * indicator rises / falls, with the one that applies now marked (src/utils/macroImpact.ts).
+ * Each card shows a sentiment for Indonesia and whether the effect is global or Indonesian, and can
+ * open the reasons: what the indicator is, why this sentiment, why global or Indonesian, and the
+ * typical cause-and-effect chain when it rises / falls with the one that applies now marked
+ * (src/utils/macroImpact.ts).
  */
 import { getLang, tOr, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { Rich } from '../i18n/Rich.tsx';
-import { ChevronDown, ExternalLink, Landmark, Lightbulb, RefreshCw } from 'lucide-react';
+import { ChevronDown, ExternalLink, Globe, Landmark, Lightbulb, MapPin, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, type IndonesiaMacro } from '../services/marketDataService.ts';
 import { SbnRetailSection } from './SbnRetailSection.tsx';
 import { formatDecimal, formatNumber } from '../utils/format.ts';
-import { impactBullets, impactReading } from '../utils/macroImpact.ts';
+import { IMPACT_INFO, impactBullets, impactConcept, impactReading, type ImpactSentiment } from '../utils/macroImpact.ts';
 import { MACRO_CATEGORIES, latest, type MacroCategory, type MacroIndicator, type MacroSeries, type PulseCategory } from '../utils/macro.ts';
 
 const MONTH = {
@@ -338,12 +340,63 @@ function ZBadge({ ind }: { ind: MacroIndicator }) {
   );
 }
 
+const SENT_COLOR: Record<ImpactSentiment, string> = {
+  strongPositive: 'var(--color-up)',
+  positive: 'var(--color-up)',
+  neutral: 'var(--text-secondary)',
+  negative: 'var(--color-down)',
+  strongNegative: 'var(--color-down)',
+  mixed: 'var(--color-gold)',
+};
+
+/** Always-visible chips: sentiment for Indonesia and whether the effect is global or Indonesian. */
+function ImpactChips({ s }: { s: MacroSeries }) {
+  const t = useT();
+  const concept = impactConcept(s.id);
+  if (!concept) return null;
+  const r = s.points.length ? impactReading(s.id, s.points) : null;
+  const scope = IMPACT_INFO[concept].scope;
+  const ScopeIcon = scope === 'indonesia' ? MapPin : Globe;
+  return (
+    <>
+      {r && (
+      <span
+        className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded"
+        style={{ color: 'var(--bg-surface)', backgroundColor: SENT_COLOR[r.sentiment] }}
+      >
+        {t('impact.sentTitle')}: {t(`impact.sent.${r.sentiment}` as TranslationKey)}
+      </span>
+      )}
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border"
+        style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
+      >
+        <ScopeIcon className="w-3 h-3" />
+        {t(`impact.scope.${scope}` as TranslationKey)}
+      </span>
+    </>
+  );
+}
+
 function ImpactSection({ s }: { s: MacroSeries }) {
   const t = useT();
-  const r = impactReading(s.id, s.points);
-  if (!r || s.points.length === 0) return null;
-  const order: Array<'up' | 'down'> = r.active === 'down' ? ['down', 'up'] : ['up', 'down'];
-  const now = [r.level && t(`impact.level.${r.level}` as TranslationKey), r.trend && t(`impact.trend.${r.trend}` as TranslationKey)].filter(Boolean).join(' · ');
+  const c = impactConcept(s.id);
+  if (!c) return null;
+  const r = s.points.length ? impactReading(s.id, s.points) : null;
+  const { scope, good } = IMPACT_INFO[c];
+  const order: Array<'up' | 'down'> = r?.active === 'down' ? ['down', 'up'] : ['up', 'down'];
+  const z = r?.z == null ? '' : `${r.z >= 0 ? '+' : ''}${formatDecimal(r.z, 1)}`;
+  const reasons: string[] = [];
+  if (!r) reasons.push(t('impact.noData'));
+  else if (r.level) reasons.push(t(`impact.level.${r.level}` as TranslationKey, { z }));
+  if (r?.trend) reasons.push(t(`impact.trend.${r.trend}` as TranslationKey));
+  if (r?.active) reasons.push(t('impact.effectNow', { sum: t(`impact.${c}.${r.active}.sum` as TranslationKey) }));
+  if (!r) {
+    // no data: only the explanation
+  } else if (good === null) reasons.push(t('impact.reason.mixed'));
+  else if (!r.active) reasons.push(t('impact.reason.neutral'));
+  else reasons.push(t(r.active === good ? 'impact.reason.good' : 'impact.reason.bad', { dir: t(`impact.dir.${r.active}`) }));
+  if (r?.sentiment === 'strongPositive' || r?.sentiment === 'strongNegative') reasons.push(t('impact.reason.strong'));
   return (
     <details className="group rounded-lg border text-xs" style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}>
       <summary className="flex items-center gap-1.5 px-3 py-2 cursor-pointer select-none font-semibold list-none [&::-webkit-details-marker]:hidden">
@@ -351,28 +404,63 @@ function ImpactSection({ s }: { s: MacroSeries }) {
         <span className="flex-1">{t('impact.toggle')}</span>
         <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="px-3 pb-3 space-y-3">
-        {now && (
-          <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            {now}
+      <div className="px-3 pb-3 space-y-3 leading-relaxed">
+        <div className="space-y-1">
+          <p className="font-semibold">{t('impact.whatTitle')}</p>
+          <p>{tOr(`impact.s.${s.id}.what`, t(`impact.${c}.what` as TranslationKey))}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="font-semibold flex flex-wrap items-center gap-1.5">
+            {t('impact.whyTitle')}
+            {r && (
+            <span
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ color: 'var(--bg-surface)', backgroundColor: SENT_COLOR[r.sentiment] }}
+            >
+              {t(`impact.sent.${r.sentiment}` as TranslationKey)}
+            </span>
+            )}
           </p>
-        )}
+          <ul className="list-disc pl-5 space-y-0.5">
+            {reasons.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          {r?.z != null && (
+            <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+              {t('impact.zHelp')}
+            </p>
+          )}
+        </div>
+        <div className="space-y-1">
+          <p className="font-semibold flex flex-wrap items-center gap-1.5">
+            {scope === 'indonesia' ? <MapPin className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+            {t('impact.scopeTitle')}
+            <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>
+              {t(`impact.scope.${scope}` as TranslationKey)}
+            </span>
+          </p>
+          <p>{t(`impact.${c}.scopeWhy` as TranslationKey)}</p>
+        </div>
         {order.map((dir) => {
-          const active = r.active === dir;
+          const active = r?.active === dir;
           const color = dir === 'up' ? 'var(--color-up)' : 'var(--color-down)';
           return (
-            <div key={dir} className="space-y-1" style={{ opacity: r.active && !active ? 0.75 : 1 }}>
+            <div key={dir} className="space-y-1" style={{ opacity: r?.active && !active ? 0.75 : 1 }}>
               <p className="font-semibold flex flex-wrap items-center gap-1.5">
                 <span style={{ color }}>{dir === 'up' ? '▲' : '▼'}</span>
                 {t(`impact.${dir}`)}
                 {active && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border" style={{ color: 'var(--accent-radar)', borderColor: 'var(--accent-radar)' }}>
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded border"
+                    style={{ color: 'var(--accent-radar)', borderColor: 'var(--accent-radar)' }}
+                  >
                     {t('impact.now')}
                   </span>
                 )}
               </p>
-              <ul className="list-disc pl-5 space-y-0.5 leading-relaxed">
-                {impactBullets(t(`impact.${r.concept}.${dir}` as TranslationKey)).map((b) => (
+              <ul className="list-disc pl-5 space-y-0.5">
+                {impactBullets(t(`impact.${c}.${dir}` as TranslationKey)).map((b) => (
                   <li key={b}>{b}</li>
                 ))}
               </ul>
@@ -399,9 +487,11 @@ function SeriesCard({ s, ind }: { s: MacroSeries; ind?: MacroIndicator }) {
           <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
             {t(`macro.freq.${s.frequency}` as TranslationKey)} · {s.source}
           </p>
-          {ind && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              <ZBadge ind={ind} />
+          <div className="flex flex-wrap gap-1 mt-1">
+            <ImpactChips s={s} />
+            {ind && <ZBadge ind={ind} />}
+            {ind && (
+              <>
               {ind.stale && l && (
                 <span
                   className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded border"
@@ -410,8 +500,9 @@ function SeriesCard({ s, ind }: { s: MacroSeries; ind?: MacroIndicator }) {
                   {t('macro.stale', { date: periodLabel(l.date, s.frequency) })}
                 </span>
               )}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
         {l && (
           <div className="text-right shrink-0">

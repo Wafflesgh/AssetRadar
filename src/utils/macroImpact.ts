@@ -3,7 +3,11 @@
  * economic concept with a typical cause-and-effect chain for when it rises / is high and when it
  * falls / is low (texts in i18n `impact.<concept>.up|down`, bullets separated by new lines). The
  * current reading (above / near / below its 10-year average, rising or falling) picks which chain
- * applies now. Education only: real outcomes depend on many other conditions.
+ * applies now. Each concept also says what the indicator is, whether its effect is global or felt in
+ * Indonesia only (`IMPACT_INFO.scope`, texts `impact.<concept>.what|scopeWhy|up.sum|down.sum`),
+ * and a sentiment for Indonesia from the chain that applies now and which direction is good for
+ * Indonesia (`good`, matching the server's higherIsBetter). Education only: real outcomes depend on
+ * many other conditions.
  */
 import { latest, zScore10y, type MacroPoint } from './macro.ts';
 
@@ -36,6 +40,14 @@ export const IMPACT_CONCEPTS = [
   'dxy',
   'vix',
   'china',
+  'regionalFx',
+  'palmOil',
+  'nickel',
+  'tin',
+  'rubber',
+  'cocoa',
+  'coffee',
+  'rice',
 ] as const;
 
 export type ImpactConcept = (typeof IMPACT_CONCEPTS)[number];
@@ -77,29 +89,105 @@ export const IMPACT_BY_SERIES: Record<string, ImpactConcept> = {
   vix: 'vix',
   sse: 'china',
   hsi: 'china',
+  'fx-thb': 'regionalFx',
+  'fx-php': 'regionalFx',
+  'fx-inr': 'regionalFx',
+  'fx-myr': 'regionalFx',
+  'fx-cny': 'regionalFx',
+  'fx-sgd': 'regionalFx',
+  coalAustralia: 'coal',
+  palmOil: 'palmOil',
+  nickel: 'nickel',
+  tin: 'tin',
+  rubber: 'rubber',
+  cocoa: 'cocoa',
+  coffeeRobusta: 'coffee',
+  riceThai: 'rice',
 };
+
+/** global = a world force felt everywhere; indonesia = felt inside Indonesia; both = world price or flow with a large Indonesian effect. */
+export type ImpactScope = 'global' | 'indonesia' | 'both';
+
+/** Per concept: where the effect is felt, and which direction is good for Indonesia (null = mixed). */
+export const IMPACT_INFO: Record<ImpactConcept, { scope: ImpactScope; good: 'up' | 'down' | null }> = {
+  rate: { scope: 'indonesia', good: 'down' },
+  fedSpread: { scope: 'both', good: 'up' },
+  inflation: { scope: 'indonesia', good: 'down' },
+  administered: { scope: 'indonesia', good: 'down' },
+  volatileFood: { scope: 'indonesia', good: 'down' },
+  gdp: { scope: 'indonesia', good: 'up' },
+  confidence: { scope: 'indonesia', good: 'up' },
+  reserves: { scope: 'indonesia', good: 'up' },
+  tradeBalance: { scope: 'indonesia', good: 'up' },
+  exports: { scope: 'indonesia', good: 'up' },
+  imports: { scope: 'indonesia', good: null },
+  currentAccount: { scope: 'indonesia', good: 'up' },
+  usdIdr: { scope: 'both', good: 'down' },
+  reer: { scope: 'indonesia', good: null },
+  eido: { scope: 'both', good: 'up' },
+  govDebt: { scope: 'indonesia', good: 'down' },
+  privateCredit: { scope: 'indonesia', good: 'up' },
+  housePrices: { scope: 'indonesia', good: null },
+  lq45: { scope: 'indonesia', good: 'up' },
+  coal: { scope: 'both', good: 'up' },
+  metals: { scope: 'both', good: 'up' },
+  oil: { scope: 'global', good: 'down' },
+  gold: { scope: 'global', good: null },
+  fedFunds: { scope: 'global', good: 'down' },
+  ust10: { scope: 'global', good: 'down' },
+  dxy: { scope: 'global', good: 'down' },
+  vix: { scope: 'global', good: 'down' },
+  china: { scope: 'global', good: 'up' },
+  regionalFx: { scope: 'both', good: null },
+  palmOil: { scope: 'both', good: 'up' },
+  nickel: { scope: 'both', good: 'up' },
+  tin: { scope: 'both', good: 'up' },
+  rubber: { scope: 'both', good: 'up' },
+  cocoa: { scope: 'both', good: 'up' },
+  coffee: { scope: 'both', good: 'up' },
+  rice: { scope: 'both', good: 'down' },
+};
+
+export type ImpactSentiment = 'strongPositive' | 'positive' | 'neutral' | 'negative' | 'strongNegative' | 'mixed';
 
 export type ImpactLevel = 'high' | 'normal' | 'low';
 
 export interface ImpactReading {
   concept: ImpactConcept;
+  z: number | null;
   /** Latest value against its 10-year average (|z| ≤ 0.5 = normal; null under 8 points). */
   level: ImpactLevel | null;
   /** Direction of the latest change. */
   trend: 'rising' | 'falling' | 'flat' | null;
   /** The chain that applies now: high level wins, else the latest move; null = unclear. */
   active: 'up' | 'down' | null;
+  /** For Indonesia: mixed when both directions have good and bad sides; strong when |z| ≥ 1.5. */
+  sentiment: ImpactSentiment;
+}
+
+/** Concept of a series (for its explanation even without data). */
+export function impactConcept(seriesId: string): ImpactConcept | null {
+  return IMPACT_BY_SERIES[seriesId] ?? null;
 }
 
 export function impactReading(seriesId: string, points: MacroPoint[]): ImpactReading | null {
   const concept = IMPACT_BY_SERIES[seriesId];
   if (!concept) return null;
-  const z = zScore10y(points);
+  const raw = zScore10y(points);
+  // One decimal, never "-0"
+  const z = raw === null ? null : Math.round(raw * 10) / 10 || 0;
   const level: ImpactLevel | null = z === null ? null : z > 0.5 ? 'high' : z < -0.5 ? 'low' : 'normal';
   const l = latest(points);
   const trend = !l || l.change === null ? null : l.change > 0 ? 'rising' : l.change < 0 ? 'falling' : 'flat';
   const active = level === 'high' ? 'up' : level === 'low' ? 'down' : trend === 'rising' ? 'up' : trend === 'falling' ? 'down' : null;
-  return { concept, level, trend, active };
+  const good = IMPACT_INFO[concept].good;
+  let sentiment: ImpactSentiment = 'neutral';
+  if (good === null) sentiment = 'mixed';
+  else if (active) {
+    const strong = z !== null && Math.abs(z) >= 1.5 && (level === 'high' || level === 'low');
+    sentiment = active === good ? (strong ? 'strongPositive' : 'positive') : strong ? 'strongNegative' : 'negative';
+  }
+  return { concept, z, level, trend, active, sentiment };
 }
 
 /** Bullet lines of one translated chain. */

@@ -1,7 +1,7 @@
 /** macroImpact.test.ts — Tests for the macro "what does it mean" readings and their texts. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, impactBullets, impactReading } from './macroImpact.ts';
+import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, IMPACT_INFO, impactBullets, impactReading } from './macroImpact.ts';
 import { en } from '../i18n/en.ts';
 import { id } from '../i18n/id.ts';
 
@@ -17,6 +17,29 @@ test('every concept has both chains in English and Indonesian with the same numb
     }
   }
   for (const c of Object.values(IMPACT_BY_SERIES)) assert.ok(IMPACT_CONCEPTS.includes(c));
+  for (const c of IMPACT_CONCEPTS) {
+    for (const field of ['what', 'scopeWhy', 'up.sum', 'down.sum']) {
+      const key = `impact.${c}.${field}` as keyof typeof en;
+      assert.ok(en[key] && id[key], `missing ${key}`);
+    }
+    assert.ok(IMPACT_INFO[c], `no info for ${c}`);
+  }
+});
+
+test('sentiment for Indonesia follows the direction that is good for Indonesia', () => {
+  const high = monthly([...Array(40).fill(4), ...Array(10).fill(6), 6]);
+  // High BI-Rate: tight money is unfavourable for growth
+  assert.equal(impactReading('biRate', high)?.sentiment, 'strongNegative');
+  // High nickel price: good for Indonesia
+  assert.equal(impactReading('nickel', high)?.sentiment, 'strongPositive');
+  // Imports and gold have good and bad sides
+  assert.equal(impactReading('imports', high)?.sentiment, 'mixed');
+  assert.equal(impactReading('goldMonthly', high)?.sentiment, 'mixed');
+  // Near average and unchanged: no clear effect
+  const flat = monthly(Array.from({ length: 41 }, (_, i) => (i >= 39 ? 3 : 3 + (i % 2 ? 0.2 : -0.2))));
+  assert.equal(impactReading('gdpYoy', flat)?.sentiment, 'neutral');
+  assert.equal(IMPACT_INFO.fedFunds.scope, 'global');
+  assert.equal(IMPACT_INFO.rate.scope, 'indonesia');
 });
 
 test('a high level picks the "up" chain even when the latest move is down', () => {
