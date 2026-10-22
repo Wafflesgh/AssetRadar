@@ -123,12 +123,10 @@ import {
 } from './src/utils/priceStream.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
-  findBpsVar,
   macroPulse,
   mergeSeries,
   monthlyPoints,
   parseBiTable,
-  parseBpsDynData,
   parseFredCsv,
   parseWorldBank,
   periodChange,
@@ -209,6 +207,7 @@ import {
 import { registerSbnRoute } from './server/sbn.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
+import { BPS_INFLATION_TABLE_ID, parseBpsInflationTable, yoyFromMonthly } from './src/utils/bpsInflation.ts';
 import { BIS_EXPLORER, BIS_SERIES, OECD_EXPLORER, OECD_SERIES, bisUrl, oecdUrl, parseOecdCsv, type OecdSeriesDef } from './src/utils/oecd.ts';
 import { findPinkSheetLink, monthlyCommodities, parsePinkSheet, PINK_SERIES, PINK_SHEET_PAGE, type MonthlyCommodity, type PinkSheet } from './src/utils/pinkSheet.ts';
 import {
@@ -3455,26 +3454,27 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   const fedMonthly = monthlyPoints(new Map(fedFunds.map((p) => [p.date.slice(0, 7), p.value] as [string, number])));
   const biPath = biRate.length ? [...biRate].sort((x, y) => x.date.localeCompare(y.date)) : interbank;
 
-  // BPS (optional key; searched by keyword so no variable id is hard-coded). The key is only
-  // sent to webapi.bps.go.id and never logged or returned.
+  // BPS (optional key): core, administered and volatile-food inflation are not dynamic-table
+  // variables but static table 908 (month-on-month since 2009); year-on-year is compounded from it.
+  // The key is only sent to webapi.bps.go.id and never logged or returned.
   const bpsKey = process.env.BPS_API_KEY?.trim();
-  const bps = async (id: string, keyword: string, pattern: RegExp): Promise<MacroPoint[]> => {
-    if (!bpsKey) return [];
-    return get(
-      id,
-      async () => {
-        const found = findBpsVar(JSON.parse(await fetchText(`https://webapi.bps.go.id/v1/api/list/model/var/domain/0000/keyword/${encodeURIComponent(keyword)}/key/${bpsKey}`)), pattern);
-        if (!found) throw new Error('variable not found');
-        return parseBpsDynData(JSON.parse(await fetchText(`https://webapi.bps.go.id/v1/api/list/model/data/domain/0000/var/${found.id}/key/${bpsKey}`)));
-      },
-      [] as MacroPoint[]
-    );
-  };
-  const [core, administered, volatile] = await Promise.all([
-    bps('bps-core', 'inflasi inti', /inti/i),
-    bps('bps-administered', 'harga diatur pemerintah', /diatur/i),
-    bps('bps-volatile', 'harga bergejolak', /bergejolak/i),
-  ]);
+  const bpsTable = bpsKey
+    ? await get(
+        'bps-inflation-908',
+        async () => {
+          const res = JSON.parse(
+            await fetchText(`https://webapi.bps.go.id/v1/api/view/domain/0000/model/statictable/lang/ind/id/${BPS_INFLATION_TABLE_ID}/key/${bpsKey}`)
+          );
+          const t = parseBpsInflationTable(String(res?.data?.table ?? ''));
+          if (!t.core.length) throw new Error('table 908 has no rows');
+          return t;
+        },
+        null
+      )
+    : null;
+  const core = bpsTable ? yoyFromMonthly(bpsTable.core) : [];
+  const administered = bpsTable ? yoyFromMonthly(bpsTable.administered) : [];
+  const volatile = bpsTable ? yoyFromMonthly(bpsTable.volatile) : [];
 
   const today = new Date().toISOString().slice(0, 10);
   const ser = (id: string, label: string, unit: string, frequency: MacroSeries['frequency'], source: string, sourceUrl: string, points: MacroPoint[], note?: string): MacroSeries => ({
@@ -3493,7 +3493,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   const add = (x: MacroSeries | undefined, category: MacroCategory, higherIsBetter: boolean | null, requiresKey?: string) => {
     if (x && (x.points.length || requiresKey)) ind.push(toIndicator(x, category, higherIsBetter, today, requiresKey));
   };
-  const BPS_URL = 'https://webapi.bps.go.id/developer/';
+  const BPS_URL = 'https://www.bps.go.id/id/statistics-table/1/OTA4/inflasi-umum--inti--harga-diatur-pemerintah--dan-bergejolak-nasional.html';
   // Monetary & rates
   if (biRate.length) add(ser('biRate', 'BI-Rate', '%', 'decision', 'Bank Indonesia', 'https://www.bi.go.id/en/statistik/indikator/bi-rate.aspx', biPath), 'monetary', false);
   add(byId.get('policyRate'), 'monetary', false);
@@ -3501,9 +3501,10 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   // Inflation & prices
   add(byId.get('inflationYoy'), 'inflation', false);
   add(byId.get('inflationMom'), 'inflation', false);
-  add(ser('coreInflation', 'Core inflation', '%', 'monthly', 'BPS', BPS_URL, core), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
-  add(ser('administeredInflation', 'Administered-price inflation', '%', 'monthly', 'BPS', BPS_URL, administered), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
-  add(ser('volatileFoodInflation', 'Volatile-food inflation', '%', 'monthly', 'BPS', BPS_URL, volatile), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  const bpsNote = 'Year-on-year, compounded from the BPS month-on-month figures (static table 908).';
+  add(ser('coreInflation', 'Core inflation, year-on-year', '%', 'monthly', 'BPS', BPS_URL, core, bpsNote), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  add(ser('administeredInflation', 'Administered-price inflation, year-on-year', '%', 'monthly', 'BPS', BPS_URL, administered, bpsNote), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
+  add(ser('volatileFoodInflation', 'Volatile-food inflation, year-on-year', '%', 'monthly', 'BPS', BPS_URL, volatile, bpsNote), 'inflation', false, bpsKey ? undefined : 'BPS_API_KEY');
   // Growth & activity
   add(byId.get('gdpYoy'), 'growth', true);
   add(byId.get('gdpAnnual'), 'growth', true);
@@ -3635,7 +3636,9 @@ async function getIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     // A cold serverless instance starts from the last saved result (the OECD limits request bursts)
     const saved = await getPacked<IndonesiaMacroPayload>(store, MACRO_STORE_KEY).catch(() => null);
     const ttl = saved?.failed?.length ? 30 * 60_000 : MACRO_TTL_MS;
-    if (saved?.generatedAt && Date.now() - saved.generatedAt < ttl && saved.series?.length) {
+    // A result saved before the BPS key was added (or removed) is recomputed
+    const sameKeys = saved?.bpsConfigured === Boolean(process.env.BPS_API_KEY?.trim());
+    if (saved?.generatedAt && Date.now() - saved.generatedAt < ttl && saved.series?.length && sameKeys) {
       macroCache.entry = { data: saved, expiresAt: saved.generatedAt + ttl };
       return saved;
     }
