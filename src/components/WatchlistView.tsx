@@ -7,7 +7,7 @@ import { assetName, assetShortName } from '../i18n/assetNames.ts';
 import { Star, Trash2, ArrowUpRight, Radar } from 'lucide-react';
 import { PriceTick, getAssetBySymbol } from '../config/assets.ts';
 import {
-  formatAssetPrice,
+  formatTickPrice,
   formatPercent,
 } from '../utils/format.ts';
 
@@ -95,7 +95,7 @@ export function WatchlistView({
             const isLoaded = tick && tick.status !== 'error' && Number.isFinite(tick.price);
             const priceDisplay = !isLoaded
               ? t('common.loading')
-              : formatAssetPrice(tick.price, asset);
+              : formatTickPrice(tick, asset);
 
             const pct = tick?.changePct24h;
             const pctColor =

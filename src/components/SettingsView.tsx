@@ -4,7 +4,7 @@
  * switch, data sources and the disclaimer.
  */
 import { Sun, Moon, Monitor, Clock, Info, Database, SquareTerminal, Languages } from 'lucide-react';
-import { getNumberFormat, setLang, setNumberFormat, useLang, useT, type TranslationKey } from '../i18n/index.ts';
+import { getNumberFormat, setCryptoQuote, setLang, setNumberFormat, useCryptoQuote, useLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
@@ -32,6 +32,7 @@ export function SettingsView({
   const t = useT();
   const lang = useLang();
   const numberFormat = getNumberFormat();
+  const cryptoQuote = useCryptoQuote();
   const themeOptions: { value: ThemePreference; label: TranslationKey; desc: TranslationKey; icon: typeof Sun }[] = [
     { value: 'light', label: 'settings.theme.light', desc: 'settings.theme.lightDesc', icon: Sun },
     { value: 'dark', label: 'settings.theme.dark', desc: 'settings.theme.darkDesc', icon: Moon },
@@ -106,6 +107,18 @@ export function SettingsView({
             <input type="radio" name="numfmt" checked={numberFormat === 'en-US'} onChange={() => setNumberFormat('en-US')} />
             {t('settings.numberEnUs')}
           </label>
+        </fieldset>
+        <fieldset className="space-y-1.5 text-xs">
+          <legend className="font-semibold mb-1">{t('quote.settingsTitle')}</legend>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="cryptoquote" checked={cryptoQuote === 'USD'} onChange={() => setCryptoQuote('USD')} />
+            {t('quote.settingsUsd')}
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="cryptoquote" checked={cryptoQuote === 'IDR'} onChange={() => setCryptoQuote('IDR')} />
+            {t('quote.settingsIdr')}
+          </label>
+          <p style={{ color: 'var(--text-secondary)' }}>{t('quote.settingsHint')}</p>
         </fieldset>
       </section>
 

@@ -2692,6 +2692,15 @@ export const en = {
   "impact.cocoa.chain": "West African harvests → world cocoa price → Indonesian cocoa exports and food makers' costs.",
   "impact.coffee.chain": "Vietnamese and Brazilian harvests → Robusta price → Indonesian coffee exports.",
   "impact.rice.chain": "Thai rice price (and the baht) → cost of rice imports → food inflation → headline inflation → BI-Rate.",
+  "quote.aria": "Show crypto prices in US dollars or Rupiah",
+  "quote.usd": "USD",
+  "quote.idr": "IDR",
+  "quote.settingsTitle": "Crypto price currency",
+  "quote.settingsUsd": "US dollar: the Binance USDT price (live, every second)",
+  "quote.settingsIdr": "Rupiah: the Indodax price, or converted at the live USD/IDR rate",
+  "quote.settingsHint": "Alerts and portfolio amounts for crypto stay in Rupiah.",
+  "detail.unitUsd": "US dollar (Binance USDT)",
+  "detail.inIdr": "≈ {idr} in Rupiah",
 } as const;
 
 export type TranslationKey = keyof typeof en;

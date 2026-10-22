@@ -14,6 +14,7 @@ import { usePriceFlash } from '../hooks/usePriceFlash.ts';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { MarketTable } from './MarketTable.tsx';
+import { CryptoQuoteToggle } from './CryptoQuoteToggle.tsx';
 import { MonthlyCommodities } from './MonthlyCommodities.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
 
@@ -222,6 +223,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                 <span className="ml-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {all.length}
                 </span>
+                {groupMeta.key === 'crypto' && <CryptoQuoteToggle className="ml-2" />}
               </h2>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {groupSubtitle(groupMeta.key)}

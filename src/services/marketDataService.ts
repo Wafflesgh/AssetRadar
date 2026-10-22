@@ -104,6 +104,8 @@ function newClientId(): string {
 
 /** Coins priced from Binance spot (not Indodax): their live price comes from the spot stream. */
 const LIVE_SPOT_COINS = ASSETS.filter((a) => a.binanceSpot && !a.indodaxPair && (a.priceSource ?? 'binance-spot') === 'binance-spot');
+/** Indodax coins that also trade on Binance spot: their live USDT price is kept for the USD display. */
+const USDT_REF_COINS = ASSETS.filter((a) => a.group === 'crypto' && a.binanceSpot && a.indodaxPair);
 /** Coins priced from Binance futures: their live price is the contract's mark price (÷ its multiplier). */
 const LIVE_FUTURES_COINS = ASSETS.filter((a) => a.binanceFutures && !a.indodaxPair && a.priceSource === 'binance-futures');
 
@@ -196,7 +198,7 @@ export class MarketDataManager {
         if (!this.isDestroyed) this.mergeTicks({});
       }, 1000);
     };
-    if (LIVE_SPOT_COINS.length) this.liveUnsubs.push(binanceSpotLive.subscribe(schedule));
+    if (LIVE_SPOT_COINS.length || USDT_REF_COINS.length) this.liveUnsubs.push(binanceSpotLive.subscribe(schedule));
     if (Object.keys(LIVE_MAIN_FUTURES).length || LIVE_FUTURES_COINS.length) this.liveUnsubs.push(binanceFuturesLive.subscribe(schedule));
   }
 
@@ -219,6 +221,12 @@ export class MarketDataManager {
           updatedAt: now,
           status: 'live',
         };
+      }
+      // Indodax coins keep their Rupiah price; the Binance USDT price is added for the USD display
+      for (const a of USDT_REF_COINS) {
+        const tk = spot.tickers.get(a.binanceSpot as string);
+        const t = next[a.symbol];
+        if (tk && t && tk.close > 0) next[a.symbol] = { ...t, priceUsdt: tk.close };
       }
     }
     const fut = binanceFuturesLive.snapshot();

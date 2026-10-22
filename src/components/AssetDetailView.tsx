@@ -22,11 +22,14 @@ import {
   formatUsdPerOz,
   formatAssetPrice,
   formatPercent,
+  formatTickPrice,
+  showsCryptoInUsd,
   formatDecimal,
 } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { LiveIndication } from './LiveIndication.tsx';
+import { CryptoQuoteToggle } from './CryptoQuoteToggle.tsx';
 import { AssetIntelligencePanel } from './AssetIntelligencePanel.tsx';
 import { AssetSearch } from './AssetSearch.tsx';
 import { CorporateCalendarPanel } from './CorporateCalendarPanel.tsx';
@@ -309,15 +312,21 @@ export function AssetDetailView({
                 className="text-xs block"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {t('detail.latest', { unit: assetUnitLabel(asset) })}
+                {t('detail.latest', { unit: showsCryptoInUsd(asset) ? t('detail.unitUsd') : assetUnitLabel(asset) })}
+                {asset.group === 'crypto' && <CryptoQuoteToggle className="ml-2" />}
               </span>
               <span
                 data-testid="detail-price-primary"
                 className="text-2xl md:text-3xl font-mono-num font-bold tabular-nums mt-0.5 block"
               >
-                {isLoaded && tick ? formatVal(tick.price) : t('common.loading')}
+                {isLoaded && tick ? formatTickPrice(tick, asset) : t('common.loading')}
               </span>
-              {isLoaded && tick?.converted && tick.priceUsdt !== undefined && (
+              {isLoaded && tick && showsCryptoInUsd(asset) && (
+                <span className="text-[11px] block font-mono-num" style={{ color: 'var(--text-secondary)' }}>
+                  {t('detail.inIdr', { idr: formatRupiah(tick.price) })}
+                </span>
+              )}
+              {isLoaded && !showsCryptoInUsd(asset) && tick?.converted && tick.priceUsdt !== undefined && (
                 <span className="text-[11px] block font-mono-num" style={{ color: 'var(--text-secondary)' }}>
                   {t('detail.converted', { usdt: formatDecimal(tick.priceUsdt, tick.priceUsdt >= 1 ? 4 : 8) })}
                 </span>

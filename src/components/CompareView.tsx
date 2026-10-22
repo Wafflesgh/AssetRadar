@@ -11,7 +11,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { getAssetBySymbol, type PriceTick } from '../config/assets.ts';
 import { fetchDailyHistory, fetchFinancialStatements, type DailyHistory, type FinancialStatements } from '../services/marketDataService.ts';
 import { COMPARE_PERIODS, MAX_COMPARE, normalizeSeries, periodReturns, periodStart, type ComparePeriod } from '../utils/compare.ts';
-import { formatAssetPrice, getNumberLocale } from '../utils/format.ts';
+import { formatTickPrice, getNumberLocale } from '../utils/format.ts';
 import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { assetShortName } from '../i18n/assetNames.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
@@ -213,7 +213,7 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
                       <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: SERIES_COLORS[i] }} aria-hidden="true" />
                       {assetShortName(a)} <span style={muted}>· {a.currency === 'USX' ? 'USD' : a.currency}</span>
                     </td>
-                    <td className="p-2 text-right font-mono-num">{ok ? formatAssetPrice(tick.price, a) : t('common.dataUnavailable')}</td>
+                    <td className="p-2 text-right font-mono-num">{ok ? formatTickPrice(tick, a) : t('common.dataUnavailable')}</td>
                     <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct24h : null)}</td>
                     <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct7d : null)}</td>
                     <td className="p-2 text-right font-mono-num">{signed(ok ? tick.changePct30d : null)}</td>

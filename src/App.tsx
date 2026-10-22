@@ -31,6 +31,7 @@ import {
   ConnectionState,
   FeedMode,
 } from './services/marketDataService.ts';
+import { setUsdIdrRate } from './utils/format.ts';
 import { parseHashRoute, buildHashRoute } from './utils/router.ts';
 import { liveHistory } from './utils/movers.ts';
 import { SidebarNav, BottomNav, NavTab } from './components/Navigation.tsx';
@@ -157,6 +158,8 @@ export default function App() {
       onTicksUpdate: (updatedTicks) => {
         // Feed the live buffer behind the "moving fastest right now" tables
         liveHistory.recordTicks(updatedTicks);
+        // Live USD/IDR rate for showing Rupiah crypto values in USD
+        setUsdIdrRate(updatedTicks['USD/IDR']?.price);
         setTicks({ ...updatedTicks });
         // Alerts are checked in the browser unless the server pushes them
         checkLocalAlerts(updatedTicks);

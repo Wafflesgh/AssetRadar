@@ -124,7 +124,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
           />
           {isPrice && selected && live !== undefined && (
             <span className="text-xs block" style={{ color: 'var(--text-secondary)' }}>
-              {t('alerts.ed.now', { price: formatAssetPrice(live, selected) })}{' '}
+              {t('alerts.ed.now', { price: formatAssetPrice(live, selected, { native: true }) })}{' '}
               {Number.isFinite(numeric) && numeric > 0 && ((kind === 'priceAbove' && live >= numeric) || (kind === 'priceBelow' && live <= numeric))
                 ? t('alerts.ed.firesBeyond')
                 : t('alerts.ed.fires')}

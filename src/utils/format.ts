@@ -2,6 +2,9 @@
  * format.ts — Number formatting helpers for prices and percentages, plus the XAU/USD →
  * Rupiah-per-gram gold conversion. Separators follow the number locale set with
  * setNumberLocale: en-US ("Rp1,234,567", "+1.25%", the default) or id-ID ("Rp1.234.567", "+1,25%").
+ * Crypto prices are kept in Rupiah internally and shown in the quote chosen with setCryptoQuote:
+ * USD (the default: the Binance USDT price when the tick has one, else Rupiah ÷ the live USD/IDR
+ * rate from setUsdIdrRate) or IDR.
  */
 
 export const TROY_OUNCE_IN_GRAMS = 31.1034768;
@@ -21,6 +24,51 @@ export function setNumberLocale(locale: NumberLocale): void {
 
 export function getNumberLocale(): NumberLocale {
   return LOCALE;
+}
+
+export type CryptoQuote = 'USD' | 'IDR';
+let CRYPTO_QUOTE: CryptoQuote = 'USD';
+let USD_IDR: number | null = null;
+
+/** Currency crypto prices are shown in (called by the setting in i18n/index.ts). */
+export function setCryptoQuote(quote: CryptoQuote): void {
+  CRYPTO_QUOTE = quote;
+}
+
+export function getCryptoQuote(): CryptoQuote {
+  return CRYPTO_QUOTE;
+}
+
+/** Live USD/IDR rate used to show Rupiah crypto values in USD (ignored when not a positive number). */
+export function setUsdIdrRate(rate: number | undefined | null): void {
+  if (typeof rate === 'number' && Number.isFinite(rate) && rate > 1000) USD_IDR = rate;
+}
+
+interface QuotedAsset {
+  currency: string;
+  unit?: string;
+  group?: string;
+}
+
+/** True when this asset's Rupiah prices are shown in USD right now. */
+export function showsCryptoInUsd(asset: QuotedAsset): boolean {
+  return asset.group === 'crypto' && asset.currency === 'IDR' && CRYPTO_QUOTE === 'USD' && USD_IDR !== null;
+}
+
+/** Currency an asset's prices are shown in (USD for crypto in USD mode, else its own). */
+export function displayCurrency(asset: QuotedAsset): string {
+  return showsCryptoInUsd(asset) ? 'USD' : asset.currency;
+}
+
+/** A value in the asset's own currency converted to the shown currency (crypto Rupiah → USD). */
+export function displayValue(value: number, asset: QuotedAsset): number {
+  return showsCryptoInUsd(asset) ? value / (USD_IDR as number) : value;
+}
+
+/** The shown value of a live tick: the exact Binance USDT price for crypto in USD mode when known. */
+export function tickDisplayValue(tick: { price: number; priceUsdt?: number }, asset: QuotedAsset): number {
+  if (showsCryptoInUsd(asset) && typeof tick.priceUsdt === 'number' && tick.priceUsdt > 0) return tick.priceUsdt;
+  return displayValue(tick.price, asset);
 }
 
 /** Decimal number with up to `max` decimals in the current locale (for free-form values). */
@@ -73,7 +121,7 @@ export function formatPrice(value: number, currency: string, unit = ''): string 
     case 'USX':
       return `${numberFormatterTwo.format(value)}¢${unit}`;
     case 'USD':
-      return `US$${formatNumber(value, Math.abs(value) < 1 ? 4 : 2)}${unit}`;
+      return `US$${formatNumber(value, usdDecimals(value))}${unit}`;
     case 'KRW':
       return `KRW ${formatNumber(value, 0)}${unit}`;
     default:
@@ -81,10 +129,29 @@ export function formatPrice(value: number, currency: string, unit = ''): string 
   }
 }
 
-/** Price of an asset in its own quote currency and unit (see formatPrice). */
-export function formatAssetPrice(value: number | undefined, asset: { currency: string; unit?: string }): string {
+/** Decimals for a USD price: 2 from $1, 4 under $1, more for very small coins (≈4 significant digits). */
+function usdDecimals(value: number): number {
+  const abs = Math.abs(value);
+  if (abs >= 1 || abs === 0) return 2;
+  if (abs >= 0.01) return 4;
+  return Math.min(10, Math.ceil(-Math.log10(abs)) + 3);
+}
+
+/**
+ * Price of an asset in its shown currency and unit (see formatPrice): crypto Rupiah values are
+ * converted to USD in USD mode unless `native` (alert thresholds and portfolio amounts stay in Rupiah).
+ */
+export function formatAssetPrice(value: number | undefined, asset: QuotedAsset, opts?: { native?: boolean }): string {
   if (value === undefined) return '—';
+  if (!opts?.native && showsCryptoInUsd(asset)) return formatPrice(displayValue(value, asset), 'USD', asset.unit ?? '');
   return formatPrice(value, asset.currency, asset.unit ?? '');
+}
+
+/** The live price of a tick in the shown currency (exact Binance USDT price for crypto in USD mode). */
+export function formatTickPrice(tick: { price: number; priceUsdt?: number }, asset: QuotedAsset): string {
+  if (!Number.isFinite(tick.price)) return '—';
+  if (showsCryptoInUsd(asset)) return formatPrice(tickDisplayValue(tick, asset), 'USD', asset.unit ?? '');
+  return formatPrice(tick.price, asset.currency, asset.unit ?? '');
 }
 
 /** Compact Rupiah amount: "Rp588.2T", "Rp3.45T", "Rp845.3B", "Rp12.1M". */

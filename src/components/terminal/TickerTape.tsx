@@ -2,7 +2,7 @@
 import { t as tr } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { ASSETS, PriceTick } from '../../config/assets.ts';
-import { changeColor, formatTerminalPct, formatTerminalPrice, isTickUsable } from './TerminalPanel.tsx';
+import { changeColor, formatTerminalPct, formatTerminalTick, isTickUsable } from './TerminalPanel.tsx';
 
 interface TickerTapeProps {
   ticks: Record<string, PriceTick>;
@@ -30,7 +30,7 @@ export function TickerTape({ ticks, onSelect }: TickerTapeProps) {
             {asset.code}
           </span>
           <span style={{ color: 'var(--t-text)' }}>
-            {usable ? formatTerminalPrice(tick.price, asset) : tick ? 'N/A' : '...'}
+            {usable ? formatTerminalTick(tick, asset) : tick ? 'N/A' : '...'}
           </span>
           <span style={{ color: changeColor(pct) }}>
             {pct !== undefined && pct > 0 ? '▲' : pct !== undefined && pct < 0 ? '▼' : ''}

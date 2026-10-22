@@ -13,6 +13,7 @@ import {
   changeColor,
   formatTerminalPct,
   formatTerminalPrice,
+  formatTerminalTick,
   formatWibStamp,
   isTickUsable,
 } from './TerminalPanel.tsx';
@@ -128,7 +129,7 @@ export function MonitorPanel({
                       }`}
                       style={{ color: 'var(--t-text)' }}
                     >
-                      {formatTerminalPrice(tick.price, asset)}
+                      {formatTerminalTick(tick, asset)}
                     </td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap" style={{ color: changeColor(live5m) }}>
                       {formatTerminalPct(live5m)}

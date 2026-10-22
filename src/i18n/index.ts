@@ -3,13 +3,14 @@
  * library: the current language (saved via storage.ts; first visit follows the browser:
  * "id…" → Indonesian, otherwise English), `t(key, params)` with {param} placeholders and an
  * English fallback, React hooks `useT()` / `useLang()` that re-render on a switch, and the number
- * format (follow the language, or always en-US) applied to utils/format.ts.
+ * format (follow the language, or always en-US) applied to utils/format.ts, and the currency crypto
+ * prices are shown in (USD / IDR, `useCryptoQuote`), which re-renders the same way.
  */
 import { useSyncExternalStore } from 'react';
 import { translate, translateOr, type AppLang, type TParams } from './core.ts';
-import { setNumberLocale } from '../utils/format.ts';
+import { setCryptoQuote as applyCryptoQuote, setNumberLocale, type CryptoQuote } from '../utils/format.ts';
 import { setTimeLang } from '../utils/marketHours.ts';
-import { getNumberFormatPref, getSavedLang, saveLang, saveNumberFormatPref, type NumberFormatPref } from '../utils/storage.ts';
+import { getCryptoQuotePref, getNumberFormatPref, getSavedLang, saveCryptoQuotePref, saveLang, saveNumberFormatPref, type NumberFormatPref } from '../utils/storage.ts';
 
 export type { TranslationKey, AppLang, TParams } from './core.ts';
 export { interpolate, translate, translateOr, parseLang } from './core.ts';
@@ -34,6 +35,8 @@ function applyNumberLocale(): void {
   setTimeLang(current);
 }
 applyNumberLocale();
+let cryptoQuote: CryptoQuote = getCryptoQuotePref();
+applyCryptoQuote(cryptoQuote);
 try {
   if (typeof document !== 'undefined') document.documentElement.lang = current;
 } catch {
@@ -71,6 +74,18 @@ export function setNumberFormat(pref: NumberFormatPref): void {
   emit();
 }
 
+export function getCryptoQuote(): CryptoQuote {
+  return cryptoQuote;
+}
+
+/** Shows crypto prices in USD or IDR everywhere (components using useT / useCryptoQuote re-render). */
+export function setCryptoQuote(quote: CryptoQuote): void {
+  cryptoQuote = quote;
+  saveCryptoQuotePref(quote);
+  applyCryptoQuote(quote);
+  emit();
+}
+
 /** Translation in the current language (for code outside React components). */
 export function t(key: TranslationKey, params?: TParams): string {
   return translate(current, key, params);
@@ -100,6 +115,11 @@ export function useLang(): AppLang {
 export function useT(): (key: TranslationKey, params?: TParams) => string {
   useSyncExternalStore(subscribe, () => version, () => 0);
   return t;
+}
+
+/** Currency crypto prices are shown in; the component re-renders when it changes. */
+export function useCryptoQuote(): CryptoQuote {
+  return useSyncExternalStore(subscribe, getCryptoQuote, () => 'USD' as CryptoQuote);
 }
 
 /** BCP-47 tag for dates and Intl APIs in the current language. */

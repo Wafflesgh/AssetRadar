@@ -80,3 +80,25 @@ test('Indonesian number locale: dot thousands, comma decimals; back to en-US', a
   }
   assert.equal(formatRupiah(1234567), 'Rp1,234,567');
 });
+
+test('crypto prices show in USD (Binance USDT when known) or in Rupiah', async () => {
+  const { formatAssetPrice, formatTickPrice, setCryptoQuote, setUsdIdrRate, tickDisplayValue } = await import('./format.ts');
+  const btc = { currency: 'IDR', group: 'crypto' };
+  const bbca = { currency: 'IDR', group: 'idStock' };
+  setUsdIdrRate(16000);
+  setCryptoQuote('USD');
+  try {
+    // Exact Binance price when the tick has one, else Rupiah ÷ USD/IDR
+    assert.equal(formatTickPrice({ price: 1_600_000_000, priceUsdt: 100_123.45 }, btc), 'US$100,123.45');
+    assert.equal(formatTickPrice({ price: 1_600_000_000 }, btc), 'US$100,000.00');
+    assert.equal(tickDisplayValue({ price: 0.32 }, btc), 0.00002);
+    assert.equal(formatAssetPrice(0.32, btc), 'US$0.00002000');
+    // Alert thresholds stay in Rupiah; stocks are never converted
+    assert.equal(formatAssetPrice(1_600_000_000, btc, { native: true }), 'Rp1,600,000,000');
+    assert.equal(formatTickPrice({ price: 9000 }, bbca), 'Rp9,000');
+    setCryptoQuote('IDR');
+    assert.equal(formatTickPrice({ price: 1_600_000_000, priceUsdt: 100_123.45 }, btc), 'Rp1,600,000,000');
+  } finally {
+    setCryptoQuote('USD');
+  }
+});

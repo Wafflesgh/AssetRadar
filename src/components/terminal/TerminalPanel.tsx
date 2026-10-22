@@ -6,7 +6,7 @@ import { t as tr } from '../../i18n/index.ts';
 import { ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AssetConfig, PriceTick, SentimentLabel } from '../../config/assets.ts';
-import { formatNumber } from '../../utils/format.ts';
+import { displayCurrency, displayValue, formatNumber, tickDisplayValue } from '../../utils/format.ts';
 
 const idNumber = (digits: number) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -17,10 +17,21 @@ const NUM_2 = idNumber(2);
  * Compact Terminal price without a currency sign: whole numbers from 1,000 for Rupiah/Won,
  * 2 decimals otherwise, and 4–6 decimals for sub-1 prices (PEPE, SHIB, DOGE in USD).
  */
+/** A value in the asset's own currency, shown in its display currency (crypto: USD or IDR setting). */
 export function formatTerminalPrice(value: number | undefined, asset: AssetConfig): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
+  return terminalNumber(displayValue(value, asset), displayCurrency(asset));
+}
+
+/** A live tick's price in the display currency (the exact Binance USDT price for crypto in USD). */
+export function formatTerminalTick(tick: PriceTick | undefined, asset: AssetConfig): string {
+  if (!tick || !Number.isFinite(tick.price)) return '—';
+  return terminalNumber(tickDisplayValue(tick, asset), displayCurrency(asset));
+}
+
+function terminalNumber(value: number, currency: string): string {
   const abs = Math.abs(value);
-  if ((asset.currency === 'IDR' || asset.currency === 'KRW') && abs >= 1000) return NUM_0.format(value);
+  if ((currency === 'IDR' || currency === 'KRW') && abs >= 1000) return NUM_0.format(value);
   if (abs < 0.01) return formatNumber(value, 6);
   if (abs < 1) return formatNumber(value, 4);
   return NUM_2.format(value);

@@ -11,7 +11,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { Clock, Search, X } from 'lucide-react';
 import { AssetConfig, PriceTick, getAssetBySymbol, searchAssets } from '../config/assets.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
-import { formatAssetPrice, formatPercent } from '../utils/format.ts';
+import { formatPercent, formatTickPrice } from '../utils/format.ts';
 import { getRecentSearches, saveRecentSearch } from '../utils/storage.ts';
 
 
@@ -219,7 +219,7 @@ export function AssetSearch({
                   {live && (
                     <div className="text-right shrink-0">
                       <div className="font-mono-num text-xs font-semibold tabular-nums">
-                        {formatAssetPrice(tick.price, asset)}
+                        {formatTickPrice(tick, asset)}
                       </div>
                       <div
                         className="font-mono-num text-[11px] tabular-nums"

@@ -4,7 +4,7 @@
  */
 import { useT } from '../i18n/index.ts';
 import { PriceTick, getAssetByCode } from '../config/assets.ts';
-import { formatAssetPrice } from '../utils/format.ts';
+import { formatTickPrice } from '../utils/format.ts';
 import { isExchangeOpen } from '../utils/marketHours.ts';
 import { Pct } from './MarketTable.tsx';
 
@@ -44,7 +44,7 @@ export function KeyIndicesStrip({ ticks, onSelect }: { ticks: Record<string, Pri
                 />
                 {a.code === 'JCI' ? 'IHSG (JCI)' : a.shortName}
               </span>
-              <span className="block font-mono-num font-semibold text-sm mt-1">{ok ? formatAssetPrice(t.price, a) : t ? tr('common.dataUnavailable') : '…'}</span>
+              <span className="block font-mono-num font-semibold text-sm mt-1">{ok ? formatTickPrice(t, a) : t ? tr('common.dataUnavailable') : '…'}</span>
               <Pct value={ok ? t.changePct24h : undefined} bold />
               <span className="text-[10px] ml-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {open ? tr('keyIndices.open') : tr('keyIndices.closed')}

@@ -7,7 +7,7 @@ import { useT } from '../i18n/index.ts';
 import { assetName } from '../i18n/assetNames.ts';
 import { RefreshCw, Star } from 'lucide-react';
 import type { AssetConfig, PriceTick, SparklinePoint } from '../config/assets.ts';
-import { formatAssetPrice, formatPercent, formatRupiah, formatUsdCompact } from '../utils/format.ts';
+import { formatPercent, formatRupiah, formatTickPrice, formatUsdCompact } from '../utils/format.ts';
 import { flashClass, type Flash } from '../hooks/usePriceFlash.ts';
 
 interface MarketTableProps {
@@ -96,8 +96,8 @@ export function MarketTable({
                       className={`px-2 sm:px-3 py-2.5 text-right font-mono-num font-semibold tabular-nums whitespace-nowrap text-xs sm:text-[13px] ${flashClass(f)}`}
                     >
                       {/* The unit (/oz, /bbl) goes on its own small line so long Rupiah prices fit at 375px */}
-                      <span className="block truncate" title={formatAssetPrice(tick.price, asset)}>
-                        {formatAssetPrice(tick.price, { currency: asset.currency })}
+                      <span className="block truncate" title={formatTickPrice(tick, asset)}>
+                        {formatTickPrice(tick, asset)}
                       </span>
                       {asset.unit ? (
                         <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>

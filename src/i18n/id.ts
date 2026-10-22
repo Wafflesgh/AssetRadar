@@ -2693,4 +2693,13 @@ export const id: Record<TranslationKey, string> = {
   "impact.cocoa.chain": "Panen Afrika Barat → harga kakao dunia → ekspor kakao Indonesia dan biaya produsen makanan.",
   "impact.coffee.chain": "Panen Vietnam dan Brasil → harga Robusta → ekspor kopi Indonesia.",
   "impact.rice.chain": "Harga beras Thailand (dan baht) → biaya impor beras → inflasi pangan → inflasi umum → BI-Rate.",
+  "quote.aria": "Tampilkan harga crypto dalam dolar AS atau Rupiah",
+  "quote.usd": "USD",
+  "quote.idr": "IDR",
+  "quote.settingsTitle": "Mata uang harga crypto",
+  "quote.settingsUsd": "Dolar AS: harga USDT di Binance (live, per detik)",
+  "quote.settingsIdr": "Rupiah: harga Indodax, atau dikonversi dengan kurs USD/IDR live",
+  "quote.settingsHint": "Alert dan nilai portofolio crypto tetap dalam Rupiah.",
+  "detail.unitUsd": "Dolar AS (USDT Binance)",
+  "detail.inIdr": "≈ {idr} dalam Rupiah",
 };

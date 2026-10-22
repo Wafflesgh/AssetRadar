@@ -40,7 +40,7 @@ function describe(a: UserAlert, lang: AppLang): string {
   switch (a.kind) {
     case 'priceAbove':
     case 'priceBelow':
-      return `${name}: ${alertKindLabel(a.kind, lang).toLowerCase()} ${asset && a.value !== undefined ? formatAssetPrice(a.value, asset) : a.value}`;
+      return `${name}: ${alertKindLabel(a.kind, lang).toLowerCase()} ${asset && a.value !== undefined ? formatAssetPrice(a.value, asset, { native: true }) : a.value}`;
     case 'dailyMove':
       return tr('alerts.v.descMove', { name, value: a.value ?? '' });
     case 'calendar':
@@ -244,7 +244,7 @@ export function AlertsView({ ticks, onSelectAsset }: { ticks: Record<string, Pri
                     <span style={{ color: a.active ? 'var(--color-up)' : 'var(--text-secondary)' }}>{a.active ? t('alerts.v.active') : t('alerts.v.off')}</span>
                     {' · '}
                     {a.repeat ? t('alerts.v.repeats', { gap: gap(a.cooldownMin) }) : t('alerts.v.once')}
-                    {asset && tick && Number.isFinite(tick.price) && tick.status !== 'error' ? ` · ${t('alerts.v.nowPrice', { price: formatAssetPrice(tick.price, asset) })}` : ''}
+                    {asset && tick && Number.isFinite(tick.price) && tick.status !== 'error' ? ` · ${t('alerts.v.nowPrice', { price: formatAssetPrice(tick.price, asset, { native: true }) })}` : ''}
                     {a.note ? ` · ${a.note}` : ''}
                   </p>
                 </div>

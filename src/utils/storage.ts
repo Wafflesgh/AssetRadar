@@ -29,6 +29,7 @@ const STORAGE_KEYS = {
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
   LANG: 'assetradar_lang_v1',
   NUMBER_FORMAT: 'assetradar_number_format_v1',
+  CRYPTO_QUOTE: 'assetradar_crypto_quote_v1',
   SYNC_SESSION: 'assetradar_sync_session',
   SYNC_META: 'assetradar_sync_meta_v1',
   ALERTS: 'assetradar_alerts_v1',
@@ -696,5 +697,14 @@ export function getNumberFormatPref(): NumberFormatPref {
 
 export function saveNumberFormatPref(pref: NumberFormatPref): void {
   safeSet(STORAGE_KEYS.NUMBER_FORMAT, pref);
+}
+
+/** Currency crypto prices are shown in: USD (default, as on Binance) or IDR. */
+export function getCryptoQuotePref(): 'USD' | 'IDR' {
+  return safeGet(STORAGE_KEYS.CRYPTO_QUOTE) === 'IDR' ? 'IDR' : 'USD';
+}
+
+export function saveCryptoQuotePref(quote: 'USD' | 'IDR'): void {
+  safeSet(STORAGE_KEYS.CRYPTO_QUOTE, quote);
 }
 

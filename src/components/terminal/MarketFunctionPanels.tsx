@@ -18,7 +18,7 @@ import {
   TerminalPanel,
   changeColor,
   formatTerminalPct,
-  formatTerminalPrice,
+  formatTerminalTick,
   isTickUsable,
 } from './TerminalPanel.tsx';
 
@@ -69,7 +69,7 @@ export function MoversTerminalPanel({ ticks, onSelect, highlighted, className }:
             {rows.map(({ item, value }) => (
               <tr key={item.id} onClick={() => onSelect(item.symbol)} className="cursor-pointer border-t" style={{ borderColor: 'var(--t-line)' }}>
                 <td className="px-2 py-1 font-bold" style={{ color: 'var(--t-amber)' }}>{item.code}</td>
-                <td className="px-2 py-1 text-right" style={{ color: 'var(--t-text)' }}>{formatTerminalPrice(ticks[item.symbol]?.price, item)}</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--t-text)' }}>{formatTerminalTick(ticks[item.symbol], item)}</td>
                 <td className="px-2 py-1 text-right font-bold" style={{ color: changeColor(value) }}>{formatTerminalPct(value)}</td>
               </tr>
             ))}
@@ -145,7 +145,7 @@ export function WorldIndicesPanel({ ticks, onSelect, highlighted, className }: P
                 <td className="px-2 py-1 font-bold" style={{ color: 'var(--t-amber)' }}>{a.code}</td>
                 <td className="px-2 py-1 hidden lg:table-cell truncate max-w-40" style={{ color: 'var(--t-muted)' }}>{a.name}</td>
                 <td key={`p-${f?.n ?? 0}`} className={`px-2 py-1 text-right ${flashClass(f)}`} style={{ color: 'var(--t-text)' }}>
-                  {usable ? formatTerminalPrice(t.price, a) : 'N/A'}
+                  {usable ? formatTerminalTick(t, a) : 'N/A'}
                 </td>
                 <td className="px-2 py-1 text-right" style={{ color: changeColor(t?.changePct24h) }}>{formatTerminalPct(t?.changePct24h)}</td>
                 <td className="px-2 py-1 text-right hidden sm:table-cell" style={{ color: changeColor(t?.changePct7d) }}>{formatTerminalPct(t?.changePct7d)}</td>

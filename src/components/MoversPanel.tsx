@@ -8,7 +8,7 @@ import { assetName } from '../i18n/assetNames.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, TrendingDown, TrendingUp } from 'lucide-react';
 import { ASSETS, AssetConfig, AssetGroup, PriceTick } from '../config/assets.ts';
-import { formatAssetPrice, formatPercent } from '../utils/format.ts';
+import { formatPercent, formatTickPrice } from '../utils/format.ts';
 import {
   LIVE_WINDOW_MS,
   MOVER_WINDOWS,
@@ -181,7 +181,7 @@ function MoverList({
                   </span>
                   <span className="relative text-right shrink-0">
                     <span className="font-mono-num text-xs tabular-nums mr-3 hidden sm:inline" style={{ color: 'var(--text-secondary)' }}>
-                      {tick ? formatAssetPrice(tick.price, item) : ''}
+                      {tick ? formatTickPrice(tick, item) : ''}
                     </span>
                     <span className="font-mono-num text-xs font-bold tabular-nums" style={{ color }}>
                       {formatPercent(value)}
