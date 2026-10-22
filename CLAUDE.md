@@ -21,6 +21,8 @@ Env (`.env`, lihat `.env.example`): `GEMINI_API_KEY` (opsional; tanpa ini sentim
 
 Setelah setiap perubahan: `npm run lint && npm test && npm run build` harus lulus (dan `check-i18n` = 0).
 
+**"status check"** (pemilik mengetik ini): jalankan skill `.claude/skills/status-check` → `node scripts/status-check.mjs` (laporan kesehatan aplikasi live: server, jaringan/sumber data, kesegaran data, tugas otomatis, fitur opsional), lalu ringkas dalam Bahasa Indonesia sederhana.
+
 ## Arsitektur
 
 - **Stack**: React 19 + Vite 8 + Tailwind 4 (via `@tailwindcss/vite`), TypeScript, Express (`server.ts`), `lightweight-charts` v5, `recharts` v3 (Profil Risiko, Quant Lab), `lucide-react`, `@google/genai`. Test Node "strip-only": jangan pakai parameter properties di constructor TS.
