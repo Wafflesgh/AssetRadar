@@ -4,15 +4,18 @@
  * indicator cards (latest value, change, z-score, stale flag, frequency, source, 10-year chart),
  * IDX valuation and breadth of the scanned stocks, the next FOMC date, and the indicators without
  * a free source. Free macro data is often published with a delay — every card shows how recent it is.
+ * Each card can open "What does it mean for the economy?": the typical cause-and-effect chain when the
+ * indicator rises / falls, with the one that applies now marked (src/utils/macroImpact.ts).
  */
 import { getLang, tOr, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { Rich } from '../i18n/Rich.tsx';
-import { ExternalLink, Landmark, RefreshCw } from 'lucide-react';
+import { ChevronDown, ExternalLink, Landmark, Lightbulb, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, type IndonesiaMacro } from '../services/marketDataService.ts';
 import { SbnRetailSection } from './SbnRetailSection.tsx';
 import { formatDecimal, formatNumber } from '../utils/format.ts';
+import { impactBullets, impactReading } from '../utils/macroImpact.ts';
 import { MACRO_CATEGORIES, latest, type MacroCategory, type MacroIndicator, type MacroSeries, type PulseCategory } from '../utils/macro.ts';
 
 const MONTH = {
@@ -335,6 +338,55 @@ function ZBadge({ ind }: { ind: MacroIndicator }) {
   );
 }
 
+function ImpactSection({ s }: { s: MacroSeries }) {
+  const t = useT();
+  const r = impactReading(s.id, s.points);
+  if (!r || s.points.length === 0) return null;
+  const order: Array<'up' | 'down'> = r.active === 'down' ? ['down', 'up'] : ['up', 'down'];
+  const now = [r.level && t(`impact.level.${r.level}` as TranslationKey), r.trend && t(`impact.trend.${r.trend}` as TranslationKey)].filter(Boolean).join(' · ');
+  return (
+    <details className="group rounded-lg border text-xs" style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}>
+      <summary className="flex items-center gap-1.5 px-3 py-2 cursor-pointer select-none font-semibold list-none [&::-webkit-details-marker]:hidden">
+        <Lightbulb className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-gold)' }} />
+        <span className="flex-1">{t('impact.toggle')}</span>
+        <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="px-3 pb-3 space-y-3">
+        {now && (
+          <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            {now}
+          </p>
+        )}
+        {order.map((dir) => {
+          const active = r.active === dir;
+          const color = dir === 'up' ? 'var(--color-up)' : 'var(--color-down)';
+          return (
+            <div key={dir} className="space-y-1" style={{ opacity: r.active && !active ? 0.75 : 1 }}>
+              <p className="font-semibold flex flex-wrap items-center gap-1.5">
+                <span style={{ color }}>{dir === 'up' ? '▲' : '▼'}</span>
+                {t(`impact.${dir}`)}
+                {active && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border" style={{ color: 'var(--accent-radar)', borderColor: 'var(--accent-radar)' }}>
+                    {t('impact.now')}
+                  </span>
+                )}
+              </p>
+              <ul className="list-disc pl-5 space-y-0.5 leading-relaxed">
+                {impactBullets(t(`impact.${r.concept}.${dir}` as TranslationKey)).map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+        <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+          {t('impact.note')}
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function SeriesCard({ s, ind }: { s: MacroSeries; ind?: MacroIndicator }) {
   const t = useT();
   const l = latest(s.points);
@@ -404,6 +456,7 @@ function SeriesCard({ s, ind }: { s: MacroSeries; ind?: MacroIndicator }) {
           </ResponsiveContainer>
         </div>
       )}
+      <ImpactSection s={s} />
       {s.note && (
         <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
           {tOr(`macro.s.${s.id}.note`, s.note)}
