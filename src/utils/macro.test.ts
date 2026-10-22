@@ -46,6 +46,9 @@ test('stage 4 macro: 10-year z-score, staleness, Macro Pulse, spreads and BPS pa
   assert.equal(zScore10y(pts.slice(0, 3)), null);
   assert.equal(isStale({ frequency: 'monthly', points: [{ date: '2026-01-01', value: 1 }] }, '2026-10-20'), true);
   assert.equal(isStale({ frequency: 'monthly', points: [{ date: '2026-08-01', value: 1 }] }, '2026-10-20'), false);
+  // Annual figures count from the end of their year
+  assert.equal(isStale({ frequency: 'annual', points: [{ date: '2025-01-01', value: 1 }] }, '2026-10-20'), false);
+  assert.equal(isStale({ frequency: 'annual', points: [{ date: '2023-01-01', value: 1 }] }, '2026-10-20'), true);
   const base = { id: 'x', label: 'x', unit: '%', frequency: 'monthly' as const, source: 's', sourceUrl: 'u', points: pts.map((p, i) => ({ ...p, date: `2026-${String((i % 9) + 1).padStart(2, '0')}-01` })) };
   const fresh = { ...base, points: pts.map((p, i) => ({ value: p.value, date: `${2016 + Math.floor(i / 3)}-${String((i % 3) * 3 + 1).padStart(2, '0')}-01` })) };
   fresh.points[fresh.points.length - 1].date = '2026-09-01';

@@ -38,6 +38,18 @@ test('every concept has dated links and a chain to other cards that exist', () =
   }
 });
 
+test('every extra World Bank indicator has an explanation whose good direction matches the server', async () => {
+  const { WB_EXTRA } = await import('./macro.ts');
+  for (const x of WB_EXTRA) {
+    const c = IMPACT_BY_SERIES[x.id];
+    assert.ok(c, `no concept for ${x.id}`);
+    const good = IMPACT_INFO[c].good;
+    const expected = x.higherIsBetter === null ? null : x.higherIsBetter ? 'up' : 'down';
+    if (c !== 'inflation') assert.equal(good, expected, x.id);
+    assert.ok(en[`macro.s.${x.id}` as keyof typeof en] && id[`macro.s.${x.id}` as keyof typeof en], `no label for ${x.id}`);
+  }
+});
+
 test('sentiment for Indonesia follows the direction that is good for Indonesia', () => {
   const high = monthly([...Array(40).fill(4), ...Array(10).fill(6), 6]);
   // High BI-Rate: tight money is unfavourable for growth

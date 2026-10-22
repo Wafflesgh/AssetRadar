@@ -116,9 +116,52 @@ export function latest(points: MacroPoint[]): { date: string; value: number; cha
 
 // ---- Stage 4: categories, z-scores, staleness, Macro Pulse, BPS --------------------------------
 
-export type MacroCategory = 'monetary' | 'inflation' | 'growth' | 'external' | 'fiscal' | 'financial' | 'commodities' | 'global';
+export type MacroCategory = 'monetary' | 'inflation' | 'growth' | 'people' | 'external' | 'fiscal' | 'financial' | 'commodities' | 'global';
 
-export const MACRO_CATEGORIES: MacroCategory[] = ['monetary', 'inflation', 'growth', 'external', 'fiscal', 'financial', 'commodities', 'global'];
+export const MACRO_CATEGORIES: MacroCategory[] = ['monetary', 'inflation', 'growth', 'people', 'external', 'fiscal', 'financial', 'commodities', 'global'];
+
+/**
+ * Extra annual World Bank indicators (WDI, no key) shown next to the monthly series: labour and
+ * society, the structure of the economy, money and bank rates, capital flows. `scale` divides the
+ * raw value (US$ → US$ bn, people → millions).
+ */
+export const WB_EXTRA: Array<{
+  id: string;
+  code: string;
+  label: string;
+  unit: string;
+  category: MacroCategory;
+  higherIsBetter: boolean | null;
+  scale?: number;
+}> = [
+  { id: 'unemployment', code: 'SL.UEM.TOTL.ZS', label: 'Unemployment rate (ILO estimate)', unit: '%', category: 'people', higherIsBetter: false },
+  { id: 'laborParticipation', code: 'SL.TLF.CACT.ZS', label: 'Labour force participation rate', unit: '%', category: 'people', higherIsBetter: true },
+  { id: 'population', code: 'SP.POP.TOTL', label: 'Population', unit: 'million', category: 'people', higherIsBetter: null, scale: 1e6 },
+  { id: 'poverty', code: 'SI.POV.NAHC', label: 'Poverty rate (national poverty line)', unit: '%', category: 'people', higherIsBetter: false },
+  { id: 'gini', code: 'SI.POV.GINI', label: 'Gini index (income inequality)', unit: 'index', category: 'people', higherIsBetter: false },
+  { id: 'gdpUsd', code: 'NY.GDP.MKTP.CD', label: 'GDP (current US$)', unit: 'US$ bn', category: 'growth', higherIsBetter: true, scale: 1e9 },
+  { id: 'gdpPerCapita', code: 'NY.GDP.PCAP.CD', label: 'GDP per capita (current US$)', unit: 'US$', category: 'growth', higherIsBetter: true },
+  { id: 'gdpPerCapitaPpp', code: 'NY.GDP.PCAP.PP.CD', label: 'GDP per capita, PPP (international $)', unit: 'US$', category: 'growth', higherIsBetter: true },
+  { id: 'investmentGdp', code: 'NE.GDI.FTOT.ZS', label: 'Investment (gross fixed capital formation), % of GDP', unit: '%', category: 'growth', higherIsBetter: true },
+  { id: 'householdConsumption', code: 'NE.CON.PRVT.ZS', label: 'Household consumption, % of GDP', unit: '%', category: 'growth', higherIsBetter: null },
+  { id: 'agricultureShare', code: 'NV.AGR.TOTL.ZS', label: 'Agriculture, % of GDP', unit: '%', category: 'growth', higherIsBetter: null },
+  { id: 'industryShare', code: 'NV.IND.TOTL.ZS', label: 'Industry incl. mining and construction, % of GDP', unit: '%', category: 'growth', higherIsBetter: null },
+  { id: 'manufacturingShare', code: 'NV.IND.MANF.ZS', label: 'Manufacturing, % of GDP', unit: '%', category: 'growth', higherIsBetter: null },
+  { id: 'servicesShare', code: 'NV.SRV.TOTL.ZS', label: 'Services, % of GDP', unit: '%', category: 'growth', higherIsBetter: null },
+  { id: 'gdpDeflator', code: 'NY.GDP.DEFL.KD.ZG', label: 'GDP deflator (economy-wide inflation)', unit: '%', category: 'inflation', higherIsBetter: false },
+  { id: 'm2Growth', code: 'FM.LBL.BMNY.ZG', label: 'Money supply M2, growth', unit: '%', category: 'monetary', higherIsBetter: null },
+  { id: 'lendingRate', code: 'FR.INR.LEND', label: 'Bank lending rate', unit: '%', category: 'monetary', higherIsBetter: false },
+  { id: 'depositRate', code: 'FR.INR.DPST', label: 'Bank deposit rate', unit: '%', category: 'monetary', higherIsBetter: null },
+  { id: 'm2Gdp', code: 'FM.LBL.BMNY.GD.ZS', label: 'Money supply M2, % of GDP', unit: '%', category: 'financial', higherIsBetter: true },
+  { id: 'fdiGdp', code: 'BX.KLT.DINV.WD.GD.ZS', label: 'Foreign direct investment, net inflows, % of GDP', unit: '%', category: 'external', higherIsBetter: true },
+  { id: 'remittances', code: 'BX.TRF.PWKR.CD.DT', label: 'Remittances received (migrant workers)', unit: 'US$ bn', category: 'external', higherIsBetter: true, scale: 1e9 },
+  { id: 'externalDebt', code: 'DT.DOD.DECT.CD', label: 'External debt, total', unit: 'US$ bn', category: 'external', higherIsBetter: false, scale: 1e9 },
+  { id: 'tradeOpenness', code: 'NE.TRD.GNFS.ZS', label: 'Trade (exports + imports), % of GDP', unit: '%', category: 'external', higherIsBetter: null },
+  { id: 'militarySpending', code: 'MS.MIL.XPND.GD.ZS', label: 'Military spending, % of GDP', unit: '%', category: 'fiscal', higherIsBetter: null },
+];
+
+/** World Bank central government debt (% of GDP): the fallback where the IMF series is blocked. */
+export const WB_GOV_DEBT = 'GC.DOD.TOTL.GD.ZS';
 
 /** A series placed in a category, with how to read its direction for Indonesia. */
 export interface MacroIndicator extends MacroSeries {
@@ -151,7 +194,9 @@ export const STALE_AFTER_DAYS: Record<MacroSeries['frequency'], number> = { deci
 export function isStale(series: Pick<MacroSeries, 'frequency' | 'points'>, today: string): boolean {
   const last = series.points[series.points.length - 1];
   if (!last) return true;
-  return (Date.parse(today) - Date.parse(last.date)) / 86_400_000 > STALE_AFTER_DAYS[series.frequency];
+  // Annual points are dated 1 January but cover the whole year: age is counted from the year's end
+  const from = Date.parse(last.date) + (series.frequency === 'annual' ? 365 * 86_400_000 : 0);
+  return (Date.parse(today) - from) / 86_400_000 > STALE_AFTER_DAYS[series.frequency];
 }
 
 /** Adds category, direction, 10-year z-score and the stale flag to a series. */

@@ -123,6 +123,8 @@ import {
 } from './src/utils/priceStream.ts';
 import { buildAnalysis, type AssetAnalysis } from './src/ai/analysis.ts';
 import {
+  WB_EXTRA,
+  WB_GOV_DEBT,
   macroPulse,
   mergeSeries,
   monthlyPoints,
@@ -3521,8 +3523,23 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     add(ser(`fx-${label.slice(0, 3).toLowerCase()}`, `${label} (monthly)`, 'Rp', 'monthly', 'Yahoo Finance', yUrl(sym), yahoo.get(sym) ?? []), 'external', null);
   }
   add(ser('eido', 'iShares MSCI Indonesia ETF (EIDO), foreign-flow proxy', 'US$', 'monthly', 'Yahoo Finance', yUrl('EIDO'), yahoo.get('EIDO') ?? []), 'external', true);
+  // Extra indicators: OECD leading indicator and business confidence (monthly), World Bank (annual)
+  const wbUrl = (code: string) => `https://data.worldbank.org/indicator/${code}?locations=ID`;
+  const [leading, business, wbGovDebt, ...wbExtra] = await Promise.all([
+    oecd('oecd-leading', OECD_SERIES.leading),
+    oecd('oecd-business', OECD_SERIES.business),
+    govDebt.length ? Promise.resolve([] as MacroPoint[]) : wb(WB_GOV_DEBT),
+    ...WB_EXTRA.map((x) => wb(x.code)),
+  ]);
+  add(ser('leadingIndicator', 'Composite leading indicator (OECD)', 'index', 'monthly', 'OECD', OECD_EXPLORER, leading), 'growth', true);
+  add(ser('businessConfidence', 'Business confidence (OECD)', 'index', 'monthly', 'OECD', OECD_EXPLORER, business), 'growth', true);
+  WB_EXTRA.forEach((x, i) => {
+    const pts = wbExtra[i].map((p) => ({ date: p.date, value: x.scale ? p.value / x.scale : p.value }));
+    add(ser(x.id, x.label, x.unit, 'annual', 'World Bank', wbUrl(x.code), pts), x.category, x.higherIsBetter);
+  });
   // Fiscal
-  add(ser('govDebt', 'Government debt, % of GDP', '%', 'annual', 'IMF via FRED', FRED_PAGE('GGGDTAIDA188N'), govDebt), 'fiscal', false);
+  if (govDebt.length) add(ser('govDebt', 'Government debt, % of GDP', '%', 'annual', 'IMF via FRED', FRED_PAGE('GGGDTAIDA188N'), govDebt), 'fiscal', false);
+  else add(ser('govDebt', 'Central government debt, % of GDP', '%', 'annual', 'World Bank', wbUrl(WB_GOV_DEBT), wbGovDebt), 'fiscal', false);
   // Financial
   add(ser('privateCredit', 'Credit to the private non-financial sector, % of GDP', '%', 'quarterly', 'BIS', BIS_EXPLORER, credit), 'financial', true);
   add(ser('housePrices', 'Residential property prices (real)', 'index', 'quarterly', 'BIS', BIS_EXPLORER, house), 'financial', null);
@@ -3628,7 +3645,8 @@ function idxValuation(): IndonesiaMacroPayload['idxValuation'] {
   };
 }
 
-const MACRO_STORE_KEY = 'macro:indonesia';
+// Versioned: a new set of indicators must not be served from an older saved result
+const MACRO_STORE_KEY = 'macro:indonesia:v2';
 
 async function getIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
   if (macroCache.entry && macroCache.entry.expiresAt > Date.now()) return macroCache.entry.data;

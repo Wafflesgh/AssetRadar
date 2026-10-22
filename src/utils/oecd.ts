@@ -32,6 +32,10 @@ export const OECD_SERIES = {
   imports: { flow: 'OECD.SDD.TPS,DSD_IMTS@DF_IMTS,', key: 'IDN.W.M.C.M.USD_EXC.Y.N' },
   currentAccount: { flow: 'OECD.SDD.TPS,DSD_BOP@DF_BOP,', key: 'IDN.WXD.CA.B.T.Q.PT_B1GQ.Y' },
   confidence: { flow: 'OECD.SDD.STES,DSD_STES@DF_CLI,', key: 'IDN.M.CCICP.IX._Z.AA.IX._Z.H' },
+  /** Composite leading indicator (turning points 6–9 months ahead, 100 = trend). */
+  leading: { flow: 'OECD.SDD.STES,DSD_STES@DF_CLI,', key: 'IDN.M.LI...AA...H' },
+  /** Business confidence (manufacturing survey, amplitude adjusted, 100 = long-run average). */
+  business: { flow: 'OECD.SDD.STES,DSD_STES@DF_CLI,', key: 'IDN.M.BCICP...AA...H' },
 } satisfies Record<string, OecdSeriesDef>;
 
 export function oecdUrl(def: OecdSeriesDef, startPeriod: string): string {
