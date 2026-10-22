@@ -10,14 +10,14 @@
  * (src/utils/macroImpact.ts).
  */
 import { getLang, tOr, useT, type TranslationKey } from '../i18n/index.ts';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Rich } from '../i18n/Rich.tsx';
 import { ChevronDown, ExternalLink, Globe, Landmark, Lightbulb, MapPin, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, type IndonesiaMacro } from '../services/marketDataService.ts';
 import { SbnRetailSection } from './SbnRetailSection.tsx';
 import { formatDecimal, formatNumber } from '../utils/format.ts';
-import { IMPACT_INFO, impactBullets, impactConcept, impactReading, type ImpactSentiment } from '../utils/macroImpact.ts';
+import { IMPACT_INFO, IMPACT_RELATED, impactBullets, impactConcept, impactReading, type ImpactConcept, type ImpactSentiment } from '../utils/macroImpact.ts';
 import { MACRO_CATEGORIES, latest, type MacroCategory, type MacroIndicator, type MacroSeries, type PulseCategory } from '../utils/macro.ts';
 
 const MONTH = {
@@ -47,6 +47,10 @@ function fmt(value: number, unit: string): string {
   return `${n(2)} ${unit}`;
 }
 
+/** Cards on the page (id → label) and how to jump to one (switches to "All" when it is hidden). */
+const MacroCardsContext = createContext<{ labels: Map<string, string>; jump: (id: string) => void }>({ labels: new Map(), jump: () => {} });
+const cardDomId = (id: string) => `macro-card-${id}`;
+
 const LIGHT_COLOR: Record<string, string> = {
   green: 'var(--color-up)',
   amber: 'var(--color-gold)',
@@ -60,6 +64,21 @@ export function IndonesiaMacroView() {
   const [error, setError] = useState(false);
   const [reload, setReload] = useState(0);
   const [cat, setCat] = useState<MacroCategory | 'all'>('all');
+  const [jumpTo, setJumpTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!jumpTo) return;
+    const el = document.getElementById(cardDomId(jumpTo));
+    if (!el) return;
+    // Instant jump: focusing during a smooth scroll cancels it in Chromium
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: 'start' });
+    setJumpTo(null);
+  }, [jumpTo, cat]);
+  const jump = (id: string) => {
+    if (!document.getElementById(cardDomId(id))) setCat('all');
+    setJumpTo(id);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -203,11 +222,13 @@ export function IndonesiaMacroView() {
               <div role="group" aria-label={t('macro.tabs')} className="flex flex-wrap gap-2">
                 {(['all', ...MACRO_CATEGORIES] as const).map(tabBtn)}
               </div>
-              <section className="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-label={t('macro.indicators')}>
-                {shown.map((s) => (
-                  <SeriesCard key={s.id} s={s} ind={s} />
-                ))}
-              </section>
+              <MacroCardsContext.Provider value={{ labels: new Map((data.indicators ?? []).map((x) => [x.id, tOr(`macro.s.${x.id}`, x.label)])), jump }}>
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-label={t('macro.indicators')}>
+                  {shown.map((s) => (
+                    <SeriesCard key={s.id} s={s} ind={s} />
+                  ))}
+                </section>
+              </MacroCardsContext.Provider>
             </>
           ) : (
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-label={t('macro.indicators')}>
@@ -378,6 +399,39 @@ function ImpactChips({ s }: { s: MacroSeries }) {
   );
 }
 
+/** Cause-and-effect chain to the other cards on the page, as buttons that jump to them. */
+function RelatedCards({ c, self }: { c: ImpactConcept; self: string }) {
+  const t = useT();
+  const { labels, jump } = useContext(MacroCardsContext);
+  const ids = IMPACT_RELATED[c].filter((id) => id !== self && labels.has(id));
+  return (
+    <div className="space-y-1">
+      <p className="font-semibold">{t('impact.relatedTitle')}</p>
+      <p>{t(`impact.${c}.chain` as TranslationKey)}</p>
+      {ids.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {ids.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => jump(id)}
+                className="text-[11px] px-2 py-1 rounded-lg border text-left"
+                style={{ borderColor: 'var(--accent-radar)', color: 'var(--accent-radar)', backgroundColor: 'var(--bg-surface)' }}
+              >
+                {labels.get(id)}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+            {t('impact.relatedHint')}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ImpactSection({ s }: { s: MacroSeries }) {
   const t = useT();
   const c = impactConcept(s.id);
@@ -442,6 +496,18 @@ function ImpactSection({ s }: { s: MacroSeries }) {
           </p>
           <p>{t(`impact.${c}.scopeWhy` as TranslationKey)}</p>
         </div>
+        <div className="space-y-1">
+          <p className="font-semibold">{t('impact.linkTitle')}</p>
+          <ul className="list-disc pl-5 space-y-0.5">
+            {impactBullets(tOr(`impact.s.${s.id}.link`, t(`impact.${c}.link` as TranslationKey))).map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+            {t('impact.linkNote')}
+          </p>
+        </div>
+        <RelatedCards c={c} self={s.id} />
         {order.map((dir) => {
           const active = r?.active === dir;
           const color = dir === 'up' ? 'var(--color-up)' : 'var(--color-down)';
@@ -480,7 +546,12 @@ function SeriesCard({ s, ind }: { s: MacroSeries; ind?: MacroIndicator }) {
   const l = latest(s.points);
   const chart = s.points.slice(s.frequency === 'annual' ? -26 : s.frequency === 'quarterly' ? -40 : -120);
   return (
-    <article className="p-4 rounded-xl border space-y-2" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}>
+    <article
+      id={cardDomId(s.id)}
+      tabIndex={-1}
+      className="p-4 rounded-xl border space-y-2 scroll-mt-20 outline-none"
+      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-bold">{tOr(`macro.s.${s.id}`, s.label)}</h3>

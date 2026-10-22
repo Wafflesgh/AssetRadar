@@ -6,8 +6,10 @@
  * applies now. Each concept also says what the indicator is, whether its effect is global or felt in
  * Indonesia only (`IMPACT_INFO.scope`, texts `impact.<concept>.what|scopeWhy|up.sum|down.sum`),
  * and a sentiment for Indonesia from the chain that applies now and which direction is good for
- * Indonesia (`good`, matching the server's higherIsBetter). Education only: real outcomes depend on
- * many other conditions.
+ * Indonesia (`good`, matching the server's higherIsBetter). `impact.<concept>.link` (or the
+ * per-series `impact.s.<id>.link`) gives dated facts on Indonesia's direct exposure, and
+ * `IMPACT_RELATED` + `impact.<concept>.chain` link each indicator to the other cards on the page.
+ * Education only: real outcomes depend on many other conditions.
  */
 import { latest, zScore10y, type MacroPoint } from './macro.ts';
 
@@ -146,6 +148,46 @@ export const IMPACT_INFO: Record<ImpactConcept, { scope: ImpactScope; good: 'up'
   cocoa: { scope: 'both', good: 'up' },
   coffee: { scope: 'both', good: 'up' },
   rice: { scope: 'both', good: 'down' },
+};
+
+/** Other macro cards each concept is linked with, in cause-and-effect order (series ids). */
+export const IMPACT_RELATED: Record<ImpactConcept, string[]> = {
+  rate: ['inflationYoy', 'usdIdr', 'biFedSpread', 'privateCredit', 'housePrices', 'gdpYoy', 'lq45'],
+  fedSpread: ['biRate', 'fedFunds', 'usdIdr', 'reserves'],
+  inflation: ['administeredInflation', 'volatileFoodInflation', 'coreInflation', 'usdIdr', 'biRate', 'consumerConfidence'],
+  administered: ['brent', 'govDebt', 'inflationYoy'],
+  volatileFood: ['riceThai', 'inflationYoy', 'consumerConfidence'],
+  gdp: ['consumerConfidence', 'privateCredit', 'exports', 'biRate', 'lq45'],
+  confidence: ['inflationYoy', 'biRate', 'gdpYoy', 'lq45'],
+  reserves: ['tradeBalance', 'currentAccount', 'usdIdr', 'ust10', 'goldMonthly'],
+  tradeBalance: ['coal', 'palmOil', 'nickel', 'exports', 'imports', 'reserves', 'usdIdr'],
+  exports: ['coal', 'palmOil', 'nickel', 'sse', 'tradeBalance'],
+  imports: ['brent', 'fx-cny', 'usdIdr', 'tradeBalance'],
+  currentAccount: ['tradeBalance', 'biFedSpread', 'eido', 'usdIdr'],
+  usdIdr: ['dxy', 'fedFunds', 'biFedSpread', 'reserves', 'inflationYoy', 'govDebt'],
+  reer: ['usdIdr', 'inflationYoy', 'exports', 'imports'],
+  regionalFx: ['usdIdr', 'dxy', 'exports'],
+  eido: ['vix', 'fedFunds', 'lq45', 'usdIdr'],
+  govDebt: ['biRate', 'ust10', 'usdIdr', 'brent'],
+  privateCredit: ['biRate', 'housePrices', 'gdpYoy'],
+  housePrices: ['biRate', 'privateCredit', 'consumerConfidence'],
+  lq45: ['eido', 'vix', 'biRate', 'gdpYoy'],
+  coal: ['coalAustralia', 'sse', 'exports', 'tradeBalance', 'usdIdr'],
+  metals: ['sse', 'nickel', 'exports'],
+  oil: ['imports', 'tradeBalance', 'administeredInflation', 'govDebt', 'inflationYoy'],
+  gold: ['dxy', 'vix', 'reserves', 'usdIdr'],
+  fedFunds: ['ust10', 'dxy', 'biFedSpread', 'usdIdr', 'biRate'],
+  ust10: ['fedFunds', 'govDebt', 'reserves', 'eido'],
+  dxy: ['usdIdr', 'coal', 'palmOil', 'goldMonthly'],
+  vix: ['eido', 'lq45', 'usdIdr'],
+  china: ['coal', 'nickel', 'exports', 'fx-cny'],
+  palmOil: ['exports', 'tradeBalance', 'fx-myr', 'fx-inr', 'inflationYoy'],
+  nickel: ['sse', 'exports', 'fx-php'],
+  tin: ['exports'],
+  rubber: ['exports', 'fx-thb'],
+  cocoa: ['exports'],
+  coffee: ['exports'],
+  rice: ['fx-thb', 'volatileFoodInflation', 'inflationYoy', 'biRate'],
 };
 
 export type ImpactSentiment = 'strongPositive' | 'positive' | 'neutral' | 'negative' | 'strongNegative' | 'mixed';

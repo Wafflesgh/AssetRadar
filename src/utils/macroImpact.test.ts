@@ -1,7 +1,7 @@
 /** macroImpact.test.ts — Tests for the macro "what does it mean" readings and their texts. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, IMPACT_INFO, impactBullets, impactReading } from './macroImpact.ts';
+import { IMPACT_BY_SERIES, IMPACT_CONCEPTS, IMPACT_INFO, IMPACT_RELATED, impactBullets, impactReading } from './macroImpact.ts';
 import { en } from '../i18n/en.ts';
 import { id } from '../i18n/id.ts';
 
@@ -23,6 +23,18 @@ test('every concept has both chains in English and Indonesian with the same numb
       assert.ok(en[key] && id[key], `missing ${key}`);
     }
     assert.ok(IMPACT_INFO[c], `no info for ${c}`);
+  }
+});
+
+test('every concept has dated links and a chain to other cards that exist', () => {
+  const known = new Set([...Object.keys(IMPACT_BY_SERIES), 'riceThai', 'coalAustralia']);
+  for (const c of IMPACT_CONCEPTS) {
+    for (const field of ['link', 'chain']) {
+      const key = `impact.${c}.${field}` as keyof typeof en;
+      assert.ok(en[key] && id[key], `missing ${key}`);
+    }
+    assert.equal(impactBullets(en[`impact.${c}.link` as keyof typeof en]).length, impactBullets(id[`impact.${c}.link` as keyof typeof en]!).length, c);
+    for (const target of IMPACT_RELATED[c]) assert.ok(known.has(target), `${c} links to unknown card ${target}`);
   }
 });
 
