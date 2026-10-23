@@ -67,7 +67,12 @@ export interface StaplesPayload {
   sourceUrl: string;
   /** Items still filling their one-year history (a little more on each update). */
   filling: number;
+  /** Latest El Niño / La Niña reading (NOAA ONI), when it could be read. */
+  enso: { season: string; year: number; anomaly: number } | null;
 }
+
+/** Most populous provinces, also the ones most often in the news (shown as "popular regions"). */
+export const POPULAR_PROVINCES = ['DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten', 'Sumatera Utara'];
 
 /** "16,400" / "16.400" → 16400; empty, "-" or zero → null. */
 export function parsePihpsPrice(v: unknown): number | null {

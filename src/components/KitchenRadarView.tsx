@@ -5,16 +5,22 @@
  * change of the main item of each category), biggest movers of the month, a card per item with its
  * price, 1W/1M/1Y changes, a chart and the cheapest / most expensive provinces, and recent news on
  * food prices (headlines in their own language). Rising prices are shown red: dearer for households.
+ * Each card also lists the popular (most populous, most reported) provinces and explains why the
+ * price moves: live factors (rupiah, yuan, world rice and palm oil, oil, El Niño, season, holidays,
+ * school meals MBG), the cause → effect chains with the one that applies now, Indonesia's exposure
+ * and politics / policy (src/utils/stapleDrivers.ts).
  */
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { fetchStaples } from '../services/marketDataService.ts';
+import { fetchIndonesiaMacro, fetchStaples } from '../services/marketDataService.ts';
+import { activeChain, readDrivers, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
 import { formatNumber, formatRupiah } from '../utils/format.ts';
 import {
   addDays,
   basketChange,
+  POPULAR_PROVINCES,
   STAPLE_CATEGORIES,
   STAPLES,
   stapleSummary,
@@ -45,7 +51,153 @@ function Change({ value, label }: { value: number | null; label: string }) {
 
 const itemName = (t: ReturnType<typeof useT>, key: string) => t(`kitchen.item.${key}` as TranslationKey);
 
-function StapleCard({ item, range }: { item: StapleItem; range: Range }) {
+const EFFECT_COLOR: Record<DriverEffect, string> = {
+  raises: 'var(--color-down)',
+  eases: 'var(--color-up)',
+  neutral: 'var(--text-secondary)',
+  unknown: 'var(--text-secondary)',
+};
+const EFFECT_ICON: Record<DriverEffect, string> = { raises: '▲', eases: '▼', neutral: '•', unknown: '·' };
+
+const bullets = (text: string) =>
+  text
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+/** Most populous, most reported provinces: price, gap to the national average, change in ~3 weeks. */
+function PopularRegions({ item, national }: { item: StapleItem; national: number | null }) {
+  const t = useT();
+  const rows = POPULAR_PROVINCES.map((name) => item.provinces.find((p) => p.name === name)).filter((p): p is NonNullable<typeof p> => Boolean(p));
+  if (!rows.length) return null;
+  const pct = (a: number, b: number) => ((a - b) / b) * 100;
+  const signed = (v: number) => `${v > 0 ? '+' : ''}${formatNumber(v, 1)}%`;
+  const tone = (v: number | null) => (v === null || Math.abs(v) < 0.05 ? 'var(--text-secondary)' : v > 0 ? 'var(--color-down)' : 'var(--color-up)');
+  return (
+    <div className="col-span-2">
+      <p className="font-semibold mb-1" style={{ color: 'var(--accent-radar)' }}>
+        {t('kitchen.popular')}
+      </p>
+      <table className="w-full text-xs">
+        <thead>
+          <tr style={{ color: 'var(--text-secondary)' }}>
+            <th className="text-left font-normal">{t('kitchen.popularRegion')}</th>
+            <th className="text-right font-normal">{t('kitchen.price')}</th>
+            <th className="text-right font-normal">{t('kitchen.popularVsNational')}</th>
+            <th className="text-right font-normal">{t('kitchen.popularChange')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => {
+            const gap = national ? pct(p.price, national) : null;
+            const ch = p.earlier ? pct(p.price, p.earlier) : null;
+            return (
+              <tr key={p.name}>
+                <td className="truncate max-w-[8rem]">{p.name}</td>
+                <td className="text-right font-mono-num">{formatRupiah(p.price, 0)}</td>
+                <td className="text-right font-mono-num" style={{ color: tone(gap) }}>
+                  {gap === null ? '—' : signed(gap)}
+                </td>
+                <td className="text-right font-mono-num" style={{ color: tone(ch) }}>
+                  {ch === null ? '—' : signed(ch)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** "Why does the price move?": live factors, chains (the one that applies now marked), exposure, politics. */
+function WhySection({ item, inputs }: { item: StapleItem; inputs: DriverInputs }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const c = STAPLES.find((x) => x.id === item.id)!.category;
+  const m1 = stapleSummary(item).change.m1;
+  const active = activeChain(m1);
+  const box = { backgroundColor: 'var(--bg-surface-subtle)' };
+  const list = (key: string) => (
+    <ul className="list-disc pl-4 space-y-1">
+      {bullets(t(key as TranslationKey)).map((b) => (
+        <li key={b}>{b}</li>
+      ))}
+    </ul>
+  );
+  const num = (v: string | number) => (typeof v === 'number' ? formatNumber(v, Math.abs(v) >= 100 ? 0 : 2) : v);
+  const signed = (v: number) => `${v > 0 ? '+' : ''}${formatNumber(v, 1)}`;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs font-semibold"
+        style={{ color: 'var(--accent-radar)' }}
+      >
+        <ChevronDown size={14} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        {t('kitchen.whyButton')}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3 text-xs">
+          <p>{t(`kitchen.why.${c}.what` as TranslationKey)}</p>
+          {m1 !== null && (
+            <p className="font-semibold">
+              {active === 'up'
+                ? t('kitchen.whyRising', { pct: signed(m1) })
+                : active === 'down'
+                  ? t('kitchen.whyFalling', { pct: formatNumber(Math.abs(m1), 1) })
+                  : t('kitchen.whyStable', { pct: signed(m1) })}
+            </p>
+          )}
+          <div className="space-y-1">
+            <p className="font-semibold">{t('kitchen.whyNow')}</p>
+            <ul className="space-y-1.5">
+              {readDrivers(c, inputs).map((r) => (
+                <li key={r.factor} className="flex gap-2">
+                  <span className="shrink-0 font-semibold w-24" style={{ color: EFFECT_COLOR[r.effect] }}>
+                    {EFFECT_ICON[r.effect]} {t(`kitchen.effect.${r.effect}`)}
+                  </span>
+                  <span>{t(`kitchen.f.${r.factor}.${r.state}` as TranslationKey, Object.fromEntries(Object.entries(r.params).map(([k, v]) => [k, num(v)])))}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold">{t('kitchen.whyLink')}</p>
+            {list(`kitchen.why.${c}.link`)}
+          </div>
+          {(['up', 'down'] as const).map((dir) => {
+            const color = dir === 'up' ? 'var(--color-down)' : 'var(--color-up)';
+            return (
+              <div key={dir} className="space-y-1 p-2 rounded-lg" style={active === dir ? { ...box, outline: `1px solid ${color}` } : box}>
+                <p className="font-semibold flex flex-wrap items-center gap-2">
+                  {t(dir === 'up' ? 'kitchen.whyUp' : 'kitchen.whyDown')}
+                  {active === dir && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded border" style={{ color, borderColor: color }}>
+                      {t('kitchen.appliesNow')}
+                    </span>
+                  )}
+                </p>
+                {list(`kitchen.why.${c}.${dir}`)}
+              </div>
+            );
+          })}
+          <div className="space-y-1">
+            <p className="font-semibold">{t('kitchen.whyPolicy')}</p>
+            {list(`kitchen.why.${c}.policy`)}
+          </div>
+          <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+            {t('kitchen.whyNote')}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StapleCard({ item, range, inputs }: { item: StapleItem; range: Range; inputs: DriverInputs }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const def = STAPLES.find((s) => s.id === item.id)!;
@@ -143,6 +295,7 @@ function StapleCard({ item, range }: { item: StapleItem; range: Range }) {
                   </ul>
                 </div>
               ))}
+              <PopularRegions item={item} national={s.latest?.[1] ?? null} />
               <p className="col-span-2 text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                 {t('kitchen.provincesNote', { n: item.provinces.length })}
               </p>
@@ -150,6 +303,7 @@ function StapleCard({ item, range }: { item: StapleItem; range: Range }) {
           )}
         </div>
       )}
+      <WhySection item={item} inputs={inputs} />
     </article>
   );
 }
@@ -162,6 +316,13 @@ export function KitchenRadarView() {
   const [cat, setCat] = useState<StapleCategory | 'all'>('all');
   const [range, setRange] = useState<Range>('m3');
   const [allVarieties, setAllVarieties] = useState(false);
+  // Rupiah, yuan, world rice / palm oil and oil prices for the price drivers (best effort)
+  const [macroSeries, setMacroSeries] = useState<DriverInputs['series']>({});
+  useEffect(() => {
+    fetchIndonesiaMacro()
+      .then((m) => setMacroSeries(Object.fromEntries((m.indicators ?? []).map((i) => [i.id, i.points]))))
+      .catch(() => {});
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -175,6 +336,10 @@ export function KitchenRadarView() {
 
   const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
   const items = data?.items ?? [];
+  const inputs: DriverInputs = useMemo(
+    () => ({ today: new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10), series: macroSeries, enso: data?.enso ?? null }),
+    [macroSeries, data]
+  );
   const movers = useMemo(() => {
     const rows = items
       .map((i) => ({ i, m1: stapleSummary(i).change.m1 }))
@@ -295,7 +460,7 @@ export function KitchenRadarView() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shown.map((i) => (
-              <StapleCard key={i.id} item={i} range={range} />
+              <StapleCard key={i.id} item={i} range={range} inputs={inputs} />
             ))}
           </div>
 
