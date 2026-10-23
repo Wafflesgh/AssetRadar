@@ -3132,4 +3132,10 @@ export const id: Record<TranslationKey, string> = {
   "kitchen.popularRegion": "Provinsi",
   "kitchen.popularVsNational": "vs nasional",
   "kitchen.popularChange": "3 minggu",
+  "nav.group.idx": "Pasar Saham Indonesia",
+  "nav.group.markets": "Pasar & grafik",
+  "nav.group.ai": "AI & analisis",
+  "nav.group.economy": "Ekonomi Indonesia",
+  "nav.group.mine": "Investasi saya",
+  "nav.group.settings": "Pengaturan & notifikasi",
 };

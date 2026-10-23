@@ -1,7 +1,10 @@
 /**
  * Navigation.tsx — App navigation: the fixed desktop sidebar (brand, menu, theme toggle),
  * which can collapse to a narrow icon rail for a wider view (e.g. in the Terminal), and the
- * mobile bottom navigation bar (main pages plus a "More" sheet). Also defines the NavTab type.
+ * mobile bottom navigation bar (main pages plus a "More" sheet). Pages are grouped by category
+ * (NAV_GROUPS): a single-page group opens directly, a larger group opens a popup to the right of
+ * the sidebar listing its pages (closes on choice, outside click, Esc, scroll or resize); the
+ * mobile "More" sheet shows the same groups as sections. Also defines the NavTab type.
  */
 import {
   Bitcoin,
@@ -30,8 +33,9 @@ import {
   X,
   ClipboardCheck,
   ShoppingBasket,
+  ChevronRight,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
 import { ThemePreference } from '../utils/storage.ts';
 import { useT, type TranslationKey } from '../i18n/index.ts';
@@ -85,6 +89,32 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'settings', label: 'nav.settings', icon: Settings },
 ];
 
+const byId = (id: NavTab) => MAIN_NAV_ITEMS.find((i) => i.id === id)!;
+
+interface NavGroup {
+  id: string;
+  label: TranslationKey;
+  icon: typeof Radar;
+  items: NavItem[];
+}
+
+/** Pages by category; one-page groups open directly. */
+export const NAV_GROUPS: NavGroup[] = [
+  { id: 'radar', label: 'nav.radar', icon: Radar, items: [byId('radar')] },
+  { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, items: [byId('terminal')] },
+  { id: 'idx', label: 'nav.group.idx', icon: Landmark, items: [byId('idx'), byId('screener'), byId('calendar')] },
+  {
+    id: 'markets',
+    label: 'nav.group.markets',
+    icon: LineChart,
+    items: [byId('crypto'), byId('compare'), { id: 'detail', label: 'nav.detail', icon: LineChart }],
+  },
+  { id: 'ai', label: 'nav.group.ai', icon: BrainCircuit, items: [byId('advisor'), byId('analyst'), byId('brief'), byId('quant'), byId('backtest')] },
+  { id: 'economy', label: 'nav.group.economy', icon: Building2, items: [byId('macro'), byId('kitchen')] },
+  { id: 'mine', label: 'nav.group.mine', icon: Wallet, items: [byId('portfolio'), byId('watchlist')] },
+  { id: 'settings', label: 'nav.group.settings', icon: Settings, items: [byId('settings'), byId('alerts'), byId('risk')] },
+];
+
 export function SidebarNav({
   activeTab,
   onSelectTab,
@@ -95,8 +125,55 @@ export function SidebarNav({
   onToggleCollapsed,
 }: NavigationProps) {
   const t = useT();
+  const asideRef = useRef<HTMLElement>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<{ id: string; top: number; left: number } | null>(null);
+  const isActive = (id: NavTab) => activeTab === id;
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (flyoutRef.current?.contains(target)) return;
+      if ((target as HTMLElement).closest?.(`[data-nav-group="${open.id}"]`)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+  // Focus the first page of a freshly opened popup (keyboard users land inside it)
+  useEffect(() => {
+    if (open) flyoutRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [open?.id]);
+  const toggleGroup = (group: NavGroup, button: HTMLElement) => {
+    if (group.items.length === 1) {
+      setOpen(null);
+      onSelectTab(group.items[0].id);
+      return;
+    }
+    if (open?.id === group.id) {
+      setOpen(null);
+      return;
+    }
+    const rect = button.getBoundingClientRect();
+    const right = asideRef.current?.getBoundingClientRect().right ?? rect.right;
+    // Keep the popup inside the window
+    const height = 56 + group.items.length * 42;
+    setOpen({ id: group.id, top: Math.max(8, Math.min(rect.top, window.innerHeight - height - 8)), left: right + 8 });
+  };
+  const openGroup = NAV_GROUPS.find((g) => g.id === open?.id);
   return (
     <aside
+      ref={asideRef}
       aria-label={t('nav.mainDesktop')}
       className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-64'} md:flex-col md:fixed md:inset-y-0 md:left-0 border-r select-none z-20 transition-[width] duration-200`}
       style={{
@@ -132,57 +209,81 @@ export function SidebarNav({
 
       {/* Navigation Links */}
       <nav className={`flex-1 ${collapsed ? 'px-2' : 'px-3'} py-5 space-y-1 overflow-y-auto`} aria-label={t('nav.sideMenu')}>
-        {MAIN_NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive =
-            activeTab === item.id || (item.id === 'radar' && activeTab === 'detail');
+        {NAV_GROUPS.map((group) => {
+          const Icon = group.icon;
+          const single = group.items.length === 1;
+          const active = group.items.some((i) => isActive(i.id));
+          const expanded = open?.id === group.id;
           return (
             <button
-              key={item.id}
+              key={group.id}
               type="button"
-              onClick={() => onSelectTab(item.id)}
-              aria-current={isActive ? 'page' : undefined}
-              title={collapsed ? t(item.label) : undefined}
+              data-nav-group={group.id}
+              onClick={(e) => toggleGroup(group, e.currentTarget)}
+              aria-current={single && active ? 'page' : undefined}
+              aria-haspopup={single ? undefined : 'menu'}
+              aria-expanded={single ? undefined : expanded}
+              title={collapsed ? t(group.label) : undefined}
               className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap`}
               style={{
-                backgroundColor: isActive ? 'var(--accent-radar-soft)' : 'transparent',
-                color: isActive ? 'var(--accent-radar)' : 'var(--text-secondary)',
+                backgroundColor: active || expanded ? 'var(--accent-radar-soft)' : 'transparent',
+                color: active || expanded ? 'var(--accent-radar)' : 'var(--text-secondary)',
               }}
             >
-              <span className="flex items-center gap-3">
+              <span className="flex items-center gap-3 min-w-0">
                 <Icon className="w-4 h-4 shrink-0" />
-                <span className={collapsed ? 'sr-only' : ''}>{t(item.label)}</span>
+                <span className={collapsed ? 'sr-only' : 'truncate'}>{t(group.label)}</span>
               </span>
-              {!collapsed && item.id === 'watchlist' && watchlistCount > 0 && (
-                <span
-                  className="text-xs font-mono-num font-semibold"
-                  style={{ color: isActive ? 'var(--accent-radar)' : 'var(--text-secondary)' }}
-                >
-                  {watchlistCount}
-                </span>
-              )}
+              {!collapsed && !single && <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${expanded ? 'translate-x-0.5' : ''}`} />}
             </button>
           );
         })}
-
-        {/* Direct shortcut to Detail / Chart View */}
-        <div className="pt-4 mt-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-          <button
-            type="button"
-            onClick={() => onSelectTab('detail')}
-            aria-current={activeTab === 'detail' ? 'page' : undefined}
-            title={collapsed ? t('nav.detail') : undefined}
-            className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-0' : 'px-3.5'} py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap`}
-            style={{
-              backgroundColor: activeTab === 'detail' ? 'var(--accent-radar-soft)' : 'transparent',
-              color: activeTab === 'detail' ? 'var(--accent-radar)' : 'var(--text-secondary)',
-            }}
-          >
-            <LineChart className="w-4 h-4 shrink-0" />
-            <span className={collapsed ? 'sr-only' : ''}>{t('nav.detail')}</span>
-          </button>
-        </div>
       </nav>
+
+      {openGroup && open && (
+        <div
+          ref={flyoutRef}
+          role="menu"
+          aria-label={t(openGroup.label)}
+          className="fixed z-50 w-60 rounded-xl border shadow-xl p-2"
+          style={{ top: open.top, left: open.left, backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+        >
+          <p className="px-2.5 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+            {t(openGroup.label)}
+          </p>
+          {openGroup.items.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.id);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(null);
+                  onSelectTab(item.id);
+                }}
+                aria-current={active ? 'page' : undefined}
+                className="w-full flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg text-sm font-medium text-left focus:outline-none focus-visible:ring-2"
+                style={{
+                  backgroundColor: active ? 'var(--accent-radar-soft)' : 'transparent',
+                  color: active ? 'var(--accent-radar)' : 'var(--text-primary)',
+                }}
+              >
+                <span className="flex items-center gap-3 min-w-0">
+                  <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--accent-radar)' : 'var(--text-secondary)' }} />
+                  <span className="truncate">{t(item.label)}</span>
+                </span>
+                {item.id === 'watchlist' && watchlistCount > 0 && (
+                  <span className="text-xs font-mono-num font-semibold" style={{ color: 'var(--accent-radar)' }}>
+                    {watchlistCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Bottom Theme Toggle & Status Info */}
       <div
@@ -244,7 +345,7 @@ export function BottomNav({
   const t = useT();
   const [moreOpen, setMoreOpen] = useState(false);
   const isActive = (id: NavTab) => activeTab === id || (id === 'radar' && activeTab === 'detail');
-  const extra = MAIN_NAV_ITEMS.filter((i) => !i.mobile);
+  const extra = NAV_GROUPS.flatMap((g) => g.items).filter((i) => !i.mobile);
   const extraActive = extra.some((i) => isActive(i.id));
   const select = (id: NavTab) => {
     setMoreOpen(false);
@@ -281,10 +382,16 @@ export function BottomNav({
         <div className="md:hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label={t('nav.morePages')}>
           <button type="button" aria-label={t('nav.closeMenu')} className="absolute inset-0 bg-black/40" onClick={() => setMoreOpen(false)} />
           <div
-            className="absolute bottom-14 inset-x-0 border-t rounded-t-2xl p-3 grid grid-cols-3 gap-2"
+            className="absolute bottom-14 inset-x-0 border-t rounded-t-2xl p-3 grid grid-cols-3 gap-2 max-h-[75vh] overflow-y-auto"
             style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
           >
-            {extra.map((item) => {
+            {NAV_GROUPS.map((group) => ({ group, items: group.items.filter((i) => !i.mobile) }))
+              .filter((g) => g.items.length > 0)
+              .flatMap(({ group, items }) => [
+                <p key={`h-${group.id}`} className="col-span-3 pt-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                  {t(group.label)}
+                </p>,
+                ...items.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.id);
               return (
@@ -309,7 +416,8 @@ export function BottomNav({
                   )}
                 </button>
               );
-            })}
+                }),
+              ])}
             <div className="col-span-3 flex justify-center pt-1">
               <LangToggle />
             </div>

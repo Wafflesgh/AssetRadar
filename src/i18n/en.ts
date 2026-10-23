@@ -3131,6 +3131,12 @@ export const en = {
   "kitchen.popularRegion": "Province",
   "kitchen.popularVsNational": "vs national",
   "kitchen.popularChange": "3 weeks",
+  "nav.group.idx": "Indonesia Stock Market",
+  "nav.group.markets": "Markets & charts",
+  "nav.group.ai": "AI & analysis",
+  "nav.group.economy": "Indonesia economy",
+  "nav.group.mine": "My investments",
+  "nav.group.settings": "Settings & alerts",
 } as const;
 
 export type TranslationKey = keyof typeof en;
