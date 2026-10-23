@@ -29,6 +29,7 @@ import {
   MoreHorizontal,
   X,
   ClipboardCheck,
+  ShoppingBasket,
 } from 'lucide-react';
 import { useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
@@ -38,7 +39,7 @@ import { LangToggle } from './LangToggle.tsx';
 
 export type NavTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -76,6 +77,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'alerts', label: 'nav.alerts', icon: Bell },
   { id: 'calendar', label: 'nav.calendar', shortLabel: 'nav.calendarShort', icon: CalendarDays },
   { id: 'macro', label: 'nav.macro', icon: Building2 },
+  { id: 'kitchen', label: 'nav.kitchen', icon: ShoppingBasket },
   { id: 'quant', label: 'nav.quant', shortLabel: 'nav.quantShort', icon: FlaskConical },
   { id: 'backtest', label: 'nav.backtest', icon: History },
   { id: 'watchlist', label: 'nav.watchlist', shortLabel: 'nav.watchlistShort', icon: Star },

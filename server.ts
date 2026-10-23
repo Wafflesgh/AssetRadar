@@ -209,6 +209,7 @@ import {
   type TraceLabel,
 } from './src/ai/recommendationTrace.ts';
 import { registerSbnRoute } from './server/sbn.ts';
+import { registerStaplesRoute, staplesStep } from './server/staples.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
 import { readXls } from './server/xls.ts';
@@ -4792,6 +4793,7 @@ async function runTick(): Promise<Record<string, unknown>> {
     ['scanUs', crossStep('us')],
     ['screener', screenerStep],
     ['calendar', calendarStep],
+    ['staples', (until) => staplesStep(store, until)],
   ];
   for (let i = 0; i < steps.length; i++) {
     // One share stays for the results below
@@ -4821,6 +4823,7 @@ export async function createApp(): Promise<express.Express> {
   registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
   registerDiagnosticsRoute(app, diagnosticsLive);
   registerSbnRoute(app, store);
+  registerStaplesRoute(app, store);
 
   // Alerts the server checked and sent (owner only)
   app.get('/api/alerts/history', ownerAuth.requireOwner, async (_req, res) => {

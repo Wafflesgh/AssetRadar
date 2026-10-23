@@ -895,6 +895,12 @@ export async function fetchIndonesiaMacro(): Promise<IndonesiaMacro> {
   return await res.json();
 }
 
+export async function fetchStaples(): Promise<import('../utils/staples.ts').StaplesPayload> {
+  const res = await fetch('/api/staples');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
 export interface ScreenerResponse {
   rows: import('../utils/screener.ts').ScreenerRow[];
   scan: { scanned: number; withData: number; total: number; scanning: boolean; finishedAt: number | null };
