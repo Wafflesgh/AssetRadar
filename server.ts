@@ -210,6 +210,7 @@ import {
 } from './src/ai/recommendationTrace.ts';
 import { registerSbnRoute } from './server/sbn.ts';
 import { registerStaplesRoute, staplesStep } from './server/staples.ts';
+import { addToIdxStats, IDX_TRACE_MAX_CALLS, idxStatsSummaries, idxTraceDay, parseIdxStats } from './src/ai/idxTrace.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
 import { readXls } from './server/xls.ts';
@@ -4256,6 +4257,81 @@ async function runDailyAnalyst(): Promise<{ date: string; assets: number; sentim
   return { date, assets: priced.length, sentiment: facts.sentimentCovered, scored, ai: Boolean(report.ai.en || report.ai.id) };
 }
 
+// ---- Recommendation trace for every IDX stock (after the close, a batch per cron tick) ---------
+
+const IDXTRACE_PREFIX = 'idxtrace:';
+const IDXTRACE_STATS = 'idxtrace:stats';
+const IDXTRACE_PROGRESS = 'idxtrace:progress';
+const callId = (c: { date: string; horizon: string }) => `${c.date}|${c.horizon}`;
+
+/** One stock: save today's calls (only when it traded that day) and score its calls that are due. */
+async function recordIdxCalls(asset: Asset, date: string): Promise<{ saved: SentimentLog['calls']; scored: SentimentLog['calls'] }> {
+  try {
+    const bars = await recentHistoryFor(asset);
+    const last = bars[bars.length - 1];
+    const key = `${IDXTRACE_PREFIX}${asset.symbol}`;
+    const before = parseSentimentLog(await store.get(key)) ?? emptySentimentLog();
+    let log = before;
+    if (last?.date === date) {
+      const sv = (await getSentimentV2(asset)) as { horizons?: Partial<Record<TraceHorizon, { label?: string; score?: number | null }>> };
+      const horizons = Object.fromEntries(
+        TRACE_HORIZONS.map((h) => {
+          const v = sv.horizons?.[h];
+          return [h, v && typeof v.score === 'number' && typeof v.label === 'string' ? { label: v.label as TraceLabel, score: v.score } : null];
+        })
+      );
+      log = recordSentimentCalls(log, date, [{ symbol: asset.symbol, crypto: false, price: last.close, horizons }]);
+    }
+    const had = new Set(before.calls.map(callId));
+    const saved = log.calls.filter((c) => !had.has(callId(c)));
+    const wasScored = new Set(log.calls.filter((c) => c.outcome).map(callId));
+    const evaluated = evaluateSentimentCalls(log, new Map([[asset.symbol, bars]]));
+    const scored = evaluated.calls.filter((c) => c.outcome && !wasScored.has(callId(c)));
+    if (evaluated !== before) {
+      await store.set(key, evaluated.calls.length > IDX_TRACE_MAX_CALLS ? { version: 1, calls: evaluated.calls.slice(-IDX_TRACE_MAX_CALLS) } : evaluated);
+    }
+    return { saved, scored };
+  } finally {
+    // ~960 ten-year histories would not fit in memory: drop each one once used
+    if (asset.yahooSymbol) aiHistoryCache.delete(`y:${asset.yahooSymbol}`);
+    sentimentCache.delete(asset.symbol);
+  }
+}
+
+/** Cron tick step: works through the IDX universe (outside the core assets) for the last closed trading day. */
+async function idxTraceStep(until: number): Promise<unknown> {
+  const date = idxTraceDay(Date.now());
+  if (!date) return 'market open';
+  if (!store.persistent) return 'no database';
+  const saved = await store.get<{ date: string; next: number; recorded: number }>(IDXTRACE_PROGRESS).catch(() => null);
+  const p = saved?.date === date ? saved : { date, next: 0, recorded: 0 };
+  const core = new Set(ASSETS.map((a) => a.symbol));
+  const list = IDX_UNIVERSE_STOCKS()
+    .filter((a) => !core.has(a.symbol))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  if (p.next >= list.length) return { date, done: true, total: list.length, recorded: p.recorded };
+  let stats = parseIdxStats(await store.get(IDXTRACE_STATS).catch(() => null));
+  const start = p.next;
+  let failed = 0;
+  while (p.next < list.length && Date.now() < until - 15_000) {
+    const batch = list.slice(p.next, p.next + 4);
+    p.next += batch.length;
+    const results = await Promise.all(batch.map((a) => recordIdxCalls(a, date).catch(() => null)));
+    for (const r of results) {
+      if (!r) {
+        failed++;
+        continue;
+      }
+      stats = addToIdxStats(stats, r.saved, r.scored);
+      if (r.saved.length) p.recorded++;
+    }
+  }
+  await store.set(IDXTRACE_STATS, stats);
+  await store.set(IDXTRACE_PROGRESS, p);
+  traceCache.clear();
+  return { date, processed: p.next - start, next: p.next, total: list.length, recorded: p.recorded, failed };
+}
+
 type TraceData = { calls: SentimentLog['calls']; forward: Array<{ key: string; log: ForwardLog }> };
 
 /** All saved calls (sentiment trace + advisor forward test), cached 10 minutes. */
@@ -4794,6 +4870,7 @@ async function runTick(): Promise<Record<string, unknown>> {
     ['screener', screenerStep],
     ['calendar', calendarStep],
     ['staples', (until) => staplesStep(store, until)],
+    ['idxTrace', idxTraceStep],
   ];
   for (let i = 0; i < steps.length; i++) {
     // One share stays for the results below
@@ -5010,9 +5087,15 @@ export async function createApp(): Promise<express.Express> {
     const profile = ['conservative', 'moderate', 'aggressive'].includes(String(req.query.profile)) ? String(req.query.profile) : 'moderate';
     try {
       const data = await traceData();
+      // IDX stocks outside the core assets keep their calls in their own record
+      const idxLog =
+        asset.group === 'idStock' && !ASSETS.some((a) => a.symbol === asset.symbol)
+          ? parseSentimentLog(await store.get(`${IDXTRACE_PREFIX}${asset.symbol}`).catch(() => null))
+          : null;
+      const calls = idxLog ? [...data.calls, ...idxLog.calls] : data.calls;
       const live = livePriceFor(asset)?.price ?? null;
-      const rows = assetTrace(asset.symbol, data.calls, data.forward.map((f) => f.log), live, profile);
-      const mine = data.calls.filter((c) => c.symbol === asset.symbol);
+      const rows = assetTrace(asset.symbol, calls, data.forward.map((f) => f.log), live, profile);
+      const mine = calls.filter((c) => c.symbol === asset.symbol);
       const verdicts = data.forward.flatMap((f) => f.log.snapshots).filter((s) => s.symbol === asset.symbol);
       res.json({ symbol: asset.symbol, profile, livePrice: live, database: store.persistent, rows: rows.slice(0, 600), summary: methodSummaries(mine, verdicts, profile) });
     } catch {
@@ -5025,7 +5108,14 @@ export async function createApp(): Promise<express.Express> {
     const profile = ['conservative', 'moderate', 'aggressive'].includes(String(req.query.profile)) ? String(req.query.profile) : 'moderate';
     try {
       const data = await traceData();
-      res.json({ profile, database: store.persistent, methods: methodSummaries(data.calls, data.forward.flatMap((f) => f.log.snapshots), profile) });
+      const [idxStats, idxProgress] = await Promise.all([store.get(IDXTRACE_STATS).catch(() => null), store.get(IDXTRACE_PROGRESS).catch(() => null)]);
+      res.json({
+        profile,
+        database: store.persistent,
+        methods: methodSummaries(data.calls, data.forward.flatMap((f) => f.log.snapshots), profile),
+        // Every IDX stock outside the core assets (running totals)
+        idx: { methods: idxStatsSummaries(parseIdxStats(idxStats)), progress: idxProgress },
+      });
     } catch {
       res.status(502).json({ error: 'Summary unavailable' });
     }

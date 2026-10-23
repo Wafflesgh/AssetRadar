@@ -3142,4 +3142,8 @@ export const id: Record<TranslationKey, string> = {
   "kitchen.f.kdmp.quiet": "Koperasi Merah Putih (KDMP): tidak ada berita pembelian bahan pokok dalam 7 hari terakhir.",
   "kitchen.f.kdmp.unknown": "Koperasi Merah Putih (KDMP): berita terbaru tidak bisa dibaca.",
   "kitchen.policyNews": "Berita program terbaru",
+  "trace.idxTitle": "Semua saham BEI (sekitar 950 lagi)",
+  "trace.idxIntro": "Setiap hari bursa setelah penutupan (mulai 16.15 WIB) server menyimpan sentimen pendek, menengah dan panjang semua saham Indonesia beserta harga penutupannya, lalu memeriksa setiap sinyal saat jangka waktunya lewat (pendek 2 minggu, menengah 3 bulan, panjang 1 tahun). Buka halaman saham untuk melihat riwayatnya sendiri.",
+  "trace.idxProgress": "Hari bursa terakhir yang dicatat {date}: {recorded} saham tersimpan sejauh ini.",
+  "trace.idxNone": "Belum ada yang tersimpan: sinyal pertama disimpan malam ini setelah bursa tutup, dan hasil horizon pendek pertama muncul sekitar dua minggu kemudian.",
 };

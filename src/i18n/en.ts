@@ -3141,6 +3141,10 @@ export const en = {
   "kitchen.f.kdmp.quiet": "Village cooperatives (KDMP): no headlines on staple buying in the last 7 days.",
   "kitchen.f.kdmp.unknown": "Village cooperatives (KDMP): recent news could not be read.",
   "kitchen.policyNews": "Recent programme news",
+  "trace.idxTitle": "All IDX stocks (about 950 more)",
+  "trace.idxIntro": "Every trading day after the close (from 16:15 WIB) the server saves the short, medium and long sentiment of every listed Indonesian stock with its closing price, then checks each call when its horizon has passed (short 2 weeks, medium 3 months, long 1 year). Open a stock's page to see its own history.",
+  "trace.idxProgress": "Last recorded trading day {date}: {recorded} stocks saved so far.",
+  "trace.idxNone": "Nothing saved yet: the first calls are saved this evening after the IDX close, and the first short-horizon results appear about two weeks later.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -1050,7 +1050,13 @@ export async function fetchAssetTrace(symbol: string, profile = 'moderate'): Pro
 }
 
 /** Accuracy of each method over all assets. */
-export async function fetchTrackSummary(profile = 'moderate'): Promise<{ profile: string; database: boolean; methods: import('../ai/recommendationTrace.ts').MethodSummary[] }> {
+export async function fetchTrackSummary(profile = 'moderate'): Promise<{
+  profile: string;
+  database: boolean;
+  methods: import('../ai/recommendationTrace.ts').MethodSummary[];
+  /** Every IDX stock outside the core assets. */
+  idx?: { methods: import('../ai/recommendationTrace.ts').MethodSummary[]; progress: { date: string; next: number; recorded: number } | null };
+}> {
   const res = await fetch(`/api/track/summary?profile=${encodeURIComponent(profile)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
