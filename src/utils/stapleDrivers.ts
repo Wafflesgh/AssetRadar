@@ -1,9 +1,12 @@
 /**
  * stapleDrivers.ts — "Why does the price move?" for Kitchen Radar: per staple category, the
- * factors that usually push its price (rupiah/dollar, yuan, world rice and palm-oil prices, oil
- * prices for transport and fertiliser, El Niño / La Niña, the rainy and dry seasons and harvests,
- * holiday demand, school holidays that pause the free school meals programme MBG) read from live data where there is a source, each marked as pushing the price up,
- * easing it, or neutral right now. Cause-and-effect texts are in i18n `kitchen.why.<category>.*`
+ * factors that usually push its price (rupiah/dollar, yuan, world rice and palm-oil prices, El Niño /
+ * La Niña, the rainy and dry seasons and harvests, holiday demand) and the government programmes
+ * that move food demand most: the free school meals MBG (paused in school holidays) and the village
+ * cooperatives KDMP (Koperasi Desa/Kelurahan Merah Putih, read from recent news). World oil (Brent)
+ * only counts for cooking oil, through biodiesel: fuel for transport is priced by the government.
+ * Read from live data where there is a source, each marked as pushing the price up, easing it, or
+ * neutral right now. Cause-and-effect texts are in i18n `kitchen.why.<category>.*`
  * and `kitchen.f.<factor>.<state>`; politics and government policy per category in
  * `kitchen.why.<category>.policy`. Also parses NOAA's Oceanic Niño Index (ONI). Education only:
  * real prices depend on many conditions at once.
@@ -11,20 +14,20 @@
 import type { MacroPoint } from './macro.ts';
 import type { StapleCategory } from './staples.ts';
 
-export type DriverFactor = 'usdIdr' | 'cny' | 'riceThai' | 'palmOil' | 'brent' | 'enso' | 'season' | 'holiday' | 'school';
+export type DriverFactor = 'usdIdr' | 'cny' | 'riceThai' | 'palmOil' | 'brent' | 'enso' | 'season' | 'holiday' | 'mbg' | 'kdmp';
 
 /** Factors that matter for each category, most important first. */
 export const STAPLE_FACTORS: Record<StapleCategory, DriverFactor[]> = {
-  rice: ['season', 'enso', 'riceThai', 'usdIdr', 'brent', 'holiday', 'school'],
-  chicken: ['usdIdr', 'holiday', 'school', 'brent'],
+  rice: ['season', 'enso', 'kdmp', 'mbg', 'riceThai', 'usdIdr', 'holiday'],
+  chicken: ['mbg', 'kdmp', 'holiday', 'usdIdr'],
   beef: ['usdIdr', 'holiday'],
-  eggs: ['usdIdr', 'holiday', 'school', 'brent'],
-  shallot: ['season', 'enso', 'holiday', 'brent'],
+  eggs: ['mbg', 'kdmp', 'holiday', 'usdIdr'],
+  shallot: ['season', 'enso', 'holiday'],
   garlic: ['cny', 'usdIdr', 'holiday'],
-  chili: ['season', 'enso', 'holiday', 'brent'],
-  birdChili: ['season', 'enso', 'holiday', 'brent'],
-  oil: ['palmOil', 'usdIdr', 'brent'],
-  sugar: ['season', 'enso', 'usdIdr', 'holiday'],
+  chili: ['season', 'enso', 'holiday'],
+  birdChili: ['season', 'enso', 'holiday'],
+  oil: ['palmOil', 'kdmp', 'brent', 'usdIdr'],
+  sugar: ['season', 'enso', 'kdmp', 'usdIdr', 'holiday'],
 };
 
 /** Effect on the staple's price right now. */
@@ -133,6 +136,8 @@ export interface DriverInputs {
   /** Monthly macro series by id (usdIdr, fx-cny, riceThai, palmOil, brent). */
   series: Record<string, MacroPoint[] | undefined>;
   enso: EnsoReading | null;
+  /** Headlines in the last 7 days about each programme (null = news not read). */
+  policyNews?: { mbg: number; kdmp: number } | null;
 }
 
 const SERIES_OF: Partial<Record<DriverFactor, string>> = { usdIdr: 'usdIdr', cny: 'fx-cny', riceThai: 'riceThai', palmOil: 'palmOil', brent: 'brent' };
@@ -181,10 +186,20 @@ export function readDriver(category: StapleCategory, factor: DriverFactor, inp: 
     if (s === 'rainy' || s === 'toRainy') return { factor, effect: 'raises', state: s, params: {} };
     return { factor, effect: s === 'dry' ? 'eases' : 'neutral', state: s, params: {} };
   }
-  if (factor === 'school') {
+  if (factor === 'mbg') {
+    // School days: MBG kitchens buy eggs, chicken and rice every day (still expanding), the main demand
+    // driver for eggs and chicken; school holidays pause most of it
     const sc = schoolState(inp.today);
-    const effect: DriverEffect = sc.state === 'holiday' ? 'eases' : sc.state === 'restart' ? 'raises' : 'neutral';
-    return { factor, effect, state: sc.state, params: { days: sc.days } };
+    const big = category === 'eggs' || category === 'chicken';
+    const effect: DriverEffect =
+      sc.state === 'holiday' ? 'eases' : sc.state === 'restart' || (sc.state === 'term' && big) ? 'raises' : 'neutral';
+    return { factor, effect, state: sc.state, params: { days: sc.days, n: inp.policyNews?.mbg ?? 0 } };
+  }
+  if (factor === 'kdmp') {
+    if (!inp.policyNews) return { factor, effect: 'unknown', state: 'unknown', params: {} };
+    const n = inp.policyNews.kdmp;
+    // Cooperatives stocking up their staple shops add sudden local demand
+    return n > 0 ? { factor, effect: 'raises', state: 'active', params: { n } } : { factor, effect: 'neutral', state: 'quiet', params: {} };
   }
   // Holiday demand
   const e = nextDemandEvent(inp.today);

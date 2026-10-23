@@ -7,7 +7,7 @@
  * food prices (headlines in their own language). Rising prices are shown red: dearer for households.
  * Each card also lists the popular (most populous, most reported) provinces and explains why the
  * price moves: live factors (rupiah, yuan, world rice and palm oil, oil, El Niño, season, holidays,
- * school meals MBG), the cause → effect chains with the one that applies now, Indonesia's exposure
+ * school meals MBG, village cooperatives KDMP with their recent headlines), the cause → effect chains with the one that applies now, Indonesia's exposure
  * and politics / policy (src/utils/stapleDrivers.ts).
  */
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, fetchStaples } from '../services/marketDataService.ts';
-import { activeChain, readDrivers, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
+import { activeChain, readDrivers, STAPLE_FACTORS, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
 import { formatNumber, formatRupiah } from '../utils/format.ts';
 import {
   addDays,
@@ -24,6 +24,7 @@ import {
   STAPLE_CATEGORIES,
   STAPLES,
   stapleSummary,
+  type PolicyNews,
   type StapleCategory,
   type StapleItem,
   type StaplesPayload,
@@ -111,7 +112,7 @@ function PopularRegions({ item, national }: { item: StapleItem; national: number
 }
 
 /** "Why does the price move?": live factors, chains (the one that applies now marked), exposure, politics. */
-function WhySection({ item, inputs }: { item: StapleItem; inputs: DriverInputs }) {
+function WhySection({ item, inputs, policy }: { item: StapleItem; inputs: DriverInputs; policy: PolicyNews | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const c = STAPLES.find((x) => x.id === item.id)!.category;
@@ -125,7 +126,7 @@ function WhySection({ item, inputs }: { item: StapleItem; inputs: DriverInputs }
       ))}
     </ul>
   );
-  const num = (v: string | number) => (typeof v === 'number' ? formatNumber(v, Math.abs(v) >= 100 ? 0 : 2) : v);
+  const num = (v: string | number) => (typeof v === 'number' ? formatNumber(v, Number.isInteger(v) || Math.abs(v) >= 100 ? 0 : 2) : v);
   const signed = (v: number) => `${v > 0 ? '+' : ''}${formatNumber(v, 1)}`;
   return (
     <div>
@@ -187,6 +188,31 @@ function WhySection({ item, inputs }: { item: StapleItem; inputs: DriverInputs }
           <div className="space-y-1">
             <p className="font-semibold">{t('kitchen.whyPolicy')}</p>
             {list(`kitchen.why.${c}.policy`)}
+            {(() => {
+              // Headlines on the programmes that apply to this staple
+              const factors = STAPLE_FACTORS[c];
+              const heads = [...(factors.includes('mbg') ? (policy?.mbg.items ?? []) : []), ...(factors.includes('kdmp') ? (policy?.kdmp.items ?? []) : [])].filter(
+                (h, i, all) => all.findIndex((x) => x.link === h.link) === i
+              );
+              if (!heads.length) return null;
+              return (
+                <div className="pt-1 space-y-1">
+                  <p className="font-semibold">{t('kitchen.policyNews')}</p>
+                  <ul className="space-y-1">
+                    {heads.slice(0, 5).map((h) => (
+                      <li key={h.link}>
+                        <a href={h.link} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          {h.title}
+                        </a>
+                        <span className="block text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                          {h.source}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
           </div>
           <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
             {t('kitchen.whyNote')}
@@ -197,7 +223,7 @@ function WhySection({ item, inputs }: { item: StapleItem; inputs: DriverInputs }
   );
 }
 
-function StapleCard({ item, range, inputs }: { item: StapleItem; range: Range; inputs: DriverInputs }) {
+function StapleCard({ item, range, inputs, policy }: { item: StapleItem; range: Range; inputs: DriverInputs; policy: PolicyNews | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const def = STAPLES.find((s) => s.id === item.id)!;
@@ -303,7 +329,7 @@ function StapleCard({ item, range, inputs }: { item: StapleItem; range: Range; i
           )}
         </div>
       )}
-      <WhySection item={item} inputs={inputs} />
+      <WhySection item={item} inputs={inputs} policy={policy} />
     </article>
   );
 }
@@ -337,7 +363,9 @@ export function KitchenRadarView() {
   const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
   const items = data?.items ?? [];
   const inputs: DriverInputs = useMemo(
-    () => ({ today: new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10), series: macroSeries, enso: data?.enso ?? null }),
+    () => ({ today: new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10), series: macroSeries, enso: data?.enso ?? null,
+      policyNews: data?.policyNews ? { mbg: data.policyNews.mbg.count, kdmp: data.policyNews.kdmp.count } : null,
+    }),
     [macroSeries, data]
   );
   const movers = useMemo(() => {
@@ -460,7 +488,7 @@ export function KitchenRadarView() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shown.map((i) => (
-              <StapleCard key={i.id} item={i} range={range} inputs={inputs} />
+              <StapleCard key={i.id} item={i} range={range} inputs={inputs} policy={data.policyNews ?? null} />
             ))}
           </div>
 

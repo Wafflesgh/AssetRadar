@@ -1,7 +1,7 @@
 /** staples.test.ts — Tests for the PIHPS staple price parser, history merge and summaries. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, basketChange, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
+import { addDays, basketChange, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
 
 test('prices and dates in the PIHPS format', () => {
   assert.equal(parsePihpsPrice('16,400'), 16400);
@@ -76,6 +76,18 @@ test('summary: changes over a week and a month, cheapest and dearest provinces',
   assert.equal(s.high, 139);
   assert.equal(s.low, 100);
   assert.equal(stapleSummary({ points: [], provinces: [] }).latest, null);
+});
+
+test('policy headlines are sorted into MBG and KDMP', () => {
+  const news = classifyPolicyNews([
+    { title: 'Kopdes Merah Putih mulai jual telur dan beras', link: 'a', source: 'x', publishedAtMs: 2 },
+    { title: 'SPPG tambah menu ayam untuk Makan Bergizi Gratis', link: 'b', source: 'x', publishedAtMs: 3 },
+    { title: 'KDMP dan MBG dorong permintaan telur', link: 'c', source: 'x', publishedAtMs: 1 },
+    { title: 'Harga cabai naik', link: 'd', source: 'x', publishedAtMs: 4 },
+  ]);
+  assert.equal(news.kdmp.count, 2);
+  assert.equal(news.mbg.count, 2);
+  assert.deepEqual(news.mbg.items.map((i) => i.link), ['b', 'c']);
 });
 
 test('the basket averages the main item of each category', () => {

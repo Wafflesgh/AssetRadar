@@ -67,12 +67,33 @@ export interface StaplesPayload {
   sourceUrl: string;
   /** Items still filling their one-year history (a little more on each update). */
   filling: number;
+  /** Recent headlines (7 days) on the government food programmes, null when not read. */
+  policyNews: PolicyNews | null;
   /** Latest El Niño / La Niña reading (NOAA ONI), when it could be read. */
   enso: { season: string; year: number; anomaly: number } | null;
 }
 
 /** Most populous provinces, also the ones most often in the news (shown as "popular regions"). */
 export const POPULAR_PROVINCES = ['DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten', 'Sumatera Utara'];
+
+export type PolicyHeadline = { title: string; link: string; source: string; publishedAtMs?: number };
+export interface PolicyNews {
+  mbg: { count: number; items: PolicyHeadline[] };
+  kdmp: { count: number; items: PolicyHeadline[] };
+}
+
+const KDMP_RE = /koperasi\s+(desa|kelurahan)?\s*merah\s+putih|kopdes|\bkdmp\b|kopkel/i;
+const MBG_RE = /makan\s+bergizi\s+gratis|\bmbg\b|\bsppg\b|badan\s+gizi/i;
+
+/** Headlines sorted into the two programmes (one headline can count for both), newest first. */
+export function classifyPolicyNews(items: PolicyHeadline[], keep = 4): PolicyNews {
+  const sorted = [...items].sort((a, b) => (b.publishedAtMs ?? 0) - (a.publishedAtMs ?? 0));
+  const pick = (re: RegExp) => {
+    const hits = sorted.filter((i) => re.test(i.title));
+    return { count: hits.length, items: hits.slice(0, keep) };
+  };
+  return { mbg: pick(MBG_RE), kdmp: pick(KDMP_RE) };
+}
 
 /** "16,400" / "16.400" → 16400; empty, "-" or zero → null. */
 export function parsePihpsPrice(v: unknown): number | null {

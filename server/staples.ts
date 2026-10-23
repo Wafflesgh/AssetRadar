@@ -13,7 +13,7 @@ import { getPacked, setPacked, type KvStore } from './store.ts';
 import { keepAlive } from './runtime.ts';
 import { parseRssItems } from '../src/utils/sentiment.ts';
 import { parseOni, type EnsoReading } from '../src/utils/stapleDrivers.ts';
-import { addDays, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, type StapleItem, type StaplesPayload } from '../src/utils/staples.ts';
+import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, type StapleItem, type StaplesPayload } from '../src/utils/staples.ts';
 
 const STORE_KEY = 'staples:data';
 const REFRESH_MS = 6 * 3600_000;
@@ -26,6 +26,27 @@ const NEWS_QUERY =
 
 const state: { items: Map<string, StapleItem> | null; dirty: boolean; running: Promise<void> | null } = { items: null, dirty: false, running: null };
 const news: { at: number; items: StaplesPayload['news'] } = { at: 0, items: [] };
+// The two government food programmes that move demand most (free school meals, village cooperatives)
+const POLICY_QUERY =
+  '("Makan Bergizi Gratis" OR MBG OR SPPG OR "Koperasi Merah Putih" OR "Kopdes Merah Putih" OR KDMP) (telur OR ayam OR beras OR "minyak goreng" OR gula OR pangan OR harga) when:7d';
+const policy: { at: number; value: StaplesPayload['policyNews'] } = { at: 0, value: null };
+
+async function policyNews(): Promise<StaplesPayload['policyNews']> {
+  if (Date.now() - policy.at < NEWS_MS) return policy.value;
+  try {
+    const res = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(POLICY_QUERY)}&hl=id&gl=ID&ceid=ID:id`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (AssetRadar personal research app)' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items = parseRssItems(await res.text(), 40).map((n) => ({ title: n.title, link: n.link, source: n.source, publishedAtMs: n.publishedAtMs }));
+    policy.value = classifyPolicyNews(items);
+    policy.at = Date.now();
+  } catch {
+    policy.at = Date.now() - NEWS_MS + 5 * 60_000;
+  }
+  return policy.value;
+}
 const enso: { at: number; value: EnsoReading | null } = { at: 0, value: null };
 const ONI_URL = 'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt';
 
@@ -173,7 +194,12 @@ export function registerStaplesRoute(app: Express, store: KvStore): void {
       const items = await load(store);
       const stale = [...items.values()].some((i) => Date.now() - i.updatedAt > REFRESH_MS);
       // Fresh prices first (a few seconds); the slower history keeps filling in the background
-      const [, headlines, ensoNow] = await Promise.all([stale ? staplesStep(store, Date.now() + 25_000) : Promise.resolve(), stapleNews(), latestEnso()]);
+      const [, headlines, ensoNow, policyNow] = await Promise.all([
+        stale ? staplesStep(store, Date.now() + 25_000) : Promise.resolve(),
+        stapleNews(),
+        latestEnso(),
+        policyNews(),
+      ]);
       const list = STAPLES.map((s) => items.get(s.id)!).filter(Boolean);
       if (!state.running && list.some((i) => !i.backfilled && i.points.length)) {
         keepAlive(staplesStep(store, Date.now() + 90_000)).catch(() => {});
@@ -190,6 +216,7 @@ export function registerStaplesRoute(app: Express, store: KvStore): void {
         sourceUrl: PIHPS_PAGE,
         filling: list.filter((i) => !i.backfilled).length,
         enso: ensoNow,
+        policyNews: policyNow,
       };
       res.json(payload);
     } catch {

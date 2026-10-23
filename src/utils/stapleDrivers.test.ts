@@ -58,8 +58,22 @@ test('school holidays pause MBG demand; the restart brings it back', () => {
   assert.deepEqual(schoolState('2027-01-06'), { state: 'restart', days: 3 });
   assert.equal(schoolState('2026-10-23').state, 'term');
   const inp: DriverInputs = { today: '2026-12-25', series: {}, enso: null };
-  assert.equal(readDriver('eggs', 'school', inp).effect, 'eases');
-  assert.equal(readDriver('eggs', 'school', { ...inp, today: '2027-01-06' }).effect, 'raises');
+  assert.equal(readDriver('eggs', 'mbg', inp).effect, 'eases');
+  assert.equal(readDriver('eggs', 'mbg', { ...inp, today: '2027-01-06' }).effect, 'raises');
+  // Term time: the main demand driver for eggs and chicken, background for rice
+  assert.equal(readDriver('eggs', 'mbg', { ...inp, today: '2026-10-23' }).effect, 'raises');
+  assert.equal(readDriver('rice', 'mbg', { ...inp, today: '2026-10-23' }).effect, 'neutral');
+});
+
+test('KDMP news push prices up; no news is neutral; unread news is unknown', () => {
+  const inp: DriverInputs = { today: '2026-10-23', series: {}, enso: null, policyNews: { mbg: 2, kdmp: 3 } };
+  assert.deepEqual(readDriver('eggs', 'kdmp', inp), { factor: 'kdmp', effect: 'raises', state: 'active', params: { n: 3 } });
+  assert.equal(readDriver('eggs', 'kdmp', { ...inp, policyNews: { mbg: 0, kdmp: 0 } }).effect, 'neutral');
+  assert.equal(readDriver('eggs', 'kdmp', { ...inp, policyNews: null }).effect, 'unknown');
+  // World oil is not a driver for eggs or chili (transport fuel is priced by the government)
+  assert.ok(!STAPLE_FACTORS.eggs.includes('brent'));
+  assert.ok(!STAPLE_FACTORS.chili.includes('brent'));
+  assert.ok(STAPLE_FACTORS.oil.includes('brent'));
 });
 
 test('the chain that applies follows the 1-month change', () => {
@@ -79,7 +93,8 @@ test('every category and factor state has its texts in both languages', () => {
     enso: ['elNino', 'elNinoStrong', 'laNina', 'laNinaStrong', 'neutral', 'unknown'],
     season: ['rainy', 'toDry', 'dry', 'toRainy', 'riceHarvest', 'riceLean', 'riceSecond', 'sugarMilling', 'sugarOff'],
     holiday: ['christmas', 'ramadan', 'eidFitr', 'eidAdha', 'none'],
-    school: ['holiday', 'soon', 'restart', 'term'],
+    mbg: ['holiday', 'soon', 'restart', 'term'],
+    kdmp: ['active', 'quiet', 'unknown'],
   };
   for (const [f, list] of Object.entries(states)) {
     for (const s of list) {
