@@ -194,3 +194,39 @@ export function basketChange(items: StapleItem[], period: keyof StapleSummary['c
     .filter((v): v is number => v !== null);
   return changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null;
 }
+
+export interface WeeklyMover {
+  id: string;
+  key: string;
+  price: number;
+  change: number;
+}
+
+export interface WeeklySummary {
+  /** Biggest 1-week rises (largest first) and falls (most negative first). */
+  up: WeeklyMover[];
+  down: WeeklyMover[];
+  /** Items that moved more than `threshold` % up / down over the week. */
+  bigUp: number;
+  bigDown: number;
+  basket: number | null;
+}
+
+/** "This week" overview: top risers and fallers by 1-week change, skipping items without a 1-week change. */
+export function weeklySummary(items: StapleItem[], threshold = 5, top = 3): WeeklySummary {
+  const rows: WeeklyMover[] = [];
+  for (const item of items) {
+    const def = STAPLES.find((s) => s.id === item.id);
+    const s = stapleSummary(item);
+    if (!def || !s.latest || s.change.w1 === null) continue;
+    rows.push({ id: item.id, key: def.key, price: s.latest[1], change: s.change.w1 });
+  }
+  rows.sort((a, b) => b.change - a.change);
+  return {
+    up: rows.filter((r) => r.change > 0).slice(0, top),
+    down: rows.filter((r) => r.change < 0).reverse().slice(0, top),
+    bigUp: rows.filter((r) => r.change > threshold).length,
+    bigDown: rows.filter((r) => r.change < -threshold).length,
+    basket: basketChange(items, 'w1'),
+  };
+}

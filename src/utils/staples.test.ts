@@ -1,7 +1,7 @@
 /** staples.test.ts — Tests for the PIHPS staple price parser, history merge and summaries. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, basketChange, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
+import { addDays, basketChange, weeklySummary, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
 
 test('prices and dates in the PIHPS format', () => {
   assert.equal(parsePihpsPrice('16,400'), 16400);
@@ -96,4 +96,20 @@ test('the basket averages the main item of each category', () => {
   assert.equal(basketChange(items, 'w1'), 0);
   assert.equal(basketChange([], 'm1'), null);
   assert.equal(STAPLES.filter((s) => s.main).length, 10);
+});
+
+test('the weekly summary ranks 1-week movers and counts big moves', () => {
+  const mk = (id: string, end: number): StapleItem => ({ id, points: daily('2026-09-01', [...Array(39).fill(100), end]), provinces: [], updatedAt: 0, backfilled: true });
+  const short: StapleItem = { id: 'com_9', points: daily('2026-10-08', [100, 120]), provinces: [], updatedAt: 0, backfilled: false };
+  const items = [mk('com_3', 110), mk('com_7', 90), mk('com_1', 104), mk('com_2', 97), mk('com_4', 120), mk('com_5', 101), mk('com_6', 100), short];
+  const w = weeklySummary(items);
+  assert.deepEqual(w.up.map((r) => r.id), ['com_4', 'com_3', 'com_1']);
+  assert.deepEqual(w.down.map((r) => r.id), ['com_7', 'com_2']);
+  assert.equal(w.up[0].price, 120);
+  assert.equal(w.up[0].key, STAPLES.find((s) => s.id === 'com_4')!.key);
+  assert.ok(Math.abs(w.up[0].change - 20) < 1e-9);
+  assert.equal(w.bigUp, 2);
+  assert.equal(w.bigDown, 1);
+  assert.equal(w.basket, basketChange(items, 'w1'));
+  assert.deepEqual(weeklySummary([]), { up: [], down: [], bigUp: 0, bigDown: 0, basket: null });
 });

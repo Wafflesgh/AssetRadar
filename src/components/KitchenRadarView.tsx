@@ -20,6 +20,7 @@ import { formatNumber, formatRupiah } from '../utils/format.ts';
 import {
   addDays,
   basketChange,
+  weeklySummary,
   POPULAR_PROVINCES,
   STAPLE_CATEGORIES,
   STAPLES,
@@ -334,6 +335,59 @@ function StapleCard({ item, range, inputs, policy }: { item: StapleItem; range: 
   );
 }
 
+const WEEK_THRESHOLD = 5;
+
+/** "This week": headline, top 3 risers / fallers by 1-week change and the basket's 1-week change. */
+function WeekSummaryCard({ items }: { items: StapleItem[] }) {
+  const t = useT();
+  const w = useMemo(() => weeklySummary(items, WEEK_THRESHOLD), [items]);
+  const th = formatNumber(WEEK_THRESHOLD);
+  const headline = w.bigUp === 0 && w.bigDown === 0 ? t('kitchen.week.calm', { th }) : t('kitchen.week.headline', { up: w.bigUp, down: w.bigDown, th });
+  const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
+  return (
+    <section className="p-5 rounded-xl border space-y-3" style={card} aria-labelledby="week-heading">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="week-heading" className="text-sm font-bold">
+          {t('kitchen.week.title')}
+        </h3>
+        <Change value={w.basket} label={t('kitchen.week.basket')} />
+      </div>
+      <p className="text-sm">{headline}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {(
+          [
+            ['kitchen.week.risers', w.up],
+            ['kitchen.week.fallers', w.down],
+          ] as const
+        ).map(([label, rows]) => (
+          <div key={label} className="space-y-1 min-w-0">
+            <h4 className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+              {t(label)}
+            </h4>
+            {rows.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {t('kitchen.week.none')}
+              </p>
+            ) : (
+              <ul className="text-xs space-y-0.5">
+                {rows.map((r) => (
+                  <li key={r.id} className="flex items-baseline justify-between gap-2">
+                    <span className="truncate min-w-0">{itemName(t, r.key)}</span>
+                    <span className="flex items-baseline gap-2 shrink-0">
+                      <span className="font-mono-num">{formatRupiah(r.price, 0)}</span>
+                      <Change value={r.change} label="" />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function KitchenRadarView() {
   const t = useT();
   const [data, setData] = useState<StaplesPayload | null>(null);
@@ -417,6 +471,8 @@ export function KitchenRadarView() {
 
       {data && (
         <>
+          <WeekSummaryCard items={items} />
+
           <section className="p-5 rounded-xl border grid grid-cols-1 md:grid-cols-3 gap-4" style={card} aria-labelledby="basket-heading">
             <div className="space-y-1">
               <h3 id="basket-heading" className="text-sm font-bold">
