@@ -3148,4 +3148,13 @@ export const id: Record<TranslationKey, string> = {
   "trace.idxNone": "Belum ada yang tersimpan: sinyal pertama disimpan malam ini setelah bursa tutup, dan hasil horizon pendek pertama muncul sekitar dua minggu kemudian.",
   "adv.marketFilter": "Saring menurut pasar",
   "adv.marketAll": "Semua pasar",
+  "adv.search": "Cari aset",
+  "adv.searchPlaceholder": "Cari kode atau nama, mis. BBCA",
+  "adv.sortBy": "Urutkan",
+  "adv.noMatch": "Tidak ada aset yang cocok dengan pencarian ini.",
+  "adv.sort.rank": "Urutan rekomendasi",
+  "adv.sort.chance": "Peluang naik",
+  "adv.sort.edge": "Keunggulan atas base rate",
+  "adv.sort.return1y": "Return 1 tahun",
+  "adv.sort.lowVol": "Volatilitas terendah",
 };

@@ -63,6 +63,16 @@ interface AdvisorViewProps {
   onSelectAsset: (symbol: string) => void;
 }
 
+type AdvisorSort = 'rank' | 'chance' | 'edge' | 'return1y' | 'lowVol';
+/** Higher first; null = the default ranking. */
+const SORT_KEYS: Record<AdvisorSort, ((o: RankedOutlook) => number | null) | null> = {
+  rank: null,
+  chance: (o) => o.adjustedProbability,
+  edge: (o) => (o.backtest?.signalHitRate == null ? null : o.backtest.signalHitRate - o.backtest.baseRate),
+  return1y: (o) => o.stats.return1y,
+  lowVol: (o) => (o.stats.volatility === null ? null : -o.stats.volatility),
+};
+
 export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
   const t = useT();
   const lang = useLang();
@@ -77,6 +87,8 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [showMethod, setShowMethod] = useState(false);
   const [market, setMarket] = useState<AssetGroup | 'all'>('all');
+  const [sortBy, setSortBy] = useState<AdvisorSort>('rank');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(
     async (silent = false) => {
@@ -120,9 +132,16 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
       'no-signal': [],
       'not-suitable': [],
     };
-    for (const o of ranked) if (market === 'all' || o.group === market) out[o.verdict].push(o);
+    const q = query.trim().toLowerCase();
+    const shown = ranked.filter(
+      (o) => (market === 'all' || o.group === market) && (!q || o.code.toLowerCase().includes(q) || o.name.toLowerCase().includes(q) || o.symbol.toLowerCase().includes(q))
+    );
+    const key = SORT_KEYS[sortBy];
+    // Missing values go last; the original ranking breaks ties
+    const sorted = key ? [...shown].sort((a, b) => (key(b) ?? -Infinity) - (key(a) ?? -Infinity)) : shown;
+    for (const o of sorted) out[o.verdict].push(o);
     return out;
-  }, [ranked, market]);
+  }, [ranked, market, sortBy, query]);
   // Markets that have assets in the advisor, with their counts
   const markets = useMemo(() => {
     const n = new Map<AssetGroup, number>();
@@ -238,6 +257,37 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
         <>
           <SummaryCard data={data} refreshing={refreshing} onRefresh={() => load(true)} />
           <VerdictRules />
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('adv.searchPlaceholder')}
+              aria-label={t('adv.search')}
+              className="flex-1 min-w-[10rem] px-3 py-2 rounded-lg border text-sm"
+              style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            />
+            <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {t('adv.sortBy')}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as AdvisorSort)}
+                className="px-2 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              >
+                {(Object.keys(SORT_KEYS) as AdvisorSort[]).map((k) => (
+                  <option key={k} value={k}>
+                    {t(`adv.sort.${k}` as TranslationKey)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {query.trim() && (['favorable', 'watch', 'unfavorable', 'no-signal', 'not-suitable'] as Verdict[]).every((v) => groups[v].length === 0) && (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              {t('adv.noMatch')}
+            </p>
+          )}
           <div role="group" aria-label={t('adv.marketFilter')} className="flex flex-wrap gap-2">
             {([['all', ranked.length], ...markets] as Array<[AssetGroup | 'all', number]>).map(([g, n]) => (
               <button

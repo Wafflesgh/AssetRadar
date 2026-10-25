@@ -3147,6 +3147,15 @@ export const en = {
   "trace.idxNone": "Nothing saved yet: the first calls are saved this evening after the IDX close, and the first short-horizon results appear about two weeks later.",
   "adv.marketFilter": "Filter by market",
   "adv.marketAll": "All markets",
+  "adv.search": "Search assets",
+  "adv.searchPlaceholder": "Search code or name, e.g. BBCA",
+  "adv.sortBy": "Sort by",
+  "adv.noMatch": "No asset matches this search.",
+  "adv.sort.rank": "Recommended order",
+  "adv.sort.chance": "Chance of a gain",
+  "adv.sort.edge": "Edge over base rate",
+  "adv.sort.return1y": "1-year return",
+  "adv.sort.lowVol": "Lowest volatility",
 } as const;
 
 export type TranslationKey = keyof typeof en;
