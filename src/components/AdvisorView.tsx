@@ -76,6 +76,7 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [showMethod, setShowMethod] = useState(false);
+  const [market, setMarket] = useState<AssetGroup | 'all'>('all');
 
   const load = useCallback(
     async (silent = false) => {
@@ -119,8 +120,14 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
       'no-signal': [],
       'not-suitable': [],
     };
-    for (const o of ranked) out[o.verdict].push(o);
+    for (const o of ranked) if (market === 'all' || o.group === market) out[o.verdict].push(o);
     return out;
+  }, [ranked, market]);
+  // Markets that have assets in the advisor, with their counts
+  const markets = useMemo(() => {
+    const n = new Map<AssetGroup, number>();
+    for (const o of ranked) n.set(o.group as AssetGroup, (n.get(o.group as AssetGroup) ?? 0) + 1);
+    return [...n.entries()];
   }, [ranked]);
 
   return (
@@ -231,6 +238,24 @@ export function AdvisorView({ ticks, onSelectAsset }: AdvisorViewProps) {
         <>
           <SummaryCard data={data} refreshing={refreshing} onRefresh={() => load(true)} />
           <VerdictRules />
+          <div role="group" aria-label={t('adv.marketFilter')} className="flex flex-wrap gap-2">
+            {([['all', ranked.length], ...markets] as Array<[AssetGroup | 'all', number]>).map(([g, n]) => (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={market === g}
+                onClick={() => setMarket(g)}
+                className="px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap"
+                style={{
+                  borderColor: market === g ? 'var(--accent-radar)' : 'var(--border-subtle)',
+                  backgroundColor: market === g ? 'var(--accent-radar)' : 'var(--bg-surface)',
+                  color: market === g ? '#0B1220' : 'var(--text-primary)',
+                }}
+              >
+                {g === 'all' ? t('adv.marketAll') : groupTitle(g)} <span className="font-mono-num">({n})</span>
+              </button>
+            ))}
+          </div>
           {(['favorable', 'watch', 'unfavorable', 'no-signal', 'not-suitable'] as Verdict[]).map((v) =>
             groups[v].length === 0 ? null : (
               <section key={v} aria-labelledby={`verdict-${v}`} className="space-y-3">

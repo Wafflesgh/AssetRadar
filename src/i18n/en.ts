@@ -3145,6 +3145,8 @@ export const en = {
   "trace.idxIntro": "Every trading day after the close (from 16:15 WIB) the server saves the short, medium and long sentiment of every listed Indonesian stock with its closing price, then checks each call when its horizon has passed (short 2 weeks, medium 3 months, long 1 year). Open a stock's page to see its own history.",
   "trace.idxProgress": "Last recorded trading day {date}: {recorded} stocks saved so far.",
   "trace.idxNone": "Nothing saved yet: the first calls are saved this evening after the IDX close, and the first short-horizon results appear about two weeks later.",
+  "adv.marketFilter": "Filter by market",
+  "adv.marketAll": "All markets",
 } as const;
 
 export type TranslationKey = keyof typeof en;

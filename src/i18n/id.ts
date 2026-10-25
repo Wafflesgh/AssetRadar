@@ -3146,4 +3146,6 @@ export const id: Record<TranslationKey, string> = {
   "trace.idxIntro": "Setiap hari bursa setelah penutupan (mulai 16.15 WIB) server menyimpan sentimen pendek, menengah dan panjang semua saham Indonesia beserta harga penutupannya, lalu memeriksa setiap sinyal saat jangka waktunya lewat (pendek 2 minggu, menengah 3 bulan, panjang 1 tahun). Buka halaman saham untuk melihat riwayatnya sendiri.",
   "trace.idxProgress": "Hari bursa terakhir yang dicatat {date}: {recorded} saham tersimpan sejauh ini.",
   "trace.idxNone": "Belum ada yang tersimpan: sinyal pertama disimpan malam ini setelah bursa tutup, dan hasil horizon pendek pertama muncul sekitar dua minggu kemudian.",
+  "adv.marketFilter": "Saring menurut pasar",
+  "adv.marketAll": "Semua pasar",
 };
