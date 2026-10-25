@@ -901,6 +901,20 @@ export async function fetchStaples(): Promise<import('../utils/staples.ts').Stap
   return await res.json();
 }
 
+export type SectorRotationResponse = import('../utils/sectorRotation.ts').SectorRotationResult & {
+  asOf: number;
+  pricesAt: number | null;
+  drivers: import('../utils/sectorRotation.ts').SectorDrivers;
+  source: string;
+};
+
+/** IDX sector rotation (#/sectors). */
+export async function fetchSectorRotation(): Promise<SectorRotationResponse> {
+  const res = await fetch('/api/sectors/idx');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
 export interface ScreenerResponse {
   rows: import('../utils/screener.ts').ScreenerRow[];
   scan: { scanned: number; withData: number; total: number; scanning: boolean; finishedAt: number | null };

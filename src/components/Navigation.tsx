@@ -34,6 +34,7 @@ import {
   ClipboardCheck,
   ShoppingBasket,
   ChevronRight,
+  PieChart,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
@@ -43,7 +44,7 @@ import { LangToggle } from './LangToggle.tsx';
 
 export type NavTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -76,6 +77,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'analyst', label: 'nav.analyst', shortLabel: 'nav.analystShort', icon: ClipboardCheck },
   { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
   { id: 'screener', label: 'nav.screener', shortLabel: 'nav.screenerShort', icon: Filter },
+  { id: 'sectors', label: 'nav.sectors', icon: PieChart },
   { id: 'compare', label: 'nav.compare', icon: GitCompare },
   { id: 'portfolio', label: 'nav.portfolio', icon: Wallet },
   { id: 'alerts', label: 'nav.alerts', icon: Bell },
@@ -102,7 +104,7 @@ interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   { id: 'radar', label: 'nav.radar', icon: Radar, items: [byId('radar')] },
   { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, items: [byId('terminal')] },
-  { id: 'idx', label: 'nav.group.idx', icon: Landmark, items: [byId('idx'), byId('screener'), byId('calendar')] },
+  { id: 'idx', label: 'nav.group.idx', icon: Landmark, items: [byId('idx'), byId('sectors'), byId('screener'), byId('calendar')] },
   {
     id: 'markets',
     label: 'nav.group.markets',

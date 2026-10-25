@@ -2,7 +2,8 @@
  * router.ts — Library-free hash routing: converts between the URL hash and the active tab.
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
  * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance), #/crypto/<PAIR>, #/alerts, #/screener,
- * #/compare?s=BBCA,BBRI, #/brief, #/backtest, #/analyst, #/kitchen (staple food prices).
+ * #/compare?s=BBCA,BBRI, #/brief, #/backtest, #/analyst, #/kitchen (staple food prices),
+ * #/sectors (IDX sector rotation).
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
@@ -11,7 +12,7 @@ import { buildCompareParam, parseCompareParam } from './compare.ts';
 
 export type RouteTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -79,6 +80,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (cleaned === 'macro' || cleaned === 'makro') {
     return { tab: 'macro' };
+  }
+  if (cleaned === 'sectors' || cleaned === 'sektor' || cleaned === 'rotation') {
+    return { tab: 'sectors' };
   }
   if (cleaned === 'kitchen' || cleaned === 'dapur' || cleaned === 'staples' || cleaned === 'pangan') {
     return { tab: 'kitchen' };
@@ -158,6 +162,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?
       return '#/macro';
     case 'kitchen':
       return '#/kitchen';
+    case 'sectors':
+      return '#/sectors';
     case 'crypto':
       return assetSymbolOrId ? `#/crypto/${encodeURIComponent(assetSymbolOrId)}` : '#/crypto';
     case 'alerts':

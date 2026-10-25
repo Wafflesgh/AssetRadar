@@ -155,6 +155,10 @@ backtester. The interface is available in English and Bahasa Indonesia.
   setup the server checks alerts on its price loop and sends web push to your phone even when
   the app is closed (iPhone: install the app first, iOS 16.4+); without it alerts are checked in
   the browser while the app is open.
+- **IDX sector rotation** (`#/sectors`): every IDX-IC sector ranked by its market-cap-weighted
+  1-day / 1-week change, with breadth, top gainers and losers, a Leading / Improving / Weakening /
+  Lagging label versus the whole market and a one-line rule-based reason (leading stock, breadth,
+  and the matching driver: oil/coal, nickel/gold, palm oil, rupiah, BI-Rate, foreign funds).
 - **IDX stock screener** (`#/screener`): every listed stock filtered by sector, board, price,
   1-day/1-week change, value traded, market cap, P/E, P/B, ROE, net margin, DER, dividend yield,
   Piotroski F-score and profit growth; presets, saved screens, sorting, CSV, scan progress and
@@ -524,6 +528,7 @@ instead (as a new app), then Publish.
 | `utils/sync.ts` | Sync merge per item (edit times, deletions), deltas, daily job schedule (WIB). |
 | `utils/syncAuth.ts` | Server-only passphrase check, session tokens, login limiter. |
 | `utils/alerts.ts` | Alert evaluation (crossing, daily move, calendar, news, geo), quiet hours, throttle. |
+| `utils/sectorRotation.ts` | IDX sector rotation: weighted changes, breadth, movers, quadrants and one-line reasons. |
 | `utils/screener.ts` | Screener fields, filters, sorting, presets, CSV and ratios from statements. |
 | `utils/compare.ts` | Compare URL parameter and the rebased (start = 100) series. |
 | `utils/portfolioAnalytics.ts` | Daily value, time-weighted return, dividends, drawdown, volatility, correlation. |
@@ -540,7 +545,7 @@ instead (as a new app), then Publish.
 | `utils/movers.ts` | Live price buffer (5-minute window) and movers ranking. |
 | `utils/sentiment.ts` | Headline tone and the RSS parser. |
 | `utils/storage.ts` | All localStorage access (theme, language, number format, timeframe, watchlist, snapshot, options, sidebar, synced collections and their change tracking). |
-| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/idx`, `#/watchlist`, `#/portfolio`, `#/calendar`, `#/macro`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`, `#/crypto`, `#/crypto/<PAIR>`, `#/alerts`, `#/screener`, `#/compare?s=`, `#/brief`, `#/backtest`). |
+| `utils/router.ts` | Hash routes (`#/radar`, `#/asset/<id>`, `#/idx`, `#/watchlist`, `#/portfolio`, `#/calendar`, `#/macro`, `#/risk`, `#/settings`, `#/terminal`, `#/advisor`, `#/quant`, `#/crypto`, `#/crypto/<PAIR>`, `#/alerts`, `#/screener`, `#/compare?s=`, `#/brief`, `#/backtest`, `#/sectors`). |
 | `utils/candles.ts` | 4-hour candle aggregation and WIB chart data. |
 | `utils/correlation.ts` | Pearson correlation of daily returns. |
 | `utils/terminalCommands.ts` | Terminal command parser, autocomplete and HELP list. |
@@ -574,6 +579,7 @@ instead (as a new app), then Publish.
 | `PortfolioAnalytics.tsx` | Performance vs IHSG, risk, dividends and calendar of the portfolio (lazy-loaded). |
 | `SyncCard.tsx` | Sync card in Settings (login, status, Sync now, first-merge summary). |
 | `AlertsView.tsx` / `AlertEditor.tsx` | Alerts page, alert form and the dialog on asset pages. |
+| `SectorRotationView.tsx` | IDX sector rotation page (lazy-loaded). |
 | `ScreenerView.tsx` | IDX stock screener (lazy-loaded). |
 | `CompareView.tsx` | Compare page (lazy-loaded). |
 | `BriefView.tsx` | Morning brief page (lazy-loaded). |

@@ -61,6 +61,12 @@ test('calendar route', () => {
   assert.equal(buildHashRoute('calendar'), '#/calendar');
 });
 
+test('sectors route and its Indonesian alias', () => {
+  assert.deepEqual(parseHashRoute('#/sectors'), { tab: 'sectors' });
+  assert.deepEqual(parseHashRoute('#/sektor'), { tab: 'sectors' });
+  assert.equal(buildHashRoute('sectors'), '#/sectors');
+});
+
 test('kitchen route and its Indonesian aliases', () => {
   assert.deepEqual(parseHashRoute('#/kitchen'), { tab: 'kitchen' });
   assert.deepEqual(parseHashRoute('#/dapur'), { tab: 'kitchen' });

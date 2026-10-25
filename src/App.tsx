@@ -65,6 +65,7 @@ const AnalystView = lazy(() => import('./components/AnalystView.tsx').then((m) =
 const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
 const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
+const SectorRotationView = lazy(() => import('./components/SectorRotationView.tsx').then((m) => ({ default: m.SectorRotationView })));
 const KitchenRadarView = lazy(() => import('./components/KitchenRadarView.tsx').then((m) => ({ default: m.KitchenRadarView })));
 const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
 const CryptoBinanceView = lazy(() => import('./components/CryptoBinanceView.tsx').then((m) => ({ default: m.CryptoBinanceView })));
@@ -385,6 +386,7 @@ export default function App() {
               {activeTab === 'calendar' && t('header.title.calendar')}
               {activeTab === 'macro' && t('header.title.macro')}
               {activeTab === 'kitchen' && t('header.title.kitchen')}
+              {activeTab === 'sectors' && t('header.title.sectors')}
               {activeTab === 'crypto' && t('header.title.crypto')}
               {activeTab === 'alerts' && t('header.title.alerts')}
               {activeTab === 'screener' && t('header.title.screener')}
@@ -539,6 +541,17 @@ export default function App() {
             }
           >
             <IndonesiaMacroView />
+          </Suspense>
+        )}
+        {activeTab === 'sectors' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <SectorRotationView />
           </Suspense>
         )}
         {activeTab === 'kitchen' && (

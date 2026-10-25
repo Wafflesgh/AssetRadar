@@ -235,6 +235,7 @@ import {
 import { formatAssetPrice, getNumberLocale, setNumberLocale, type NumberLocale } from './src/utils/format.ts';
 import { BRIEF_TIME, briefDateFor, briefToText, buildBrief, type BriefInput, type BriefQuote, type MorningBrief } from './src/utils/morningBrief.ts';
 import { fundamentalsFromRows, rescaleForPrice, type ScreenerFundamentals, type ScreenerRow } from './src/utils/screener.ts';
+import { computeSectorRotation, lastChangePct, type LiveDriver, type SectorDrivers, type SectorRotationResult } from './src/utils/sectorRotation.ts';
 import { reactionInterval, reactionSince } from './src/utils/geoReaction.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3116,6 +3117,76 @@ async function screenerStep(until: number): Promise<{ pending: number }> {
   return { pending: stale() };
 }
 
+/** Screener rows: prices from the IDX sweep + ratios from the statements scan. */
+function idxScreenerRows(): ScreenerRow[] {
+  return IDX_ALL.map((a) => {
+    const t = idxSweep.ticks.get(a.symbol);
+    const price = t && Number.isFinite(t.price) ? t.price : null;
+    const fund = screenerFund.get(a.symbol);
+    return {
+      symbol: a.symbol,
+      code: a.code.replace(/\.JK$/, ''),
+      name: a.name,
+      sector: a.sector ?? 'Other',
+      board: a.board ?? 'Other',
+      price,
+      chg1d: t?.changePct24h ?? null,
+      chg1w: t?.changePct7d ?? null,
+      valueTraded: t?.valueTraded ?? null,
+      marketCap: price !== null && a.supply ? price * a.supply : null,
+      f: fund ? (fund.f ? rescaleForPrice(fund.f, fund.price, price) : null) : undefined,
+      fetchedAt: fund?.fetchedAt ?? null,
+    };
+  });
+}
+
+// ---- IDX sector rotation (#/sectors): computed from the screener rows + macro drivers ----------
+
+const SECTOR_TTL_MS = 10 * 60_000;
+interface SectorRotationPayload extends SectorRotationResult {
+  asOf: number;
+  pricesAt: number | null;
+  drivers: SectorDrivers;
+  source: string;
+}
+const sectorCache: { entry: CacheEntry<SectorRotationPayload> | null } = { entry: null };
+
+/** Live (1D/1W) and monthly drivers; each one is optional and missing data is simply left out. */
+async function sectorDrivers(): Promise<SectorDrivers> {
+  const drivers: SectorDrivers = { live: { d1: {}, w1: {} }, monthly: {} };
+  const live: Array<[LiveDriver, string]> = [['oil', 'CL=F'], ['copper', 'HG=F'], ['natgas', 'NG=F'], ['usdIdr', 'USD/IDR'], ['nasdaq', '^NDX']];
+  const ticks = await getYahooTicks().catch(() => ({}) as Record<string, PriceTick>);
+  const put = (id: LiveDriver, t: PriceTick | undefined) => {
+    if (!t || t.status === 'error') return;
+    drivers.live.d1[id] = Number.isFinite(t.changePct24h) ? (t.changePct24h as number) : null;
+    drivers.live.w1[id] = Number.isFinite(t.changePct7d) ? (t.changePct7d as number) : null;
+  };
+  for (const [id, sym] of live) put(id, ticks[sym]);
+  const usdIdr = ticks['USD/IDR']?.price;
+  put('gold', await getGoldTick(Number.isFinite(usdIdr) ? (usdIdr as number) : 0).catch(() => undefined));
+  // Macro: the cached / saved result only — never wait long for a fresh computation
+  const macro = await Promise.race([getIndonesiaMacro().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 4000))]);
+  if (macro) {
+    const series = (id: string) => macro.indicators?.find((x) => x.id === id)?.points ?? macro.series.find((x) => x.id === id)?.points;
+    drivers.monthly = { coal: lastChangePct(series('coalAustralia')), nickel: lastChangePct(series('nickel')), palmOil: lastChangePct(series('palmOil')) };
+    const bi = macro.biRate.length ? [...macro.biRate].sort((a, b) => a.date.localeCompare(b.date)) : [];
+    // The latest decision that changed the rate (a hold keeps the earlier cut / hike as the news)
+    const last = bi[bi.length - 1];
+    let k = bi.length - 1;
+    while (k > 0 && bi[k].value === bi[k - 1].value) k -= 1;
+    if (last) drivers.biRate = { level: last.value, change: k > 0 ? Math.round((bi[k].value - bi[k - 1].value) * 100) / 100 : 0, date: bi[k].date.slice(0, 10) };
+    const flow = series('foreignStockFlow');
+    drivers.foreignStockFlow = flow?.length ? flow[flow.length - 1].value : null;
+  }
+  return drivers;
+}
+
+async function buildSectorRotation(): Promise<SectorRotationPayload> {
+  const drivers = await sectorDrivers();
+  const result = computeSectorRotation(idxScreenerRows(), drivers, wibDate(Date.now()));
+  return { ...result, asOf: Date.now(), pricesAt: idxSweep.lastRunAt || null, drivers, source: 'Yahoo Finance (IDX prices); Bank Indonesia, World Bank (drivers)' };
+}
+
 // ---- IDX screener: slow scan of the statements of every listed stock (24 h) -----------------------
 
 const SCREENER_TTL_MS = 24 * 3600_000;
@@ -5421,25 +5492,7 @@ export async function createApp(): Promise<express.Express> {
       if (!SERVERLESS && !screenerScan.running && IDX_ALL.some((a) => Date.now() - (screenerFund.get(a.symbol)?.fetchedAt ?? 0) > SCREENER_TTL_MS)) {
         runScreenerScan().catch(() => {});
       }
-      const rows: ScreenerRow[] = IDX_ALL.map((a) => {
-        const t = idxSweep.ticks.get(a.symbol);
-        const price = t && Number.isFinite(t.price) ? t.price : null;
-        const fund = screenerFund.get(a.symbol);
-        return {
-          symbol: a.symbol,
-          code: a.code.replace(/\.JK$/, ''),
-          name: a.name,
-          sector: a.sector ?? 'Other',
-          board: a.board ?? 'Other',
-          price,
-          chg1d: t?.changePct24h ?? null,
-          chg1w: t?.changePct7d ?? null,
-          valueTraded: t?.valueTraded ?? null,
-          marketCap: price !== null && a.supply ? price * a.supply : null,
-          f: fund ? (fund.f ? rescaleForPrice(fund.f, fund.price, price) : null) : undefined,
-          fetchedAt: fund?.fetchedAt ?? null,
-        };
-      });
+      const rows = idxScreenerRows();
       res.json({
         rows,
         scan: {
@@ -5454,6 +5507,24 @@ export async function createApp(): Promise<express.Express> {
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Screener data unavailable' });
+    }
+  });
+
+  // 5g3. IDX sector rotation: sector changes, breadth, movers and a one-line reason (cache 10 min)
+  app.get('/api/sectors/idx', async (_req, res) => {
+    idxSweep.lastDemandAt = Date.now();
+    try {
+      if (idxSweep.ticks.size === 0) await keepAlive(runIdxSweep()).catch(() => {});
+      else if (Date.now() - idxSweep.lastRunAt >= (isExchangeOpen('IDX', Date.now()) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS)) keepAlive(runIdxSweep()).catch(() => {});
+      if (sectorCache.entry && sectorCache.entry.expiresAt > Date.now() && sectorCache.entry.data.pricesAt === (idxSweep.lastRunAt || null)) {
+        return res.json(sectorCache.entry.data);
+      }
+      if (idxSweep.ticks.size === 0) return res.status(502).json({ error: 'IDX prices unavailable' });
+      const data = await buildSectorRotation();
+      sectorCache.entry = { data, expiresAt: Date.now() + SECTOR_TTL_MS };
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Sector data unavailable' });
     }
   });
 
