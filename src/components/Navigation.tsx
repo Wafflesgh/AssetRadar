@@ -35,6 +35,7 @@ import {
   ShoppingBasket,
   ChevronRight,
   PieChart,
+  Trophy,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
@@ -44,7 +45,7 @@ import { LangToggle } from './LangToggle.tsx';
 
 export type NavTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -75,6 +76,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'advisor', label: 'nav.advisor', shortLabel: 'nav.advisorShort', icon: BrainCircuit, mobile: true },
   { id: 'brief', label: 'nav.brief', shortLabel: 'nav.briefShort', icon: Newspaper },
   { id: 'analyst', label: 'nav.analyst', shortLabel: 'nav.analystShort', icon: ClipboardCheck },
+  { id: 'fundArena', label: 'nav.fundArena', shortLabel: 'nav.fundArenaShort', icon: Trophy },
   { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
   { id: 'screener', label: 'nav.screener', shortLabel: 'nav.screenerShort', icon: Filter },
   { id: 'sectors', label: 'nav.sectors', icon: PieChart },
@@ -111,7 +113,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: LineChart,
     items: [byId('crypto'), byId('compare'), { id: 'detail', label: 'nav.detail', icon: LineChart }],
   },
-  { id: 'ai', label: 'nav.group.ai', icon: BrainCircuit, items: [byId('advisor'), byId('analyst'), byId('brief'), byId('quant'), byId('backtest')] },
+  { id: 'ai', label: 'nav.group.ai', icon: BrainCircuit, items: [byId('advisor'), byId('fundArena'), byId('analyst'), byId('brief'), byId('quant'), byId('backtest')] },
   { id: 'economy', label: 'nav.group.economy', icon: Building2, items: [byId('macro'), byId('kitchen')] },
   { id: 'mine', label: 'nav.group.mine', icon: Wallet, items: [byId('portfolio'), byId('watchlist')] },
   { id: 'settings', label: 'nav.group.settings', icon: Settings, items: [byId('settings'), byId('alerts'), byId('risk')] },

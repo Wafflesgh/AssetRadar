@@ -111,3 +111,9 @@ test('backtest route', () => {
   assert.deepEqual(parseHashRoute('#/backtest'), { tab: 'backtest' });
   assert.equal(buildHashRoute('backtest'), '#/backtest');
 });
+
+test('fund arena route and its Indonesian alias', () => {
+  assert.deepEqual(parseHashRoute('#/fund-arena'), { tab: 'fundArena' });
+  assert.deepEqual(parseHashRoute('#/arena-dana'), { tab: 'fundArena' });
+  assert.equal(buildHashRoute('fundArena'), '#/fund-arena');
+});

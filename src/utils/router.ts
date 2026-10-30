@@ -3,7 +3,7 @@
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
  * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance), #/crypto/<PAIR>, #/alerts, #/screener,
  * #/compare?s=BBCA,BBRI, #/brief, #/backtest, #/analyst, #/kitchen (staple food prices),
- * #/sectors (IDX sector rotation).
+ * #/sectors (IDX sector rotation), #/fund-arena (AI Fund Arena).
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
@@ -12,7 +12,7 @@ import { buildCompareParam, parseCompareParam } from './compare.ts';
 
 export type RouteTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -44,6 +44,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (path === 'backtest') {
     return { tab: 'backtest' };
+  }
+  if (path === 'fund-arena' || path === 'arena-dana') {
+    return { tab: 'fundArena' };
   }
   if (path === 'analyst' || path === 'analisis') {
     return { tab: 'analyst' };
@@ -136,6 +139,8 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?
       return '#/backtest';
     case 'analyst':
       return '#/analyst';
+    case 'fundArena':
+      return '#/fund-arena';
     case 'compare':
       return compare && compare.length ? `#/compare?s=${buildCompareParam(compare)}` : '#/compare';
     case 'radar':

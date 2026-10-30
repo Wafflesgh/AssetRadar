@@ -1063,6 +1063,13 @@ export async function fetchAssetTrace(symbol: string, profile = 'moderate'): Pro
   return await res.json();
 }
 
+/** AI Fund Arena: the simulated managers (null before the first evening run). */
+export async function fetchFundArena(): Promise<{ state: import('../ai/fundArena.ts').FundArenaState | null; database: boolean; lastRun: string | null }> {
+  const res = await fetch('/api/fund-arena');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
 /** Accuracy of each method over all assets. */
 export async function fetchTrackSummary(profile = 'moderate'): Promise<{
   profile: string;

@@ -61,6 +61,7 @@ const RiskProfileView = lazy(() =>
 const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
 const BacktestView = lazy(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
 const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
+const FundArenaView = lazy(() => import('./components/FundArenaView.tsx').then((m) => ({ default: m.FundArenaView })));
 const AnalystView = lazy(() => import('./components/AnalystView.tsx').then((m) => ({ default: m.AnalystView })));
 const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
 const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
@@ -393,6 +394,7 @@ export default function App() {
               {activeTab === 'compare' && t('header.title.compare')}
               {activeTab === 'brief' && t('header.title.brief')}
               {activeTab === 'analyst' && t('header.title.analyst')}
+              {activeTab === 'fundArena' && t('header.title.fundArena')}
               {activeTab === 'backtest' && t('header.title.backtest')}
             </span>
           </div>
@@ -585,6 +587,17 @@ export default function App() {
             }
           >
             <BacktestView ticks={ticks} />
+          </Suspense>
+        )}
+        {activeTab === 'fundArena' && (
+          <Suspense
+            fallback={
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {t('common.loading')}
+              </p>
+            }
+          >
+            <FundArenaView ticks={ticks} onSelectAsset={handleSelectAsset} />
           </Suspense>
         )}
         {activeTab === 'analyst' && (

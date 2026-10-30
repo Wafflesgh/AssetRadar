@@ -174,6 +174,7 @@ import {
 import { dailyJobDue, wibDate } from './src/utils/sync.ts';
 import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore, getPacked, setPacked } from './server/store.ts';
+import { ARENA_MANAGER_MODEL, FUND_MANAGERS, parseFundArena, probabilityPicks, sentimentPicks, stepFundArena, type FundManagerId, type FundQuote } from './src/ai/fundArena.ts';
 import { arenaLiveBoard, emptyArenaLog, evaluateArenaLog, parseArenaLog, pendingArenaSymbols, recordArenaDay, type ArenaLog } from './src/ai/arena.ts';
 import { SERVERLESS, afterMs, everyMs, keepAlive } from './server/runtime.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
@@ -4171,6 +4172,54 @@ const forwardTrackCache = new Map<string, CacheEntry<unknown>>();
 const SNAP_PREFIX = 'snap:';
 const ANALYSIS_PREFIX = 'analysis:';
 const SENTCALLS_PREFIX = 'sentcalls:';
+// ---- AI Fund Arena: ten simulated managers with US$100 each, rebalanced after the analyst job ----
+
+const FUNDARENA_KEY = 'fundarena:state';
+
+async function runFundArenaDay(): Promise<{ date: string; managers: Record<string, number> }> {
+  const date = wibDate(Date.now());
+  const snap = parseSnapshot(await store.get(`${SNAP_PREFIX}${date}`));
+  if (!snap) throw new Error('no snapshot for today yet');
+  const usdIdr = snap.assets['USD/IDR']?.p ?? 0;
+  if (!(usdIdr > 0)) throw new Error('no USD/IDR price');
+  const quotes: Record<string, FundQuote> = {};
+  const sentRows: Record<'short' | 'medium' | 'long', Array<{ symbol: string; label: string; score: number }>> = { short: [], medium: [], long: [] };
+  for (const [symbol, a] of Object.entries(snap.assets)) {
+    const asset = getAssetBySymbol(symbol);
+    // Currencies are the yardstick, not something a manager buys
+    if (!asset || asset.group === 'forex' || !(a.p > 0)) continue;
+    quotes[symbol] = { price: a.p, idr: asset.currency === 'IDR' || asset.id === 'jci' };
+    for (const h of ['short', 'medium', 'long'] as const) {
+      const v = a.s?.[h];
+      if (v) sentRows[h].push({ symbol, label: v[0], score: v[1] });
+    }
+  }
+  const picks: Partial<Record<FundManagerId, string[]>> = {
+    sentShort: sentimentPicks(sentRows.short),
+    sentMedium: sentimentPicks(sentRows.medium),
+    sentLong: sentimentPicks(sentRows.long),
+  };
+  const payload = await getAiOutlook(20).catch(() => null);
+  if (payload) {
+    picks.advisor = rankOutlooks(payload.assets, 'moderate', { geoAlertActive: payload.geoAlertActive })
+      .filter((o) => o.verdict === 'favorable')
+      .map((o) => o.symbol);
+    for (const id of FUND_MANAGERS) {
+      const model = ARENA_MANAGER_MODEL[id];
+      if (!model) continue;
+      picks[id] = probabilityPicks(payload.assets.map((o) => ({ symbol: o.symbol, p: o.arena?.models.find((m) => m.id === model)?.pNow })));
+    }
+  }
+  const before = parseFundArena(await store.get(FUNDARENA_KEY));
+  const next = stepFundArena(before, { date, usdIdr, quotes, picks, benchmark: '^JKSE' });
+  await store.set(FUNDARENA_KEY, next);
+  fundArenaCache = null;
+  await markJobDone('fundArena', date);
+  return { date, managers: Object.fromEntries(FUND_MANAGERS.map((id) => [id, Math.round(next.managers[id].history.at(-1)![1] * 100) / 100])) };
+}
+
+let fundArenaCache: CacheEntry<unknown> | null = null;
+
 const ANALYST_TIME = '16:15'; // WIB, after the IDX close; runs right after the forward test in the same call
 const TRACE_HORIZONS: TraceHorizon[] = ['short', 'medium', 'long'];
 const traceCache = new Map<string, CacheEntry<unknown>>();
@@ -4635,6 +4684,15 @@ async function runDueJobs(trigger: 'request' | 'cron' | 'tick'): Promise<Record<
   } else {
     results.analyst = { skipped: jobs.state.analyst === wibDate(now) ? 'already ran today' : `not due (after ${ANALYST_TIME} WIB)` };
   }
+  // Fund arena: after today's analyst snapshot exists (needs its prices and sentiment)
+  const today = wibDate(now);
+  if (jobs.state.analyst === today && jobs.state.fundArena !== today && allowed('fundArena') && store.persistent) {
+    const job = runJob('fundArena', runFundArenaDay);
+    results.fundArena = trigger !== 'request' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
+    if (trigger === 'request') keepAlive(job).catch(() => {});
+  } else {
+    results.fundArena = { skipped: jobs.state.fundArena === today ? 'already ran today' : 'waits for the analyst job' };
+  }
   if (dailyJobDue(now, jobs.state.brief ?? null, BRIEF_TIME) && allowed('brief')) {
     const job = runJob('brief', runMorningBrief);
     results.brief = trigger !== 'request' ? await job.catch((err) => ({ error: err instanceof Error ? err.message : 'failed' })) : 'started';
@@ -5082,6 +5140,17 @@ export async function createApp(): Promise<express.Express> {
   const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
   // Latest stored daily analysis, or ?date=YYYY-MM-DD; with the list of stored dates
+  app.get('/api/fund-arena', async (_req, res) => {
+    try {
+      if (!fundArenaCache || fundArenaCache.expiresAt < Date.now()) {
+        fundArenaCache = { data: { state: parseFundArena(await store.get(FUNDARENA_KEY)), database: store.persistent, lastRun: jobs.state.fundArena ?? null }, expiresAt: Date.now() + 60_000 };
+      }
+      res.json(fundArenaCache?.data);
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'fund arena unavailable' });
+    }
+  });
+
   app.get('/api/analyst', async (req, res) => {
     try {
       const dates = datesFromKeys(await store.keys(ANALYSIS_PREFIX), ANALYSIS_PREFIX);
