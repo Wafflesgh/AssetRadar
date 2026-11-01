@@ -438,7 +438,7 @@ whole API into one Node function in Singapore (`scripts/build-vercel.mjs`, Build
 secrets (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `CRON_TOKEN`, `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET`,
 `VAPID_*`, `GEMINI_API_KEY`, optional `BPS_API_KEY`, `TELEGRAM_*`) under Project → Settings →
 Environment Variables. Run `supabase/schema.sql`, then `supabase/cron.sql` (with your app address and
-`CRON_TOKEN`) in the Supabase SQL Editor: pg_cron calls `POST /api/cron/tick` every 10 minutes for
+`CRON_TOKEN`) in the Supabase SQL Editor: pg_cron calls `POST /api/cron/tick` every hour (kept short to fit Vercel Hobby's CPU limit) for
 alerts, daily jobs and the step-by-step market scans. On this serverless host there are no server
 streams: prices are polled every 10 s (crypto stays live through the Indodax WebSocket) and Finnhub
 is not used. Owner guide: `docs/BLUEPRINT.md` §9. To try serverless mode locally: `SERVERLESS=1 npm run build`
@@ -477,7 +477,7 @@ instead (as a new app), then Publish.
 | `scripts/update-sp500.mjs` | Rebuilds `src/config/sp500.json` (S&P 500 peer group, Wikipedia API). |
 | `scripts/generate-secrets.mjs` | Fills self-made secrets (cron token, sync passphrase, VAPID keys) in the local `.env` without printing them. |
 | `supabase/schema.sql` | The single table needed in Supabase. |
-| `supabase/cron.sql` | pg_cron job that calls `POST /api/cron/tick` every 10 minutes (address and token kept in Supabase Vault). |
+| `supabase/cron.sql` | pg_cron job that calls `POST /api/cron/tick` every hour (address and token kept in Supabase Vault). |
 | `scripts/build-vercel.mjs` | On Vercel: static front end + the whole API bundled as one function (Build Output API, region sin1). |
 | `server/vercelEntry.ts` | The Vercel function handler around `createApp()`. |
 | `server/runtime.ts` | Serverless mode: timers only on always-on hosts, `keepAlive()` (waitUntil) for work started in a request. |

@@ -4932,8 +4932,8 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
 
 // ---- Cron tick (serverless): alerts, daily jobs and the long scans in deadline-bound steps ----------
 
-/** Work time of one tick (the function may run up to 300 s). */
-const TICK_BUDGET_MS = 240_000;
+/** Work time of one tick (hourly; kept short so the background work fits Vercel Hobby's 4 CPU-hours a month). */
+const TICK_BUDGET_MS = 90_000;
 const crossPersist: CrossPersist = { get: (k) => getPacked(store, k), set: (k, v) => setPacked(store, k, v) };
 const tickState = { running: null as Promise<Record<string, unknown>> | null };
 
@@ -4948,8 +4948,8 @@ async function saveCrossStatus(market: DerivedMarket, patch: Partial<SavedStatus
 async function deriveIfDue(market: DerivedMarket, deadline: number): Promise<unknown> {
   const st = await store.get<SavedStatus>(`xs:${market}:status`).catch(() => null);
   const age = Date.now() - (st?.derivedAt ?? 0);
-  // Every 6 hours, or one hour after new data arrived (the first days fill in step by step)
-  if (!(age > 6 * 3600_000 || ((st?.fetchedSince ?? 0) > 0 && age > 3600_000))) return 'fresh';
+  // Once a day, or six hours after new data arrived (saves CPU on the hourly tick)
+  if (!(age > 24 * 3600_000 || ((st?.fetchedSince ?? 0) > 0 && age > 6 * 3600_000))) return 'fresh';
   if (market === 'crypto') await scanBinanceUntil(deadline);
   else await crossSections[market].loadAll(crossPersist);
   const mp = market === 'crypto' ? null : computePillars(market);
@@ -4993,17 +4993,18 @@ async function runTick(): Promise<Record<string, unknown>> {
     await saveCrossStatus(market, { status: crossSections[market].status() }, r.fetched);
     return r;
   };
+  // The IDX trace goes first: it only has the overnight window, the scans can wait for later ticks
   const steps: Array<[string, (until: number) => Promise<unknown>]> = [
+    ['idxTrace', idxTraceStep],
     ['scanIdx', crossStep('idx')],
     ['scanUs', crossStep('us')],
     ['screener', screenerStep],
     ['calendar', calendarStep],
     ['staples', (until) => staplesStep(store, until)],
-    ['idxTrace', idxTraceStep],
   ];
   for (let i = 0; i < steps.length; i++) {
-    // One share stays for the results below
-    const share = left() / (steps.length - i + 1);
+    // One share stays for the results below; the IDX trace (first) may use half the tick
+    const share = i === 0 ? left() / 2 : left() / (steps.length - i + 1);
     out[steps[i][0]] = share < 10_000 ? 'no time left' : await steps[i][1](Date.now() + share).catch(failed);
   }
   for (const m of ['idx', 'us', 'crypto'] as const) {

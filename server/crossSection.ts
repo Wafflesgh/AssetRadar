@@ -48,7 +48,8 @@ export interface ScanProgress {
   finishedAt: number | null;
 }
 
-const TTL = { monthly: 24 * 3600_000, statements: 12 * 3600_000, analyst: 12 * 3600_000 };
+/** Refetch age per kind: monthly closes, quarterly statements and analyst views change slowly. */
+const TTL = { monthly: 3 * 24 * 3600_000, statements: 7 * 24 * 3600_000, analyst: 3 * 24 * 3600_000 };
 /** Pause between requests of one queue (ms). */
 const PACE = { monthly: 1500, statements: 1200, analyst: 2000 };
 /** Scans run while someone asked for cross-section data within this window. */

@@ -1,7 +1,11 @@
--- cron.sql — Schedules AssetRadar's background work on a serverless host (Vercel): every 10
--- minutes the database calls POST <app>/api/cron/tick (server alerts, due daily jobs and one step
+-- cron.sql — Schedules AssetRadar's background work on a serverless host (Vercel): every hour
+-- (at minute 5) the database calls POST <app>/api/cron/tick (server alerts, due daily jobs and one step
 -- of the long market scans). Uses Supabase's pg_cron + pg_net; the app address and the cron token
 -- are kept encrypted in Supabase Vault, not in the job text.
+--
+-- Hourly (not every 10 minutes) keeps the CPU within Vercel Hobby's 4 CPU-hours a month. To move an
+-- existing job to this schedule without re-entering the secrets, run only:
+--   select cron.alter_job((select jobid from cron.job where jobname = 'assetradar-tick'), schedule := '5 * * * *');
 --
 -- How to use (once, after the app is live on Vercel):
 --   1. Replace the two PASTE-… values below (the token is the same CRON_TOKEN as in Vercel).
@@ -23,7 +27,7 @@ select vault.create_secret('PASTE-CRON-TOKEN-HERE', 'assetradar_cron_token', 'As
 
 select cron.schedule(
   'assetradar-tick',
-  '*/10 * * * *',
+  '5 * * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'assetradar_app_url') || '/api/cron/tick',

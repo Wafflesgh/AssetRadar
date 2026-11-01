@@ -21,7 +21,7 @@ Vercel — front end statis (CDN) + SATU fungsi Node untuk semua /api/* (region 
    │  dibuat oleh scripts/build-vercel.mjs (Build Output API: .vercel/output)
    ▼
 Supabase — Postgres, satu tabel key/value `assetradar_kv` (region Singapore)
-   └─ pg_cron + pg_net: tiap 10 menit POST /api/cron/tick (supabase/cron.sql)
+   └─ pg_cron + pg_net: tiap jam (menit ke-5) POST /api/cron/tick (supabase/cron.sql)
 
 GitHub — sumber kode; Vercel deploy otomatis setiap push ke main.
 GitHub Actions — cadangan jadwal harian (POST /api/cron/daily 07:35 & 16:20 WIB).
@@ -45,7 +45,7 @@ GitHub Actions — cadangan jadwal harian (POST /api/cron/daily 07:35 & 16:20 WI
 | `server/vercelEntry.ts` | Handler fungsi: `createApp()` dari server.ts; `originalApiUrl` memulihkan path asli dari `?__p=`. |
 | `.vercelignore` | Hanya docs/backups/supabase/.env yang tidak diunggah (kode server ikut dibangun). |
 | `supabase/schema.sql` | Tabel `assetradar_kv` (key text PK, value jsonb, updated_at), RLS aktif tanpa policy. |
-| `supabase/cron.sql` | Jadwal tick tiap 10 menit (pg_cron + pg_net), alamat & token disimpan di Supabase Vault. |
+| `supabase/cron.sql` | Jadwal tick tiap jam (pg_cron + pg_net), alamat & token disimpan di Supabase Vault. |
 | `.github/workflows/daily-jobs.yml` | Cadangan jadwal harian → `POST {APP_URL}/api/cron/daily`. |
 | `src/utils/hosting.ts` | Deteksi host, `serverlessFrom`, `originalApiUrl`, pilihan kunci Supabase. |
 
@@ -96,7 +96,7 @@ Yahoo Finance (harga, chart, riwayat penuh `period1/period2`, fundamental, kalen
 
 | Waktu (WIB) | Tugas |
 |---|---|
-| tiap 10 menit | Tick (pg_cron): alert, tugas jatuh tempo, pemindaian bertahap, hitung ulang hasil |
+| tiap jam (menit ke-5) | Tick (pg_cron, maks 90 dtk): alert, tugas jatuh tempo, pemindaian bertahap, hitung ulang hasil |
 | ≥07:30 setiap hari | Ringkasan pagi (`brief`) |
 | ≥16:15 hari kerja | Forward test AI Advisor (`forward`) |
 | ≥16:15 setiap hari | Analisis AI harian (`analyst`): foto aset, penilaian rekomendasi, pemeriksaan data, narasi Gemini |
