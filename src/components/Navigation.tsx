@@ -36,6 +36,11 @@ import {
   ChevronRight,
   PieChart,
   Trophy,
+  Gamepad2,
+  BookOpen,
+  HandCoins,
+  PiggyBank,
+  LayoutGrid,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RadarLogo } from './RadarLogo.tsx';
@@ -45,7 +50,8 @@ import { LangToggle } from './LangToggle.tsx';
 
 export type NavTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena'
+  | 'paper' | 'story' | 'dividends' | 'dca' | 'heatmap';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -77,6 +83,11 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: 'brief', label: 'nav.brief', shortLabel: 'nav.briefShort', icon: Newspaper },
   { id: 'analyst', label: 'nav.analyst', shortLabel: 'nav.analystShort', icon: ClipboardCheck },
   { id: 'fundArena', label: 'nav.fundArena', shortLabel: 'nav.fundArenaShort', icon: Trophy },
+  { id: 'paper', label: 'nav.paper', shortLabel: 'nav.paperShort', icon: Gamepad2 },
+  { id: 'story', label: 'nav.story', icon: BookOpen },
+  { id: 'dividends', label: 'nav.dividends', icon: HandCoins },
+  { id: 'dca', label: 'nav.dca', shortLabel: 'nav.dcaShort', icon: PiggyBank },
+  { id: 'heatmap', label: 'nav.heatmap', icon: LayoutGrid },
   { id: 'crypto', label: 'nav.crypto', shortLabel: 'nav.cryptoShort', icon: Bitcoin },
   { id: 'screener', label: 'nav.screener', shortLabel: 'nav.screenerShort', icon: Filter },
   { id: 'sectors', label: 'nav.sectors', icon: PieChart },
@@ -106,16 +117,16 @@ interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   { id: 'radar', label: 'nav.radar', icon: Radar, items: [byId('radar')] },
   { id: 'terminal', label: 'nav.terminal', icon: SquareTerminal, items: [byId('terminal')] },
-  { id: 'idx', label: 'nav.group.idx', icon: Landmark, items: [byId('idx'), byId('sectors'), byId('screener'), byId('calendar')] },
+  { id: 'idx', label: 'nav.group.idx', icon: Landmark, items: [byId('idx'), byId('story'), byId('sectors'), byId('screener'), byId('dividends'), byId('calendar')] },
   {
     id: 'markets',
     label: 'nav.group.markets',
     icon: LineChart,
-    items: [byId('crypto'), byId('compare'), { id: 'detail', label: 'nav.detail', icon: LineChart }],
+    items: [byId('heatmap'), byId('crypto'), byId('compare'), { id: 'detail', label: 'nav.detail', icon: LineChart }],
   },
   { id: 'ai', label: 'nav.group.ai', icon: BrainCircuit, items: [byId('advisor'), byId('fundArena'), byId('analyst'), byId('brief'), byId('quant'), byId('backtest')] },
   { id: 'economy', label: 'nav.group.economy', icon: Building2, items: [byId('macro'), byId('kitchen')] },
-  { id: 'mine', label: 'nav.group.mine', icon: Wallet, items: [byId('portfolio'), byId('watchlist')] },
+  { id: 'mine', label: 'nav.group.mine', icon: Wallet, items: [byId('portfolio'), byId('paper'), byId('dca'), byId('watchlist')] },
   { id: 'settings', label: 'nav.group.settings', icon: Settings, items: [byId('settings'), byId('alerts'), byId('risk')] },
 ];
 

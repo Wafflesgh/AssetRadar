@@ -1082,3 +1082,19 @@ export async function fetchTrackSummary(profile = 'moderate'): Promise<{
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
+export interface IdxDividendsPayload {
+  today: string;
+  rows: import('../utils/dividendYield.ts').DividendRow[];
+  scanned: number;
+  total: number;
+  pricesAt: number | null;
+  source: string;
+}
+
+/** Dividend summary of every IDX stock (trailing yield, years paid, next ex-date). */
+export async function fetchIdxDividends(): Promise<IdxDividendsPayload> {
+  const res = await fetch('/api/idx/dividends');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}

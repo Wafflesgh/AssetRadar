@@ -26,6 +26,8 @@ const STORAGE_KEYS = {
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
   PORTFOLIO: 'assetradar_portfolio_v1',
+  PAPER: 'assetradar_paper_v1',
+  DCA_PREFS: 'assetradar_dca_prefs_v1',
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
   LANG: 'assetradar_lang_v1',
   NUMBER_FORMAT: 'assetradar_number_format_v1',
@@ -662,6 +664,28 @@ export function saveGoldPrices(list: unknown[]): void {
   } catch {
     // No window (tests)
   }
+}
+
+// ---- Paper trading account and orders (synced) ----------------------------------------------------------
+
+registerSyncAdapter('paper', listAdapter(STORAGE_KEYS.PAPER));
+
+export function getPaperRaw(): unknown {
+  return readJson(STORAGE_KEYS.PAPER);
+}
+
+export function savePaper(list: unknown[]): void {
+  tracked('paper', () => safeSet(STORAGE_KEYS.PAPER, JSON.stringify(list)));
+}
+
+// ---- Saving-plan simulator choices (this device) -------------------------------------------------------
+
+export function getDcaPrefsRaw(): unknown {
+  return readJson(STORAGE_KEYS.DCA_PREFS);
+}
+
+export function saveDcaPrefs(prefs: unknown): void {
+  safeSet(STORAGE_KEYS.DCA_PREFS, JSON.stringify(prefs));
 }
 
 // ---- Saved backtest strategies (synced) ----------------------------------------------------------------

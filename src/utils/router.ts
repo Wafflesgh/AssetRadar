@@ -3,7 +3,9 @@
  * Routes: #/radar, #/asset/<id>, #/watchlist, #/risk, #/settings, #/terminal, #/advisor, #/quant,
  * #/idx, #/portfolio, #/calendar, #/macro, #/crypto (Binance), #/crypto/<PAIR>, #/alerts, #/screener,
  * #/compare?s=BBCA,BBRI, #/brief, #/backtest, #/analyst, #/kitchen (staple food prices),
- * #/sectors (IDX sector rotation), #/fund-arena (AI Fund Arena).
+ * #/sectors (IDX sector rotation), #/fund-arena (AI Fund Arena), #/paper (Paper Trading),
+ * #/story/<id> (Stock Story), #/dividends (dividend calendar & yield), #/dca (saving-plan simulator),
+ * #/heatmap (market heatmap).
  * The old Indonesian hashes (#/aset/<id>, #/risiko, #/pengaturan) are still accepted so
  * previously shared links keep working.
  */
@@ -12,7 +14,8 @@ import { buildCompareParam, parseCompareParam } from './compare.ts';
 
 export type RouteTab =
   | 'radar' | 'detail' | 'watchlist' | 'risk' | 'settings' | 'terminal' | 'advisor' | 'quant' | 'idx' | 'portfolio'
-  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena';
+  | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena'
+  | 'paper' | 'story' | 'dividends' | 'dca' | 'heatmap';
 
 export interface ParsedRoute {
   tab: RouteTab;
@@ -22,6 +25,9 @@ export interface ParsedRoute {
   /** Compare page: asset symbols from ?s= (2–4). */
   compare?: string[];
 }
+
+/** Asset groups that have a Stock Story page. */
+export const STORY_GROUPS = new Set(['idStock', 'usStock', 'globalStock']);
 
 // Legacy asset ids from before the English rename
 const LEGACY_ASSET_IDS: Record<string, string> = { ihsg: '^JKSE' };
@@ -50,6 +56,27 @@ export function parseHashRoute(hash: string): ParsedRoute {
   }
   if (path === 'analyst' || path === 'analisis') {
     return { tab: 'analyst' };
+  }
+  if (path === 'paper' || path === 'paper-trading' || path === 'simulasi') {
+    return { tab: 'paper' };
+  }
+  if (path === 'dividends' || path === 'dividen') {
+    return { tab: 'dividends' };
+  }
+  if (path === 'dca' || path === 'nabung' || path === 'saving-plan') {
+    return { tab: 'dca' };
+  }
+  if (path === 'heatmap' || path === 'peta') {
+    return { tab: 'heatmap' };
+  }
+  if (path === 'story' || path === 'cerita') {
+    return { tab: 'story' };
+  }
+  const storyPrefix = ['story/', 'cerita/'].find((p) => path.startsWith(p));
+  if (storyPrefix) {
+    const rawId = decodeURIComponent(path.slice(storyPrefix.length)).trim();
+    const matched = ALL_ASSETS.find((a) => a.id.toLowerCase() === rawId || a.symbol.toLowerCase() === rawId);
+    return matched ? { tab: 'story', assetSymbol: matched.symbol } : { tab: 'story' };
   }
   if (!cleaned || cleaned === 'radar') {
     return { tab: 'radar' };
@@ -141,6 +168,18 @@ export function buildHashRoute(tab: RouteTab, assetSymbolOrId?: string, compare?
       return '#/analyst';
     case 'fundArena':
       return '#/fund-arena';
+    case 'paper':
+      return '#/paper';
+    case 'dividends':
+      return '#/dividends';
+    case 'dca':
+      return '#/dca';
+    case 'heatmap':
+      return '#/heatmap';
+    case 'story': {
+      const asset = assetSymbolOrId ? getAssetBySymbol(assetSymbolOrId) : undefined;
+      return asset && STORY_GROUPS.has(asset.group) ? `#/story/${asset.id}` : '#/story';
+    }
     case 'compare':
       return compare && compare.length ? `#/compare?s=${buildCompareParam(compare)}` : '#/compare';
     case 'radar':

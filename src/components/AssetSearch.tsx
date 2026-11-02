@@ -35,6 +35,8 @@ interface AssetSearchProps {
   onEscape?: () => void;
   /** Render the results in the page flow instead of a floating dropdown (full-screen search). */
   inline?: boolean;
+  /** Only offer assets that pass this test (e.g. stocks only). */
+  filter?: (asset: AssetConfig) => boolean;
 }
 
 export function AssetSearch({
@@ -50,6 +52,7 @@ export function AssetSearch({
   recent = false,
   onEscape,
   inline = false,
+  filter,
 }: AssetSearchProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(autoFocus);
@@ -63,9 +66,10 @@ export function AssetSearch({
   const listId = useId();
 
   const results = useMemo(() => {
-    if (query.trim()) return searchAssets(query, limit);
-    return recentSymbols.map((s) => getAssetBySymbol(s)).filter((a): a is AssetConfig => Boolean(a));
-  }, [query, limit, recentSymbols]);
+    const keep = (a: AssetConfig) => !filter || filter(a);
+    if (query.trim()) return (filter ? searchAssets(query, limit * 4).filter(keep) : searchAssets(query, limit)).slice(0, limit);
+    return recentSymbols.map((s) => getAssetBySymbol(s)).filter((a): a is AssetConfig => Boolean(a) && keep(a!));
+  }, [query, limit, recentSymbols, filter]);
   const showingRecent = !query.trim() && results.length > 0;
 
   useEffect(() => setActive(0), [query]);

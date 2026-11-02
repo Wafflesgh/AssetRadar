@@ -117,3 +117,29 @@ test('fund arena route and its Indonesian alias', () => {
   assert.deepEqual(parseHashRoute('#/arena-dana'), { tab: 'fundArena' });
   assert.equal(buildHashRoute('fundArena'), '#/fund-arena');
 });
+
+test('paper trading, dividends, saving plan and heatmap routes with Indonesian aliases', () => {
+  for (const [hash, tab] of [
+    ['#/paper', 'paper'],
+    ['#/simulasi', 'paper'],
+    ['#/dividends', 'dividends'],
+    ['#/dividen', 'dividends'],
+    ['#/dca', 'dca'],
+    ['#/nabung', 'dca'],
+    ['#/heatmap', 'heatmap'],
+    ['#/peta', 'heatmap'],
+  ] as const) {
+    assert.deepEqual(parseHashRoute(hash), { tab });
+    assert.equal(buildHashRoute(tab), `#/${tab}`);
+  }
+});
+
+test('stock story route: a stock by id, or the picker for anything else', () => {
+  assert.deepEqual(parseHashRoute('#/story/bbca'), { tab: 'story', assetSymbol: 'BBCA.JK' });
+  assert.deepEqual(parseHashRoute('#/cerita/bbca'), { tab: 'story', assetSymbol: 'BBCA.JK' });
+  assert.deepEqual(parseHashRoute('#/story'), { tab: 'story' });
+  assert.deepEqual(parseHashRoute('#/story/unknown-thing'), { tab: 'story' });
+  assert.equal(buildHashRoute('story', 'BBCA.JK'), '#/story/bbca');
+  // Not a stock: the picker
+  assert.equal(buildHashRoute('story', 'BTC/IDR'), '#/story');
+});

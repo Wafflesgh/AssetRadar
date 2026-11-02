@@ -20,6 +20,7 @@ export const SYNC_COLLECTIONS = [
   'strategies',
   'dividends',
   'goldPrices',
+  'paper',
 ] as const;
 
 export type SyncCollection = (typeof SYNC_COLLECTIONS)[number];
@@ -35,6 +36,7 @@ export const COLLECTION_LABELS: Record<SyncCollection, string> = {
   strategies: 'Backtest strategies',
   dividends: 'Dividends received',
   goldPrices: 'Gold buyback prices',
+  paper: 'Paper trading',
 };
 
 export interface SyncItem {

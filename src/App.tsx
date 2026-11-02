@@ -67,6 +67,11 @@ const SettingsView = lazyPage(() => import('./components/SettingsView.tsx').then
 const TerminalView = lazyPage(() => import('./components/terminal/TerminalView.tsx').then((m) => ({ default: m.TerminalView })));
 const AdvisorView = lazyPage(() => import('./components/AdvisorView.tsx').then((m) => ({ default: m.AdvisorView })));
 const QuantSimView = lazyPage(() => import('./components/QuantSimView.tsx').then((m) => ({ default: m.QuantSimView })));
+const PaperTradingView = lazyPage(() => import('./components/PaperTradingView.tsx').then((m) => ({ default: m.PaperTradingView })));
+const StockStoryView = lazyPage(() => import('./components/StockStoryView.tsx').then((m) => ({ default: m.StockStoryView })));
+const DividendsView = lazyPage(() => import('./components/DividendsView.tsx').then((m) => ({ default: m.DividendsView })));
+const DcaView = lazyPage(() => import('./components/DcaView.tsx').then((m) => ({ default: m.DcaView })));
+const HeatmapView = lazyPage(() => import('./components/HeatmapView.tsx').then((m) => ({ default: m.HeatmapView })));
 const IndonesianStocksView = lazyPage(() => import('./components/IndonesianStocksView.tsx').then((m) => ({ default: m.IndonesianStocksView })));
 const IdxCalendarView = lazyPage(() => import('./components/IdxCalendarView.tsx').then((m) => ({ default: m.IdxCalendarView })));
 
@@ -298,6 +303,17 @@ export default function App() {
     }
   }, []);
 
+  // Stock Story of one stock (#/story/<id>)
+  const handleOpenStory = useCallback((symbol: string) => {
+    const found = getAssetBySymbol(symbol);
+    if (!found) return;
+    setSelectedSymbol(found.symbol);
+    setActiveTab('story');
+    const nextHash = buildHashRoute('story', found.symbol);
+    if (window.location.hash !== nextHash) window.location.hash = nextHash;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   const handleChangeStartInTerminal = useCallback((enabled: boolean) => {
     setStartInTerminal(enabled);
     saveStartInTerminal(enabled);
@@ -415,6 +431,11 @@ export default function App() {
               {activeTab === 'analyst' && t('header.title.analyst')}
               {activeTab === 'fundArena' && t('header.title.fundArena')}
               {activeTab === 'backtest' && t('header.title.backtest')}
+              {activeTab === 'paper' && t('header.title.paper')}
+              {activeTab === 'story' && t('header.title.story')}
+              {activeTab === 'dividends' && t('header.title.dividends')}
+              {activeTab === 'dca' && t('header.title.dca')}
+              {activeTab === 'heatmap' && t('header.title.heatmap')}
             </span>
           </div>
         </div>
@@ -553,6 +574,11 @@ export default function App() {
         {activeTab === 'backtest' && (
           <BacktestView ticks={ticks} />
         )}
+        {activeTab === 'paper' && <PaperTradingView ticks={ticks} onSelectAsset={handleSelectAsset} />}
+        {activeTab === 'story' && <StockStoryView symbol={selectedSymbol} ticks={ticks} onPick={handleOpenStory} onSelectAsset={handleSelectAsset} />}
+        {activeTab === 'dividends' && <DividendsView ticks={ticks} onOpenStory={handleOpenStory} />}
+        {activeTab === 'dca' && <DcaView ticks={ticks} />}
+        {activeTab === 'heatmap' && <HeatmapView ticks={ticks} watchlist={watchlist} onSelectAsset={handleSelectAsset} />}
         {activeTab === 'fundArena' && (
           <FundArenaView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}

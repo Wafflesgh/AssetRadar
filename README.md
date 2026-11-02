@@ -182,6 +182,21 @@ backtester. The interface is available in English and Bahasa Indonesia.
   1990, S&P 500 since 1927, BBCA since 2004, BTC/IDR since 2014), IDX costs and lots,
   equity vs buy & hold, statistics, first half vs second half and over-fitting warnings. Past
   results do not guarantee future results.
+- **Paper trading** (`#/paper`): a pretend Rupiah account (Rp10 million to Rp1 billion) that buys
+  and sells any stock, coin, gold or currency at the live price, with IDX lots and typical fees,
+  holdings, order history and the result against holding the IDX Composite; synced across devices.
+- **Stock Story** (`#/story/<id>`): one stock in plain sentences from data the app already keeps:
+  five years of weekly prices and yearly returns, the daily sentiment over time and its hit rate,
+  dividends per year with the trailing yield, and five years of ROE, margin, growth, DER and P/E.
+- **Dividends & yield** (`#/dividends`): IDX ex-dates and payments in the next 60 days and the
+  highest trailing 12-month yields among stocks that paid in most of the last five years
+  (`GET /api/idx/dividends`, from the saved corporate calendar and the IDX price sweep).
+- **Saving-plan simulator** (`#/dca`): a fixed Rupiah amount every month into up to three assets on
+  real daily closes (dollar assets at each day's exchange rate): value vs money put in, annual
+  return (XIRR), deepest dip and the lump-sum alternative. Education only.
+- **Market heatmap** (`#/heatmap`): squarified treemap sized by market cap (radar assets by type,
+  the 120 largest IDX stocks by sector) or by what you hold (watchlist, portfolio, paper trading),
+  coloured by the 24h or 7d change.
 
 ## AI Advisor (scientific approach)
 

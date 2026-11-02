@@ -152,6 +152,7 @@ import {
   parseChartEvents,
   type CalendarEvent,
 } from './src/utils/corporateCalendar.ts';
+import { dividendYieldPct, summarizeDividends, type DividendRow } from './src/utils/dividendYield.ts';
 import {
   addMonths,
   buildFactorSeries,
@@ -3152,6 +3153,7 @@ interface SectorRotationPayload extends SectorRotationResult {
   source: string;
 }
 const sectorCache: { entry: CacheEntry<SectorRotationPayload> | null } = { entry: null };
+const dividendCache: { entry: CacheEntry<{ today: string; rows: DividendRow[]; scanned: number; total: number; pricesAt: number | null; source: string }> | null } = { entry: null };
 
 /** Live (1D/1W) and monthly drivers; each one is optional and missing data is simply left out. */
 async function sectorDrivers(): Promise<SectorDrivers> {
@@ -5634,6 +5636,41 @@ export async function createApp(): Promise<express.Express> {
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Calendar unavailable' });
+    }
+  });
+
+  // 5g2. Dividends of every IDX stock (#/dividends): from the saved corporate calendar (5 years of
+  // paid dividends + announced ex-dates) and the IDX price sweep; nothing new is fetched per stock
+  app.get('/api/idx/dividends', async (_req, res) => {
+    idxSweep.lastDemandAt = Date.now();
+    calendarScan.lastDemandAt = Date.now();
+    try {
+      if (dividendCache.entry && dividendCache.entry.expiresAt > Date.now()) return res.json(dividendCache.entry.data);
+      if (SERVERLESS) await loadCalendarFromStore();
+      else if (!calendarScan.running && Date.now() - calendarScan.finishedAt > CALENDAR_TTL_MS) runCalendarScan().catch(() => {});
+      if (idxSweep.ticks.size === 0) await keepAlive(runIdxSweep()).catch(() => {});
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      const rows: DividendRow[] = [];
+      for (const a of IDX_ALL) {
+        const events = calendarCache.get(a.symbol)?.data;
+        const s = events ? summarizeDividends(a.symbol, events, today) : null;
+        if (!s) continue;
+        const price = idxSweep.ticks.get(a.symbol)?.price ?? null;
+        rows.push({ ...s, price, yieldPct: dividendYieldPct(s.ttm, price) });
+      }
+      const data = {
+        today,
+        rows,
+        scanned: IDX_ALL.filter((a) => calendarCache.has(a.symbol)).length,
+        total: IDX_ALL.length,
+        pricesAt: idxSweep.lastRunAt || null,
+        source: 'Yahoo Finance',
+      };
+      // A short cache while the calendar scan is still filling in
+      dividendCache.entry = { data, expiresAt: Date.now() + (data.scanned < data.total ? 2 : 30) * 60_000 };
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Dividends unavailable' });
     }
   });
 
