@@ -364,13 +364,13 @@ export function BottomNav({
         type="button"
         onClick={() => select(item.id)}
         aria-current={active ? 'page' : undefined}
-        className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 text-[10px] font-medium transition-colors whitespace-nowrap"
+        className="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-full py-1 text-[11px] font-medium transition-colors whitespace-nowrap"
         style={{ color: active ? 'var(--accent-radar)' : 'var(--text-secondary)' }}
       >
-        <div className="relative">
-          <Icon className="w-4 h-4 mb-0.5" />
+        <div className="relative px-4 py-1 rounded-full transition-colors" style={{ backgroundColor: active ? 'var(--accent-radar-soft)' : 'transparent' }}>
+          <Icon className="w-5 h-5" />
           {item.id === 'watchlist' && watchlistCount > 0 && (
-            <span className="absolute -top-1.5 -right-3 text-[10px] font-mono-num font-bold" style={{ color: 'var(--accent-radar)' }}>
+            <span className="absolute -top-1 right-0.5 text-[10px] font-mono-num font-bold" style={{ color: 'var(--accent-radar)' }}>
               {watchlistCount}
             </span>
           )}
@@ -386,7 +386,7 @@ export function BottomNav({
         <div className="md:hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label={t('nav.morePages')}>
           <button type="button" aria-label={t('nav.closeMenu')} className="absolute inset-0 bg-black/40" onClick={() => setMoreOpen(false)} />
           <div
-            className="absolute bottom-14 inset-x-0 border-t rounded-t-2xl p-3 grid grid-cols-3 gap-2 max-h-[75vh] overflow-y-auto"
+            className="more-sheet absolute inset-x-0 border-t rounded-t-2xl p-3 grid grid-cols-3 gap-2 max-h-[75vh] overflow-y-auto"
             style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
           >
             {NAV_GROUPS.map((group) => ({ group, items: group.items.filter((i) => !i.mobile) }))
@@ -430,7 +430,7 @@ export function BottomNav({
       )}
       <nav
         aria-label={t('nav.mobile')}
-        className="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-50 flex items-center justify-around px-1"
+        className="bottom-nav md:hidden fixed bottom-0 inset-x-0 border-t z-50 flex items-center justify-around px-1"
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
       >
         {MAIN_NAV_ITEMS.filter((i) => i.mobile).map(tabButton)}
@@ -439,10 +439,12 @@ export function BottomNav({
           onClick={() => setMoreOpen((o) => !o)}
           aria-expanded={moreOpen}
           aria-haspopup="dialog"
-          className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 text-[10px] font-medium whitespace-nowrap"
+          className="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-full py-1 text-[11px] font-medium whitespace-nowrap"
           style={{ color: moreOpen || extraActive ? 'var(--accent-radar)' : 'var(--text-secondary)' }}
         >
-          {moreOpen ? <X className="w-4 h-4 mb-0.5" /> : <MoreHorizontal className="w-4 h-4 mb-0.5" />}
+          <span className="px-4 py-1 rounded-full" style={{ backgroundColor: moreOpen || extraActive ? 'var(--accent-radar-soft)' : 'transparent' }}>
+            {moreOpen ? <X className="w-5 h-5" /> : <MoreHorizontal className="w-5 h-5" />}
+          </span>
           <span>{t('nav.more')}</span>
         </button>
       </nav>

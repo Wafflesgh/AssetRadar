@@ -7,7 +7,7 @@
  * prices are shown in (USD / IDR, `useCryptoQuote`), which re-renders the same way.
  */
 import { useSyncExternalStore } from 'react';
-import { translate, translateOr, type AppLang, type TParams } from './core.ts';
+import { hasDict, registerDict, translate, translateOr, type AppLang, type Dict, type TParams } from './core.ts';
 import { setCryptoQuote as applyCryptoQuote, setNumberLocale, type CryptoQuote } from '../utils/format.ts';
 import { setTimeLang } from '../utils/marketHours.ts';
 import { getCryptoQuotePref, getNumberFormatPref, getSavedLang, saveCryptoQuotePref, saveLang, saveNumberFormatPref, type NumberFormatPref } from '../utils/storage.ts';
@@ -47,20 +47,40 @@ function emit(): void {
   for (const l of listeners) l();
 }
 
+// Each language's texts are their own download, fetched once when first needed
+const LOADERS: Record<AppLang, () => Promise<Dict>> = {
+  en: () => import('./en.ts').then((m) => m.en),
+  id: () => import('./id.ts').then((m) => m.id),
+};
+
+export async function loadLang(lang: AppLang): Promise<void> {
+  if (!hasDict(lang)) registerDict(lang, await LOADERS[lang]());
+}
+
+/** Settles when the starting language can be shown (main.tsx renders after it); English if that fails. */
+export const i18nReady: Promise<void> = loadLang(current)
+  .catch(() => loadLang('en'))
+  .catch(() => undefined);
+
 export function getLang(): AppLang {
   return current;
 }
 
+/** Switches the language once its texts are downloaded (nothing changes if the download fails). */
 export function setLang(lang: AppLang): void {
-  current = lang;
-  saveLang(lang);
-  applyNumberLocale();
-  try {
-    document.documentElement.lang = lang;
-  } catch {
-    // No document (tests)
-  }
-  emit();
+  loadLang(lang)
+    .then(() => {
+      current = lang;
+      saveLang(lang);
+      applyNumberLocale();
+      try {
+        document.documentElement.lang = lang;
+      } catch {
+        // No document (tests)
+      }
+      emit();
+    })
+    .catch(() => undefined);
 }
 
 export function getNumberFormat(): NumberFormatPref {

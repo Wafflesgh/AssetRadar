@@ -12,6 +12,7 @@
  * streams are off and the long scans run from POST /api/cron/tick (server/runtime.ts).
  */
 import 'dotenv/config';
+import './src/i18n/dicts.ts';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';

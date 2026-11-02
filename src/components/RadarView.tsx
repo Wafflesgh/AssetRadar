@@ -82,33 +82,43 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       {/* Summary, search and quick charts */}
       <section
         aria-label={t('radar.summaryLabel')}
-        className="p-5 md:p-6 rounded-xl border"
+        className="radar-hero p-5 md:p-7 rounded-2xl border"
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
       >
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <span>{t('radar.liveRadar')}</span>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+          <div className="space-y-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+              <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--accent-radar)' }}>
+                <span className="news-live-dot inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-radar)' }} aria-hidden="true" />
+                {t('radar.liveRadar')}
+              </span>
               <span aria-hidden="true">·</span>
               <span>{t('radar.tracked', { count: ASSETS.length })}</span>
               <span aria-hidden="true">·</span>
               <span>{t('radar.tz')}</span>
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">
+            <h1 className="text-[1.375rem] leading-tight md:text-[1.875rem] font-extrabold tracking-tight max-w-3xl text-balance">
               {t('radar.title')}
             </h1>
-            <p className="text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
+            <p className="hidden sm:block text-sm max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
               {t('radar.intro')}
             </p>
           </div>
 
-          <div
-            className="grid grid-cols-3 gap-5 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l lg:pl-6 shrink-0"
-            style={{ borderColor: 'var(--border-subtle)' }}
-          >
-            <SummaryStat label={t('radar.up')} value={`▲ ${upCount}`} color="var(--color-up)" />
-            <SummaryStat label={t('radar.down')} value={`▼ ${downCount}`} color="var(--color-down)" />
-            <SummaryStat label={t('radar.flat')} value={String(flatCount)} color="var(--text-primary)" />
+          {/* Market breadth: how many tracked assets are up, flat and down today */}
+          <div className="w-full lg:w-72 shrink-0 space-y-2.5">
+            <div className="grid grid-cols-3 gap-4">
+              <SummaryStat label={t('radar.up')} value={`▲ ${upCount}`} color="var(--color-up)" />
+              <SummaryStat label={t('radar.down')} value={`▼ ${downCount}`} color="var(--color-down)" />
+              <SummaryStat label={t('radar.flat')} value={String(flatCount)} color="var(--text-primary)" />
+            </div>
+            {upCount + downCount + flatCount > 0 && (
+              <div className="breadth-bar" role="img" aria-label={t('radar.breadthAria', { up: upCount, down: downCount, flat: flatCount })}>
+                <span style={{ flexGrow: upCount, backgroundColor: 'var(--color-up)' }} />
+                <span style={{ flexGrow: flatCount, backgroundColor: 'var(--border-strong)' }} />
+                <span style={{ flexGrow: downCount, backgroundColor: 'var(--color-down)' }} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -119,8 +129,8 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             label={t('radar.searchLabel')}
             placeholder={t('radar.searchPlaceholder', { count: ASSETS.length })}
           />
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium mr-1" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0">
+            <span className="text-xs font-medium mr-1 shrink-0 hidden sm:inline" style={{ color: 'var(--text-secondary)' }}>
               {t('radar.quick')}
             </span>
             {quickAssets.map((asset) => (
@@ -128,7 +138,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                 key={asset.id}
                 type="button"
                 onClick={() => onSelectAsset(asset.symbol)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
                   borderColor: 'var(--border-subtle)',
@@ -288,7 +298,7 @@ function SummaryStat({ label, value, color }: { label: string; value: string; co
       <span className="text-xs block" style={{ color: 'var(--text-secondary)' }}>
         {label}
       </span>
-      <span className="text-xl font-mono-num font-bold tabular-nums mt-0.5 block" style={{ color }}>
+      <span className="text-lg md:text-xl font-mono-num font-bold tabular-nums mt-0.5 block" style={{ color }}>
         {value}
       </span>
     </div>

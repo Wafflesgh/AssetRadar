@@ -4,8 +4,7 @@
  * spaces. The English text is always sent alongside and used when a key is unknown. A string
  * param may name other keys as "@key" (e.g. "@driver.earnings (+)"); they are translated too.
  */
-import { en } from './en.ts';
-import { translate, type AppLang, type TranslationKey } from './core.ts';
+import { isKey, translate, type AppLang, type TranslationKey } from './core.ts';
 
 export interface TextPart {
   k: string;
@@ -19,13 +18,13 @@ export function part(k: string, p?: Record<string, string | number>): TextPart {
 
 /** Renders parts in a language; falls back to the given text when any key is unknown. */
 export function renderParts(lang: AppLang, parts: TextPart[] | undefined, fallback: string): string {
-  if (!parts || parts.length === 0 || !parts.every((x) => x.k in en)) return fallback;
+  if (!parts || parts.length === 0 || !parts.every((x) => isKey(x.k))) return fallback;
   const params = (p?: TextPart['p']) =>
     p &&
     Object.fromEntries(
       Object.entries(p).map(([k, v]) => [
         k,
-        typeof v === 'string' ? v.replace(/@([a-z][\w.-]*[\w])/gi, (m, key: string) => (key in en ? translate(lang, key as TranslationKey) : m)) : v,
+        typeof v === 'string' ? v.replace(/@([a-z][\w.-]*[\w])/gi, (m, key: string) => (isKey(key) ? translate(lang, key) : m)) : v,
       ])
     );
   return parts.map((x) => translate(lang, x.k as TranslationKey, params(x.p))).join(' ');

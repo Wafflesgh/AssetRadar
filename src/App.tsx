@@ -3,7 +3,7 @@
  * timeframe, watchlist, selected asset), syncs it with the URL hash, and lays out the page
  * (desktop sidebar / mobile bottom nav, header, the active view and the disclaimer footer).
  */
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Sun, Moon, Wifi, CloudOff } from 'lucide-react';
 import {
   ASSETS,
@@ -37,39 +37,38 @@ import { liveHistory } from './utils/movers.ts';
 import { SidebarNav, BottomNav, NavTab } from './components/Navigation.tsx';
 import { RadarLogo } from './components/RadarLogo.tsx';
 import { RadarView } from './components/RadarView.tsx';
+import { lazyPage, PageBoundary } from './components/PageBoundary.tsx';
 import { AssetDetailView } from './components/AssetDetailView.tsx';
-import { WatchlistView } from './components/WatchlistView.tsx';
-import { SettingsView } from './components/SettingsView.tsx';
-import { TerminalView } from './components/terminal/TerminalView.tsx';
 import { GeoAlertBanner } from './components/GeoAlertBanner.tsx';
-import { AdvisorView } from './components/AdvisorView.tsx';
-import { QuantSimView } from './components/QuantSimView.tsx';
-import { IndonesianStocksView } from './components/IndonesianStocksView.tsx';
 import { HeaderSearch } from './components/HeaderSearch.tsx';
-import { IdxCalendarView } from './components/IdxCalendarView.tsx';
 import { useTrackedSymbols } from './hooks/useTrackedSymbols.ts';
 import { useT } from './i18n/index.ts';
 import { LangToggle } from './components/LangToggle.tsx';
 import { onSyncApplied, startSync, subscribeSync } from './services/syncService.ts';
 import { checkLocalAlerts, initAlerts } from './services/alertService.ts';
 
-// Lazy: the Risk Profile page pulls in recharts, which most visits never need
-const RiskProfileView = lazy(() =>
-  import('./components/RiskProfileView.tsx').then((m) => ({ default: m.RiskProfileView }))
-);
-// recharts-heavy pages load on demand
-const PortfolioView = lazy(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
-const BacktestView = lazy(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
-const BriefView = lazy(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
-const FundArenaView = lazy(() => import('./components/FundArenaView.tsx').then((m) => ({ default: m.FundArenaView })));
-const AnalystView = lazy(() => import('./components/AnalystView.tsx').then((m) => ({ default: m.AnalystView })));
-const CompareView = lazy(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
-const ScreenerView = lazy(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
-const AlertsView = lazy(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
-const SectorRotationView = lazy(() => import('./components/SectorRotationView.tsx').then((m) => ({ default: m.SectorRotationView })));
-const KitchenRadarView = lazy(() => import('./components/KitchenRadarView.tsx').then((m) => ({ default: m.KitchenRadarView })));
-const IndonesiaMacroView = lazy(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
-const CryptoBinanceView = lazy(() => import('./components/CryptoBinanceView.tsx').then((m) => ({ default: m.CryptoBinanceView })));
+// Radar and Asset detail are in the first download; every other page loads its code when opened
+// (keeps recharts and the larger pages out of the first visit)
+const RiskProfileView = lazyPage(() => import('./components/RiskProfileView.tsx').then((m) => ({ default: m.RiskProfileView })));
+const PortfolioView = lazyPage(() => import('./components/PortfolioView.tsx').then((m) => ({ default: m.PortfolioView })));
+const BacktestView = lazyPage(() => import('./components/BacktestView.tsx').then((m) => ({ default: m.BacktestView })));
+const BriefView = lazyPage(() => import('./components/BriefView.tsx').then((m) => ({ default: m.BriefView })));
+const FundArenaView = lazyPage(() => import('./components/FundArenaView.tsx').then((m) => ({ default: m.FundArenaView })));
+const AnalystView = lazyPage(() => import('./components/AnalystView.tsx').then((m) => ({ default: m.AnalystView })));
+const CompareView = lazyPage(() => import('./components/CompareView.tsx').then((m) => ({ default: m.CompareView })));
+const ScreenerView = lazyPage(() => import('./components/ScreenerView.tsx').then((m) => ({ default: m.ScreenerView })));
+const AlertsView = lazyPage(() => import('./components/AlertsView.tsx').then((m) => ({ default: m.AlertsView })));
+const SectorRotationView = lazyPage(() => import('./components/SectorRotationView.tsx').then((m) => ({ default: m.SectorRotationView })));
+const KitchenRadarView = lazyPage(() => import('./components/KitchenRadarView.tsx').then((m) => ({ default: m.KitchenRadarView })));
+const IndonesiaMacroView = lazyPage(() => import('./components/IndonesiaMacroView.tsx').then((m) => ({ default: m.IndonesiaMacroView })));
+const CryptoBinanceView = lazyPage(() => import('./components/CryptoBinanceView.tsx').then((m) => ({ default: m.CryptoBinanceView })));
+const WatchlistView = lazyPage(() => import('./components/WatchlistView.tsx').then((m) => ({ default: m.WatchlistView })));
+const SettingsView = lazyPage(() => import('./components/SettingsView.tsx').then((m) => ({ default: m.SettingsView })));
+const TerminalView = lazyPage(() => import('./components/terminal/TerminalView.tsx').then((m) => ({ default: m.TerminalView })));
+const AdvisorView = lazyPage(() => import('./components/AdvisorView.tsx').then((m) => ({ default: m.AdvisorView })));
+const QuantSimView = lazyPage(() => import('./components/QuantSimView.tsx').then((m) => ({ default: m.QuantSimView })));
+const IndonesianStocksView = lazyPage(() => import('./components/IndonesianStocksView.tsx').then((m) => ({ default: m.IndonesianStocksView })));
+const IdxCalendarView = lazyPage(() => import('./components/IdxCalendarView.tsx').then((m) => ({ default: m.IdxCalendarView })));
 
 export default function App() {
   // Re-renders the whole app when the language changes
@@ -193,6 +192,8 @@ export default function App() {
       } else {
         root.classList.remove('dark');
       }
+      // Phone browser bar (Android Chrome, Samsung Internet) follows the app theme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#08101E' : '#F2F5F9');
     };
 
     updateTheme();
@@ -220,13 +221,32 @@ export default function App() {
   }, [effectiveTheme, handleChangeThemePreference]);
 
   // Desktop sidebar can shrink to an icon rail for a wider view (remembered per browser)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getSidebarCollapsed());
+  const [savedCollapsed, setSavedCollapsed] = useState<boolean>(() => getSidebarCollapsed());
+  // Tablets and small laptops (768–1279 px) start with the icon rail so the page keeps its width;
+  // opening it there lasts until the window is resized, not saved
+  const [narrow, setNarrow] = useState<boolean>(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1279px)').matches);
+  const [openOnNarrow, setOpenOnNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(max-width: 1279px)');
+    if (!mq) return;
+    const onChange = () => {
+      setNarrow(mq.matches);
+      setOpenOnNarrow(false);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const sidebarCollapsed = narrow ? !openOnNarrow : savedCollapsed;
   const handleToggleSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => {
+    if (narrow) {
+      setOpenOnNarrow((prev) => !prev);
+      return;
+    }
+    setSavedCollapsed((prev) => {
       saveSidebarCollapsed(!prev);
       return !prev;
     });
-  }, []);
+  }, [narrow]);
 
   const handleChangeTimeframe = useCallback((nextInterval: TimeframeInterval) => {
     setTimeframe(nextInterval);
@@ -351,7 +371,7 @@ export default function App() {
       {/* Top Header Bar (Terminal has its own status bar) */}
       {!isTerminal && (
       <header
-        className="sticky top-0 z-10 h-14 md:h-16 px-4 md:px-8 border-b flex items-center justify-between gap-4"
+        className="app-header sticky top-0 z-10 px-4 md:px-8 border-b flex items-center justify-between gap-4"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-subtle)',
@@ -363,7 +383,6 @@ export default function App() {
             <RadarLogo size={28} />
           </div>
           <div className="flex items-center gap-2 text-sm font-bold tracking-tight truncate">
-            <span className="md:hidden">AssetRadar</span>
             <span className="hidden md:inline" style={{ color: 'var(--text-secondary)' }}>
               AssetRadar
             </span>
@@ -451,10 +470,11 @@ export default function App() {
       <main
         className={
           isTerminal
-            ? 'flex-1 w-full min-w-0 pb-14 md:pb-0'
-            : 'flex-1 w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-4 sm:px-6 md:px-8 py-6 pb-20 md:pb-10'
+            ? 'flex-1 w-full min-w-0 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0'
+            : 'flex-1 w-full min-w-0 max-w-7xl 2xl:max-w-[105rem] mx-auto px-4 sm:px-6 md:px-8 py-5 md:py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-10'
         }
       >
+        <PageBoundary key={activeTab}>
         {isTerminal && (
           <TerminalView
             ticks={ticks}
@@ -507,130 +527,43 @@ export default function App() {
         )}
 
         {activeTab === 'risk' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <RiskProfileView
+          <RiskProfileView
               onSelectAsset={handleSelectAsset}
               onGoToAdvisor={() => handleSelectTab('advisor')}
             />
-          </Suspense>
         )}
 
         {activeTab === 'quant' && <QuantSimView />}
         {activeTab === 'portfolio' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <PortfolioView ticks={ticks} onSelectAsset={handleSelectAsset} />
-          </Suspense>
+          <PortfolioView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}
         {activeTab === 'calendar' && <IdxCalendarView onSelectAsset={handleSelectAsset} watchlist={watchlist} />}
         {activeTab === 'macro' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <IndonesiaMacroView />
-          </Suspense>
+          <IndonesiaMacroView />
         )}
         {activeTab === 'sectors' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <SectorRotationView />
-          </Suspense>
+          <SectorRotationView />
         )}
         {activeTab === 'kitchen' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <KitchenRadarView />
-          </Suspense>
+          <KitchenRadarView />
         )}
         {activeTab === 'crypto' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <CryptoBinanceView pair={cryptoPair} onOpenPair={handleOpenPair} onSelectAsset={handleSelectAsset} theme={effectiveTheme} />
-          </Suspense>
+          <CryptoBinanceView pair={cryptoPair} onOpenPair={handleOpenPair} onSelectAsset={handleSelectAsset} theme={effectiveTheme} />
         )}
         {activeTab === 'backtest' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <BacktestView ticks={ticks} />
-          </Suspense>
+          <BacktestView ticks={ticks} />
         )}
         {activeTab === 'fundArena' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <FundArenaView ticks={ticks} onSelectAsset={handleSelectAsset} />
-          </Suspense>
+          <FundArenaView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}
         {activeTab === 'analyst' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <AnalystView onSelectAsset={handleSelectAsset} />
-          </Suspense>
+          <AnalystView onSelectAsset={handleSelectAsset} />
         )}
         {activeTab === 'brief' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <BriefView watchlist={[...watchlist, ...portfolioSymbols]} onSelectAsset={handleSelectAsset} />
-          </Suspense>
+          <BriefView watchlist={[...watchlist, ...portfolioSymbols]} onSelectAsset={handleSelectAsset} />
         )}
         {activeTab === 'compare' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <CompareView
+          <CompareView
               symbols={compareSymbols}
               ticks={ticks}
               onSelectAsset={handleSelectAsset}
@@ -639,29 +572,12 @@ export default function App() {
                 window.history.replaceState(null, '', buildHashRoute('compare', undefined, symbols));
               }}
             />
-          </Suspense>
         )}
         {activeTab === 'screener' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <ScreenerView onSelectAsset={handleSelectAsset} onCompare={handleCompare} />
-          </Suspense>
+          <ScreenerView onSelectAsset={handleSelectAsset} onCompare={handleCompare} />
         )}
         {activeTab === 'alerts' && (
-          <Suspense
-            fallback={
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {t('common.loading')}
-              </p>
-            }
-          >
-            <AlertsView ticks={ticks} onSelectAsset={handleSelectAsset} />
-          </Suspense>
+          <AlertsView ticks={ticks} onSelectAsset={handleSelectAsset} />
         )}
         {activeTab === 'idx' && (
           <IndonesianStocksView
@@ -685,18 +601,19 @@ export default function App() {
             onChangeStartInTerminal={handleChangeStartInTerminal}
           />
         )}
+        </PageBoundary>
       </main>
 
       {/* Mandatory Footer on Every Page (Spec Section 9) */}
       <footer
-        className="border-t px-4 sm:px-6 md:px-8 py-4 mb-14 md:mb-0 text-xs"
+        className="border-t px-4 sm:px-6 md:px-8 py-4 mb-[calc(4rem+env(safe-area-inset-bottom))] md:mb-0 text-xs"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-subtle)',
           color: 'var(--text-secondary)',
         }}
       >
-        <div className="max-w-7xl 2xl:max-w-[1680px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="max-w-7xl 2xl:max-w-[105rem] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="font-medium">
             {t('footer.disclaimer')}
           </p>

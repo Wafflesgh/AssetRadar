@@ -173,9 +173,9 @@ function MoverList({
                     className="absolute inset-y-0 left-0 opacity-15"
                     style={{ width: `${(Math.abs(value) / maxAbs) * 100}%`, backgroundColor: color }}
                   />
-                  <span className="relative min-w-0">
-                    <span className="font-mono-num font-bold text-[13px]">{item.code}</span>
-                    <span className="text-[11px] ml-2 truncate" style={{ color: 'var(--text-secondary)' }}>
+                  <span className="relative min-w-0 flex items-baseline gap-2 overflow-hidden">
+                    <span className="font-mono-num font-bold text-[13px] shrink-0">{item.code}</span>
+                    <span className="text-[11px] min-w-0 truncate" style={{ color: 'var(--text-secondary)' }}>
                       {assetName(item)}
                     </span>
                   </span>

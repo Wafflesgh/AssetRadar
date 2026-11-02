@@ -3,6 +3,7 @@
  * live price (flashes on change), 1h / 24h / 7d change, market cap, a 24h mini chart and the
  * watchlist star. Columns collapse on small screens (375px shows asset, price, 24h, star).
  */
+import { memo } from 'react';
 import { useT } from '../i18n/index.ts';
 import { assetName } from '../i18n/assetNames.ts';
 import { RefreshCw, Star } from 'lucide-react';
@@ -65,114 +66,139 @@ export function MarketTable({
           </tr>
         </thead>
         <tbody>
-          {assets.map((asset, idx) => {
-            const tick = ticks[asset.symbol];
-            const usable = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
-            const starred = watchlist.includes(asset.symbol);
-            const f = flash[asset.symbol];
-            return (
-              <tr
-                key={asset.id}
-                onClick={() => onSelect(asset.symbol)}
-                className="border-t cursor-pointer transition-colors hover:bg-[var(--bg-surface-subtle)]"
-                style={{ borderColor: 'var(--border-subtle)' }}
-              >
-                <td className="px-3 py-2.5 text-xs hidden sm:table-cell font-mono-num" style={{ color: 'var(--text-secondary)' }}>
-                  {rankStart + idx}
-                </td>
-                <td className="px-2 sm:px-3 py-2.5 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <StatusDot tick={tick} />
-                    <span className="font-bold font-mono-num text-[13px] truncate">{asset.code}</span>
-                  </div>
-                  <div className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }} title={assetName(asset)}>
-                    {assetName(asset)}
-                  </div>
-                </td>
-                {usable ? (
-                  <>
-                    <td
-                      key={`p-${f?.n ?? 0}`}
-                      className={`px-2 sm:px-3 py-2.5 text-right font-mono-num font-semibold tabular-nums whitespace-nowrap text-xs sm:text-[13px] ${flashClass(f)}`}
-                    >
-                      {/* The unit (/oz, /bbl) goes on its own small line so long Rupiah prices fit at 375px */}
-                      <span className="block truncate" title={formatTickPrice(tick, asset)}>
-                        {formatTickPrice(tick, asset)}
-                      </span>
-                      {asset.unit ? (
-                        <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>
-                          {t('table.per', { unit: asset.unit.replace('/', '') })}
-                        </span>
-                      ) : null}
-                      {asset.symbol === 'XAU/USD' && tick.priceIdrPerGram ? (
-                        <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>
-                          {formatRupiah(tick.priceIdrPerGram, 0)}/gr
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2.5 text-right hidden md:table-cell">
-                      <Pct value={tick.changePct1h} />
-                    </td>
-                    <td className="px-2 sm:px-3 py-2.5 text-right">
-                      <Pct value={tick.changePct24h} bold />
-                    </td>
-                    <td className="px-3 py-2.5 text-right hidden sm:table-cell">
-                      <Pct value={tick.changePct7d} />
-                    </td>
-                    {showMarketCap && (
-                      <td className="px-3 py-2.5 text-right font-mono-num text-xs hidden lg:table-cell tabular-nums">
-                        {formatUsdCompact(tick.marketCapUsd)}
-                      </td>
-                    )}
-                    <td className="px-3 py-1.5 hidden md:table-cell">
-                      <MiniSpark data={tick.sparkline} up={(tick.changePct24h ?? 0) >= 0} />
-                    </td>
-                  </>
-                ) : (
-                  <td colSpan={showMarketCap ? 6 : 5} className="px-3 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {tick?.status === 'error' ? (
-                      <span className="inline-flex flex-wrap items-center gap-2">
-                        <span style={{ color: 'var(--color-down)' }}>{t('common.dataUnavailable')}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRetry(asset.symbol);
-                          }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold"
-                          style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                        >
-                          <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
-                        </button>
-                      </span>
-                    ) : (
-                      t('common.loading')
-                    )}
-                  </td>
-                )}
-                <td className="px-1 py-2.5 text-center">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleWatchlist(asset.symbol);
-                    }}
-                    aria-label={starred ? t('table.removeWatch', { name: assetName(asset) }) : t('table.addWatch', { name: assetName(asset) })}
-                    aria-pressed={starred}
-                    className="p-1 rounded"
-                    style={{ color: starred ? 'var(--color-gold)' : 'var(--text-secondary)' }}
-                  >
-                    <Star className="w-4 h-4" fill={starred ? 'currentColor' : 'none'} />
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
+          {assets.map((asset, idx) => (
+            <MarketRow
+              key={asset.id}
+              asset={asset}
+              rank={rankStart + idx}
+              tick={ticks[asset.symbol]}
+              f={flash[asset.symbol]}
+              starred={watchlist.includes(asset.symbol)}
+              showMarketCap={showMarketCap}
+              onSelect={onSelect}
+              onToggleWatchlist={onToggleWatchlist}
+              onRetry={onRetry}
+            />
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
+
+interface MarketRowProps {
+  asset: AssetConfig;
+  rank: number;
+  tick: PriceTick | undefined;
+  f: Flash | undefined;
+  starred: boolean;
+  showMarketCap: boolean;
+  onSelect: (symbol: string) => void;
+  onToggleWatchlist: (symbol: string) => void;
+  onRetry: (symbol: string) => void;
+}
+
+/** One asset row; memoized so only rows whose price, flash or star changed re-render. */
+const MarketRow = memo(function MarketRow({ asset, rank, tick, f, starred, showMarketCap, onSelect, onToggleWatchlist, onRetry }: MarketRowProps) {
+  const t = useT();
+  const usable = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
+  return (
+    <tr
+      onClick={() => onSelect(asset.symbol)}
+      className="border-t cursor-pointer transition-colors hover:bg-[var(--bg-surface-subtle)]"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
+      <td className="px-3 py-2.5 text-xs hidden sm:table-cell font-mono-num" style={{ color: 'var(--text-secondary)' }}>
+        {rank}
+      </td>
+      <td className="px-2 sm:px-3 py-2.5 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <StatusDot tick={tick} />
+          <span className="font-bold font-mono-num text-[13px] truncate">{asset.code}</span>
+        </div>
+        <div className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }} title={assetName(asset)}>
+          {assetName(asset)}
+        </div>
+      </td>
+      {usable ? (
+        <>
+          <td
+            key={`p-${f?.n ?? 0}`}
+            className={`px-2 sm:px-3 py-2.5 text-right font-mono-num font-semibold tabular-nums whitespace-nowrap text-xs sm:text-[13px] ${flashClass(f)}`}
+          >
+            {/* The unit (/oz, /bbl) goes on its own small line so long Rupiah prices fit at 375px */}
+            <span className="block truncate" title={formatTickPrice(tick, asset)}>
+              {formatTickPrice(tick, asset)}
+            </span>
+            {asset.unit ? (
+              <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>
+                {t('table.per', { unit: asset.unit.replace('/', '') })}
+              </span>
+            ) : null}
+            {asset.symbol === 'XAU/USD' && tick.priceIdrPerGram ? (
+              <span className="block text-[10px] font-normal" style={{ color: 'var(--text-secondary)' }}>
+                {formatRupiah(tick.priceIdrPerGram, 0)}/gr
+              </span>
+            ) : null}
+          </td>
+          <td className="px-3 py-2.5 text-right hidden md:table-cell">
+            <Pct value={tick.changePct1h} />
+          </td>
+          <td className="px-2 sm:px-3 py-2.5 text-right">
+            <Pct value={tick.changePct24h} bold />
+          </td>
+          <td className="px-3 py-2.5 text-right hidden sm:table-cell">
+            <Pct value={tick.changePct7d} />
+          </td>
+          {showMarketCap && (
+            <td className="px-3 py-2.5 text-right font-mono-num text-xs hidden lg:table-cell tabular-nums">
+              {formatUsdCompact(tick.marketCapUsd)}
+            </td>
+          )}
+          <td className="px-3 py-1.5 hidden md:table-cell">
+            <MiniSpark data={tick.sparkline} up={(tick.changePct24h ?? 0) >= 0} />
+          </td>
+        </>
+      ) : (
+        <td colSpan={showMarketCap ? 6 : 5} className="px-3 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+          {tick?.status === 'error' ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span style={{ color: 'var(--color-down)' }}>{t('common.dataUnavailable')}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRetry(asset.symbol);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold"
+                style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+              >
+                <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
+              </button>
+            </span>
+          ) : (
+            t('common.loading')
+          )}
+        </td>
+      )}
+      <td className="px-1 py-2.5 text-center">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWatchlist(asset.symbol);
+          }}
+          aria-label={starred ? t('table.removeWatch', { name: assetName(asset) }) : t('table.addWatch', { name: assetName(asset) })}
+          aria-pressed={starred}
+          className="p-1 rounded"
+          style={{ color: starred ? 'var(--color-gold)' : 'var(--text-secondary)' }}
+        >
+          <Star className="w-4 h-4" fill={starred ? 'currentColor' : 'none'} />
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 /** Live (green), delayed/closed (grey) or saved offline data (amber). */
 function StatusDot({ tick }: { tick?: PriceTick }) {
