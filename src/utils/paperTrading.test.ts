@@ -84,3 +84,12 @@ test('stored items: account and valid orders kept, orders from before a reset dr
   assert.deepEqual(parsed.orders.map((o) => o.id), ['a']);
   assert.equal(parsePaperItems('x').account, null);
 });
+
+test('realized profit counts the exchange-rate move between buy and sell', () => {
+  const account = newPaperAccount(0, null);
+  const order = (id: string, side: 'buy' | 'sell', at: number, price: number, fx: number): PaperOrder =>
+    ({ id, kind: 'order', at, symbol: 'AAPL', side, quantity: 10, price, currency: 'USD', fx, fee: 0 });
+  const orders = [order('b', 'buy', 1, 100, 15_000), order('s', 'sell', 2, 110, 16_000)];
+  // 10 × $110 × 16,000 − 10 × $100 × 15,000
+  near(summarizePaper(account, orders, {}, getAssetBySymbol).realizedIdr, 2_600_000);
+});

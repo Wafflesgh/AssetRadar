@@ -199,18 +199,18 @@ export function summarizePaper(
   assetOf: (symbol: string) => AssetConfig | undefined
 ): PaperSummary {
   const cash = cashOf(account, orders);
-  const lastFx = new Map<string, number>();
-  for (const o of orders) lastFx.set(o.symbol, o.fx);
+  // Same average-cost maths at each fill's own rate, so realized profit and cost include currency moves
+  const idrPositions = buildPositions(toTxs(orders.map((o) => ({ ...o, price: o.price * o.fx, fee: o.fee * o.fx }))));
   const holdings: PaperHolding[] = [];
   let realizedIdr = 0;
   for (const p of buildPositions(toTxs(orders)).values()) {
     const asset = assetOf(p.symbol);
-    const fx = lastFx.get(p.symbol) ?? 1;
-    realizedIdr += p.realized * fx;
+    const idr = idrPositions.get(p.symbol);
+    realizedIdr += idr?.realized ?? 0;
     if (!asset || p.quantity <= 0) continue;
     const v = valuePosition(p, tradeUnitOf(asset), ticks[p.symbol]?.fromSnapshot ? undefined : ticks[p.symbol], ticks);
     const priced = v.marketValueIdr !== undefined;
-    holdings.push({ ...v, asset, priced, valueIdr: priced ? v.marketValueIdr! : p.costBasis * fx });
+    holdings.push({ ...v, asset, priced, valueIdr: priced ? v.marketValueIdr! : (idr?.costBasis ?? 0) });
   }
   holdings.sort((a, b) => b.valueIdr - a.valueIdr);
   const holdingsIdr = holdings.reduce((s, h) => s + h.valueIdr, 0);
