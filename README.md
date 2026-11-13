@@ -447,17 +447,11 @@ free — add the repository secrets `APP_URL` and `CRON_TOKEN` (same value as th
 
 ## Deploy
 
-**Vercel + Supabase (current hosting, free tiers).** Import the GitHub repository into Vercel; the
-settings come from `vercel.json`. `npm run build` builds the front end and, on Vercel, bundles the
-whole API into one Node function in Singapore (`scripts/build-vercel.mjs`, Build Output API). Set the
-secrets (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `CRON_TOKEN`, `SYNC_PASSPHRASE`, `SYNC_SESSION_SECRET`,
-`VAPID_*`, `GEMINI_API_KEY`, optional `BPS_API_KEY`, `TELEGRAM_*`) under Project → Settings →
-Environment Variables. Run `supabase/schema.sql`, then `supabase/cron.sql` (with your app address and
-`CRON_TOKEN`) in the Supabase SQL Editor: pg_cron calls `POST /api/cron/tick` every hour (kept short to fit Vercel Hobby's CPU limit) for
-alerts, daily jobs and the step-by-step market scans. On this serverless host there are no server
-streams: prices are polled every 10 s (crypto stays live through the Indodax WebSocket) and Finnhub
-is not used. Owner guide: `docs/BLUEPRINT.md` §9. To try serverless mode locally: `SERVERLESS=1 npm run build`
-then `node scripts/build-vercel.mjs --force`.
+**Google Cloud Run + Supabase (current hosting).** The `Dockerfile` runs the server in serverless mode
+(`SERVERLESS=1`, region asia-southeast1); Cloud Scheduler calls `POST /api/cron/tick` every hour with
+`CRON_TOKEN` for alerts, daily jobs and the step-by-step market scans. Run `supabase/schema.sql` in the
+Supabase SQL Editor. Prices are polled every 10 s (crypto stays live through the Indodax WebSocket).
+Owner guide: `docs/SETUP_CloudRun.md`.
 
 **Google AI Studio / Cloud Run (old hosting).** The repository can be imported into Google AI Studio (Build → ⊕ → Import from GitHub), which
 runs `server.ts` on Cloud Run. Set `GEMINI_API_KEY`, `FINNHUB_API_KEY`, `BPS_API_KEY` and the optional
@@ -493,8 +487,6 @@ instead (as a new app), then Publish.
 | `scripts/generate-secrets.mjs` | Fills self-made secrets (cron token, sync passphrase, VAPID keys) in the local `.env` without printing them. |
 | `supabase/schema.sql` | The single table needed in Supabase. |
 | `supabase/cron.sql` | pg_cron job that calls `POST /api/cron/tick` every hour (address and token kept in Supabase Vault). |
-| `scripts/build-vercel.mjs` | On Vercel: static front end + the whole API bundled as one function (Build Output API, region sin1). |
-| `server/vercelEntry.ts` | The Vercel function handler around `createApp()`. |
 | `server/runtime.ts` | Serverless mode: timers only on always-on hosts, `keepAlive()` (waitUntil) for work started in a request. |
 | `src/services/serverMode.ts` | Client switch: SSE streams on always-on servers, polling on the serverless build. |
 | `.github/workflows/daily-jobs.yml` | Free daily scheduler: calls `POST /api/cron/daily` at 07:35 and 16:20 WIB every day. |

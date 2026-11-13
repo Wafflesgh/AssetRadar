@@ -8,7 +8,7 @@
  * server/sync.ts), the daily server AI forward test and the protected cron endpoint.
  * All upstream data is cached in memory; durable data goes to the optional database
  * (server/store.ts). API keys stay on the server. Runs as an always-on Node server (npm start)
- * or as one Vercel serverless function (createApp(), server/vercelEntry.ts): there timers and
+ * or in serverless mode on Cloud Run (SERVERLESS=1, see Dockerfile): there timers and
  * streams are off and the long scans run from POST /api/cron/tick (server/runtime.ts).
  */
 import 'dotenv/config';
@@ -6168,5 +6168,5 @@ async function startServer() {
   });
 }
 
-// Vercel imports createApp() instead (server/vercelEntry.ts); Cloud Run listens here in serverless mode
+// Cloud Run listens here too, in serverless mode
 if (!process.env.VERCEL) startServer();
