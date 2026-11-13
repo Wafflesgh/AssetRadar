@@ -5,14 +5,14 @@
  * AI jobs), and which optional features are configured. Only public endpoints are read; no key is
  * needed or printed.
  *
- *   node scripts/status-check.mjs [base-url]      (default: APP_URL or the Vercel URL)
+ *   node scripts/status-check.mjs [base-url]      (default: APP_URL or the Cloud Run URL)
  *   node scripts/status-check.mjs --json          (machine-readable)
  *
  * Every line is OK / WARN / FAIL / INFO; the exit code is 1 when any FAIL is found.
  */
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
-const BASE = (args.find((a) => /^https?:\/\//.test(a)) ?? process.env.APP_URL ?? 'https://assetradar-iota.vercel.app').replace(/\/+$/, '');
+const BASE = (args.find((a) => /^https?:\/\//.test(a)) ?? process.env.APP_URL ?? 'https://assetradar-847824464950.asia-southeast1.run.app').replace(/\/+$/, '');
 
 /** Sources that never answer from Vercel's servers; the app uses other sources instead. */
 const EXPECTED_DOWN = new Set(['fred', 'fredApi', 'imf']);
