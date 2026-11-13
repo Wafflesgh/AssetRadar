@@ -55,6 +55,8 @@ export function parseSentimentLog(raw: unknown): SentimentLog | null {
   };
 }
 
+const isWeekend = (date: string) => [0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay());
+
 /** Adds one day's calls unless that day was already saved for the symbol. Same object when nothing changed. */
 export function recordSentimentCalls(
   log: SentimentLog,
@@ -64,6 +66,9 @@ export function recordSentimentCalls(
   const have = new Set(log.calls.filter((c) => c.date === date).map((c) => `${c.symbol}|${c.horizon}`));
   const fresh: SentimentCall[] = [];
   for (const r of rows) {
+    // Exchanges are shut at weekends: a Saturday or Sunday call would repeat Friday's (crypto trades every day)
+    // shortcut: weekday exchange holidays still record a call, add a holiday calendar if they skew the counts
+    if (!r.crypto && isWeekend(date)) continue;
     if (!(typeof r.price === 'number' && Number.isFinite(r.price) && r.price > 0)) continue;
     for (const h of ['short', 'medium', 'long'] as TraceHorizon[]) {
       const v = r.horizons[h];

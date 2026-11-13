@@ -90,3 +90,13 @@ test('asset trace: sentiment and advisor rows, change since the call, collapsed 
   assert.equal(med.firstDate, '2026-10-19');
   assert.equal(med.price, 100); // the first call's price
 });
+
+test('weekend: only crypto calls are recorded (stock calls would repeat Friday)', () => {
+  const rows = [
+    { symbol: 'BBCA.JK', crypto: false, price: 9000, horizons: { short: { label: 'Bullish' as const, score: 66 } } },
+    { symbol: 'BTC/IDR', crypto: true, price: 1e9, horizons: { short: { label: 'Bearish' as const, score: 30 } } },
+  ];
+  const sat = recordSentimentCalls(emptySentimentLog(), '2026-11-14', rows);
+  assert.deepEqual(sat.calls.map((c) => c.symbol), ['BTC/IDR']);
+  assert.equal(recordSentimentCalls(emptySentimentLog(), '2026-11-13', rows).calls.length, 2);
+});
