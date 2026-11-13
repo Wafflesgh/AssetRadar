@@ -1,12 +1,27 @@
 /**
  * KeyIndicesStrip.tsx — Radar strip of the main stock indices, IHSG first: price, 24h change and
- * whether the exchange is open right now. Scrolls sideways on small screens; click opens detail.
+ * whether the exchange is open right now, with a 24-hour mini line. Scrolls sideways on small screens; click opens detail.
  */
 import { useT } from '../i18n/index.ts';
 import { PriceTick, getAssetByCode } from '../config/assets.ts';
 import { formatTickPrice } from '../utils/format.ts';
 import { isExchangeOpen } from '../utils/marketHours.ts';
 import { Pct } from './MarketTable.tsx';
+import type { SparklinePoint } from '../config/assets.ts';
+
+/** Plain SVG line (a chart instance per card would be heavy for 12 cards). */
+function MiniLine({ data, up }: { data?: SparklinePoint[]; up: boolean }) {
+  if (!data || data.length < 2) return null;
+  const vals = data.map((p) => p.value);
+  const min = Math.min(...vals);
+  const span = Math.max(...vals) - min || 1;
+  const points = vals.map((v, i) => `${((i / (vals.length - 1)) * 100).toFixed(1)},${(28 - ((v - min) / span) * 26).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="block w-full h-8 mt-1.5" aria-hidden="true">
+      <polyline points={points} fill="none" stroke={up ? 'var(--color-up)' : 'var(--color-down)'} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
 
 const KEY_INDEX_CODES = ['JCI', 'SPX', 'NDX', 'DJI', 'N225', 'HSI', 'SSE', 'KOSPI', 'STI', 'FTSE', 'DAX', 'NIFTY'];
 
@@ -49,6 +64,7 @@ export function KeyIndicesStrip({ ticks, onSelect }: { ticks: Record<string, Pri
               <span className="text-[10px] ml-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {open ? tr('keyIndices.open') : tr('keyIndices.closed')}
               </span>
+              {ok && <MiniLine data={t.sparkline} up={(t.changePct24h ?? 0) >= 0} />}
             </button>
           );
         })}
