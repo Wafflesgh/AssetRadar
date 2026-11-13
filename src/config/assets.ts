@@ -574,7 +574,7 @@ export const ASSETS: AssetConfig[] = [
   usStock('UNH', 'UnitedHealth', 8.976e8, ['unitedhealth']),
   usStock('CSCO', 'Cisco Systems', 3946000000, ['cisco']),
   usStock('PG', 'Procter & Gamble', 2318000000, ['procter & gamble', 'procter and gamble']),
-  usStock('MRK', 'Merck & Co.', 2467000000, ['merck & co', 'merck']),
+  usStock('MRK', 'Merck & Co.', 2.467e9, ['merck & co']),
   usStock('HD', 'Home Depot', 9.98e8, ['home depot']),
   usStock('GE', 'GE Aerospace', 1038000000, ['ge aerospace', 'general electric']),
   usStock('PM', 'Philip Morris International', 1559000000, ['philip morris']),

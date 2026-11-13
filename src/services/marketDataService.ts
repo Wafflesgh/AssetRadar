@@ -12,6 +12,7 @@
  * follow Binance's public streams in the browser (binanceLive.ts, about once a second).
  */
 import { SERVER_PUSH } from './serverMode.ts';
+import { isIdle, onIdleChange } from './idle.ts';
 import { binanceFuturesLive, binanceSpotLive } from './binanceLive.ts';
 import { LIVE_MAIN_FUTURES, withLivePrice } from '../config/liveProxies.ts';
 import type { ProbeResult, SetupItem } from '../utils/diagnostics.ts';
@@ -167,6 +168,19 @@ export class MarketDataManager {
     this.connectPriceStream();
     this.startPollingTimers();
     this.connectBinanceLive();
+    // Idle page: drop the stream (the polling timers take over), reconnect on the next input
+    this.liveUnsubs.push(
+      onIdleChange((idle) => {
+        if (this.isDestroyed) return;
+        if (idle) {
+          this.disconnectPriceStream();
+          this.callbacks.onFeedModeChange?.('polling');
+        } else {
+          this.streamAttempts = 0;
+          this.connectPriceStream();
+        }
+      })
+    );
   }
 
   public stop(): void {
@@ -513,6 +527,7 @@ export class MarketDataManager {
       return;
     }
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (isIdle()) return;
     this.disconnectPriceStream();
     const es = new EventSource(`/api/market/price-stream?client=${encodeURIComponent(this.clientId)}`);
     this.stream = es;

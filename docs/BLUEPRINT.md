@@ -1,3 +1,5 @@
+> **Riwayat (13 Nov 2026):** aplikasi pindah ke **Google Cloud Run** (`docs/SETUP_CloudRun.md`). Bagian Vercel dan pg_cron Supabase di bawah tidak berlaku lagi — jangan dinyalakan kembali (tick akan berjalan dobel). Database, secrets dan MCP tetap berlaku.
+
 <!-- BLUEPRINT.md — One-page source of truth (Indonesian) for AssetRadar: hosting, database, secrets, data sources, jobs, endpoints, tools/MCP and working rules. Read this first in every new session. -->
 
 # AssetRadar — Blueprint

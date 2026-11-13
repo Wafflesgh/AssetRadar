@@ -5,6 +5,7 @@
  * (for "NEW" badges), and falls back to polling /api/market/news-feed every 60 s when the
  * stream is blocked or stalls (some proxies buffer SSE). Framework-free; see useLiveNews.
  */
+import { isIdle, onIdleChange } from './idle.ts';
 import { SERVER_PUSH } from './serverMode.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
 import { fetchNewsFeed } from './marketDataService.ts';
@@ -32,6 +33,7 @@ class NewsStore {
   private state: NewsState = { items: [], status: 'connecting', updatedAt: 0, arrivedAt: {} };
   private listeners = new Set<Listener>();
   private source: EventSource | null = null;
+  private offIdle: (() => void) | null = null;
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -42,21 +44,24 @@ class NewsStore {
     this.listeners.add(listener);
     if (this.listeners.size === 1) {
       if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility);
+      this.offIdle = onIdleChange(() => this.onVisibility());
       this.start();
     }
     return () => {
       this.listeners.delete(listener);
       if (this.listeners.size === 0) {
         if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
+        this.offIdle?.();
+        this.offIdle = null;
         this.stop();
       }
     };
   };
 
-  // A hidden tab drops the stream: on Cloud Run an open stream keeps the server (and its bill) running
+  // A hidden tab drops the stream and an idle one polls: on Cloud Run an open stream keeps the server (and its bill) running
   private onVisibility = (): void => {
-    if (document.visibilityState === 'hidden') this.stop();
-    else if (this.listeners.size > 0) this.start();
+    this.stop();
+    if (document.visibilityState !== 'hidden' && this.listeners.size > 0) this.start();
   };
 
   /** Manual refresh (e.g. a "Reload" button). */
@@ -87,6 +92,10 @@ class NewsStore {
   }
 
   private openStream(): void {
+    if (isIdle()) {
+      this.startPolling();
+      return;
+    }
     this.closeStream();
     this.setState({ status: this.state.items.length ? this.state.status : 'connecting' });
     const es = new EventSource(STREAM_URL);

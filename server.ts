@@ -4775,6 +4775,8 @@ async function diagnosticsLive(): Promise<Record<string, unknown>> {
 let lastDueCheck = 0;
 /** Cheap check on API traffic: the first request after the scheduled time starts the job. */
 function checkDueJobsSoon(): void {
+  // Cloud Run takes the CPU away after the response, so a job started here would freeze; the Scheduler tick runs it
+  if (CLOUD_RUN) return;
   const now = Date.now();
   if (now - lastDueCheck < 60_000) return;
   lastDueCheck = now;
@@ -5240,9 +5242,9 @@ export async function createApp(): Promise<express.Express> {
     const profile = ['conservative', 'moderate', 'aggressive'].includes(String(req.query.profile)) ? String(req.query.profile) : 'moderate';
     try {
       const data = await traceData();
-      // IDX stocks outside the core assets keep their calls in their own record
+      // IDX stocks traced outside the core list keep their calls in their own record (also stocks promoted to it later)
       const idxLog =
-        asset.group === 'idStock' && !ASSETS.some((a) => a.symbol === asset.symbol)
+        asset.group === 'idStock'
           ? parseSentimentLog(await store.get(`${IDXTRACE_PREFIX}${asset.symbol}`).catch(() => null))
           : null;
       const calls = idxLog ? [...data.calls, ...idxLog.calls] : data.calls;
