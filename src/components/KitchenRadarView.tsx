@@ -12,11 +12,11 @@
  */
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, BellRing, ChevronDown, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
+import { Bell, BellRing, ChevronDown, MapPin, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
 import { getMyProvince, saveMyProvince } from '../utils/storage.ts';
 import { loadAlerts, newAlertId, storeAlerts } from '../services/alertService.ts';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { fetchIndonesiaMacro, fetchStaples } from '../services/marketDataService.ts';
+import { fetchIndonesiaMacro, fetchStapleRegion, fetchStaples } from '../services/marketDataService.ts';
 import { activeChain, readDrivers, STAPLE_FACTORS, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
 import { formatNumber, formatRupiah } from '../utils/format.ts';
 import {
@@ -30,6 +30,7 @@ import {
   type PolicyNews,
   type StapleCategory,
   type StapleItem,
+  type StaplePoint,
   type StaplesPayload,
   type StapleSummary,
 } from '../utils/staples.ts';
@@ -251,14 +252,18 @@ function WhySection({ item, inputs, policy }: { item: StapleItem; inputs: Driver
   );
 }
 
-function StapleCard({ item, range, inputs, policy, myProvince }: { item: StapleItem; range: Range; inputs: DriverInputs; policy: PolicyNews | null; myProvince: string }) {
+function StapleCard({ item, range, inputs, policy, myProvince, regionPoints }: { item: StapleItem; range: Range; inputs: DriverInputs; policy: PolicyNews | null; myProvince: string; regionPoints?: StaplePoint[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const def = STAPLES.find((s) => s.id === item.id)!;
-  const s: StapleSummary = stapleSummary(item);
+  // With a province picked, price, changes and chart follow that province's own series
+  const regional = Boolean(myProvince && regionPoints && regionPoints.length >= 2);
+  const pts = regional ? regionPoints! : item.points;
+  const s: StapleSummary = stapleSummary({ points: pts, provinces: item.provinces });
+  const nationalLatest = item.points.length ? item.points[item.points.length - 1][1] : null;
   const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
   const from = s.latest ? addDays(s.latest[0], -RANGE_DAYS[range]) : '';
-  const chart = item.points.filter(([d]) => d >= from).map(([d, v]) => ({ d, v }));
+  const chart = pts.filter(([d]) => d >= from).map(([d, v]) => ({ d, v }));
   const rangeVals = chart.map((p) => p.v);
   return (
     <article className="p-4 rounded-xl border space-y-2" style={card}>
@@ -266,6 +271,10 @@ function StapleCard({ item, range, inputs, policy, myProvince }: { item: StapleI
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: 'var(--text-secondary)' }}>
             {t(`kitchen.cat.${def.category}` as TranslationKey)}
+          </p>
+          <p className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: regional ? 'var(--accent-radar)' : 'var(--text-secondary)' }}>
+            <MapPin size={10} aria-hidden="true" />
+            {regional ? myProvince : t('kitchen.nationalAvg')}
           </p>
           <h3 className="text-sm font-bold">{itemName(t, def.key)}</h3>
         </div>
@@ -286,8 +295,8 @@ function StapleCard({ item, range, inputs, policy, myProvince }: { item: StapleI
       </div>
       {(() => {
         const mine = myProvince ? item.provinces.find((p) => p.name === myProvince) : undefined;
-        if (!mine || !s.latest) return null;
-        const gap = ((mine.price - s.latest[1]) / s.latest[1]) * 100;
+        if (!mine || !nationalLatest) return null;
+        const gap = ((mine.price - nationalLatest) / nationalLatest) * 100;
         return (
           <p className="text-xs font-mono-num">
             {t('kitchen.myProvinceRow', { province: mine.name, price: formatRupiah(mine.price, 0), gap: `${gap > 0 ? '+' : ''}${formatNumber(gap, 1)}%` })}
@@ -435,6 +444,18 @@ export function KitchenRadarView() {
   const [range, setRange] = useState<Range>('m3');
   const [allVarieties, setAllVarieties] = useState(false);
   const [myProvince, setMyProvince] = useState(getMyProvince);
+  const [region, setRegion] = useState<Record<string, StaplePoint[]>>({});
+  useEffect(() => {
+    setRegion({});
+    if (!myProvince) return;
+    let live = true;
+    fetchStapleRegion(myProvince)
+      .then((r) => live && setRegion(r))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [myProvince]);
   // Rupiah, yuan, world rice / palm oil and oil prices for the price drivers (best effort)
   const [macroSeries, setMacroSeries] = useState<DriverInputs['series']>({});
   useEffect(() => {
@@ -510,6 +531,37 @@ export function KitchenRadarView() {
 
       {data && (
         <>
+          <section className="p-4 rounded-xl border-2 flex flex-col sm:flex-row sm:items-center gap-3" style={{ ...card, borderColor: 'var(--accent-radar)' }} aria-labelledby="my-province-heading">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <MapPin size={22} style={{ color: 'var(--accent-radar)' }} aria-hidden="true" className="shrink-0" />
+              <div className="min-w-0">
+                <h3 id="my-province-heading" className="text-sm font-bold">
+                  {t('kitchen.myProvince')}
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {t('kitchen.myProvinceHelp')}
+                </p>
+              </div>
+            </div>
+            <select
+              value={myProvince}
+              aria-labelledby="my-province-heading"
+              onChange={(e) => {
+                setMyProvince(e.target.value);
+                saveMyProvince(e.target.value);
+              }}
+              className="w-full sm:w-64 px-3 py-2 rounded-lg border-2 text-base sm:text-sm font-semibold"
+              style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--accent-radar)', color: 'var(--text-primary)' }}
+            >
+              <option value="">{t('kitchen.myProvinceNone')}</option>
+              {[...new Set(items.flatMap((i) => i.provinces.map((p) => p.name)))].sort().map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </section>
+
           <WeekSummaryCard items={items} />
 
           <section className="p-5 rounded-xl border grid grid-cols-1 md:grid-cols-3 gap-4" style={card} aria-labelledby="basket-heading">
@@ -573,25 +625,6 @@ export function KitchenRadarView() {
                 </button>
               ))}
             </div>
-            <label className="flex items-center gap-2 text-xs">
-              {t('kitchen.myProvince')}
-              <select
-                value={myProvince}
-                onChange={(e) => {
-                  setMyProvince(e.target.value);
-                  saveMyProvince(e.target.value);
-                }}
-                className="px-2 py-1 rounded-md border text-xs"
-                style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-              >
-                <option value="">{t('kitchen.myProvinceNone')}</option>
-                {[...new Set(items.flatMap((i) => i.provinces.map((p) => p.name)))].sort().map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </label>
             {cat === 'all' && (
               <label className="flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={allVarieties} onChange={(e) => setAllVarieties(e.target.checked)} />
@@ -602,7 +635,7 @@ export function KitchenRadarView() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shown.map((i) => (
-              <StapleCard key={i.id} item={i} range={range} inputs={inputs} policy={data.policyNews ?? null} myProvince={myProvince} />
+              <StapleCard key={i.id} item={i} range={range} inputs={inputs} policy={data.policyNews ?? null} myProvince={myProvince} regionPoints={region[i.id]} />
             ))}
           </div>
 

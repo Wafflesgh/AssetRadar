@@ -3146,6 +3146,8 @@ export const id: Record<TranslationKey, string> = {
   "kitchen.popularChange": "3 minggu",
   "kitchen.myProvince": "Provinsi saya",
   "kitchen.myProvinceNone": "Hanya rata-rata nasional",
+  "kitchen.myProvinceHelp": "Pilih provinsi: setiap kartu lalu menampilkan harga, perubahan dan grafik provinsi itu, jadi Anda bisa melihat seberapa stabil harga di sana. Riwayat provinsi terisi dalam sehari ke depan.",
+  "kitchen.nationalAvg": "Rata-rata nasional",
   "kitchen.myProvinceRow": "{province}: {price} ({gap} vs nasional)",
   "kitchen.alertOn": "Alert aktif: bergerak ≥{value}% seminggu",
   "kitchen.alertOff": "Beri tahu saya bila bergerak ≥{value}% seminggu",

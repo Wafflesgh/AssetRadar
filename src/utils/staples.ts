@@ -55,8 +55,12 @@ export interface StapleItem {
   /** Latest price per province (latest day of the last update). */
   provinces: StapleProvince[];
   updatedAt: number;
-  /** The history reaches back as far as it will (a year, or the start of PIHPS data). */
+  /** The history reaches back as far as it will (3 years, or the start of PIHPS data). */
   backfilled: boolean;
+  /** Daily price per province, oldest first (server only; the browser asks for one province at a time). */
+  regions?: Record<string, StaplePoint[]>;
+  /** Earliest date fetched together with the province series (the backfill cursor). */
+  regionsFrom?: string;
 }
 
 export interface StaplesPayload {
@@ -110,7 +114,7 @@ export function pihpsDate(key: string): string | null {
 }
 
 /** National series and provinces (first and last price in the window) from one PIHPS grid answer. */
-export function parsePihpsGrid(json: unknown): { national: StaplePoint[]; provinces: StapleProvince[] } {
+export function parsePihpsGrid(json: unknown): { national: StaplePoint[]; provinces: StapleProvince[]; regions: Record<string, StaplePoint[]> } {
   const rows = ((json as { data?: unknown[] })?.data ?? []) as Array<Record<string, unknown>>;
   const series = (row: Record<string, unknown>): StaplePoint[] =>
     Object.entries(row)
@@ -119,13 +123,15 @@ export function parsePihpsGrid(json: unknown): { national: StaplePoint[]; provin
       .sort((a, b) => a[0].localeCompare(b[0]));
   const nationalRow = rows.find((r) => r.level === 0);
   const provinces: StapleProvince[] = [];
+  const regions: Record<string, StaplePoint[]> = {};
   for (const r of rows) {
     if (r.level !== 1 || typeof r.name !== 'string') continue;
     const s = series(r);
     if (!s.length) continue;
     provinces.push({ name: r.name.trim(), price: s[s.length - 1][1], earlier: s.length > 1 ? s[0][1] : null });
+    regions[r.name.trim()] = s;
   }
-  return { national: nationalRow ? series(nationalRow) : [], provinces };
+  return { national: nationalRow ? series(nationalRow) : [], provinces, regions };
 }
 
 /** Old and new points by date (new wins), oldest first, only the last `keepDays` days. */

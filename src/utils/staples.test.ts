@@ -22,7 +22,11 @@ test('the grid gives the national series and first/last price per province', () 
       { no: 'IV', name: 'Bali', level: 1, '16/10/2026': '14,000' },
     ],
   };
-  const { national, provinces } = parsePihpsGrid(json);
+  const { national, provinces, regions } = parsePihpsGrid(json);
+  assert.deepEqual(regions.Aceh, [
+    ['2026-10-15', 15600],
+    ['2026-10-16', 15550],
+  ]);
   assert.deepEqual(national, [
     ['2026-10-15', 16350],
     ['2026-10-16', 16400],
@@ -31,8 +35,8 @@ test('the grid gives the national series and first/last price per province', () 
     { name: 'Aceh', price: 15550, earlier: 15600 },
     { name: 'Bali', price: 14000, earlier: null },
   ]);
-  assert.deepEqual(parsePihpsGrid({ data: [{}] }), { national: [], provinces: [] });
-  assert.deepEqual(parsePihpsGrid(null), { national: [], provinces: [] });
+  assert.deepEqual(parsePihpsGrid({ data: [{}] }), { national: [], provinces: [], regions: {} });
+  assert.deepEqual(parsePihpsGrid(null), { national: [], provinces: [], regions: {} });
 });
 
 test('merging keeps one value per date, newest wins, within the kept days', () => {

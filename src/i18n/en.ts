@@ -3145,6 +3145,8 @@ export const en = {
   "kitchen.popularChange": "3 weeks",
   "kitchen.myProvince": "My province",
   "kitchen.myProvinceNone": "National average only",
+  "kitchen.myProvinceHelp": "Pick a province: every card then shows that province's price, changes and chart, so you can see how stable prices are there. The province history fills in over the next day.",
+  "kitchen.nationalAvg": "National average",
   "kitchen.myProvinceRow": "{province}: {price} ({gap} vs national)",
   "kitchen.alertOn": "Alert on: move ≥{value}% in a week",
   "kitchen.alertOff": "Alert me when it moves ≥{value}% in a week",
