@@ -4,10 +4,24 @@
  * during a request is handed to the platform's waitUntil, so it may finish after the response
  * (up to the function's maxDuration). The long scans then run from /api/cron/tick instead.
  */
-import { serverlessFrom } from '../src/utils/hosting.ts';
+import { hostingFrom, serverlessFrom } from '../src/utils/hosting.ts';
 
 /** True on Vercel (or SERVERLESS=1): no timers, sockets or streams between requests. */
 export const SERVERLESS = serverlessFrom(process.env);
+
+/** Cloud Run: serverless for the scans, but it allows long responses and reaches FRED (unlike Vercel). */
+export const CLOUD_RUN = hostingFrom(process.env).host === 'cloudRun';
+
+/**
+ * SSE streams work here. On Cloud Run an open stream is a request in progress, so the instance keeps
+ * its CPU (and is billed) only while a browser is connected; the stream loops idle without clients.
+ */
+export const STREAMS = !SERVERLESS || CLOUD_RUN;
+
+/** setInterval for the stream loops: wherever streams work (they check for connected clients themselves). */
+export function streamEveryMs(fn: () => void, ms: number): void {
+  if (STREAMS) setInterval(fn, ms);
+}
 
 /** setInterval on always-on hosts; nothing on a serverless host (the cron tick does the work). */
 export function everyMs(fn: () => void, ms: number): void {

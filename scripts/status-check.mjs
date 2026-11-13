@@ -98,9 +98,9 @@ if (diag.ok && diag.json) {
 const last = tick.json?.last;
 if (last?.finishedAt) {
   const age = now - last.finishedAt;
-  add('Scheduled tick (every 10 min)', age < 25 * 60_000 ? 'OK' : age < 60 * 60_000 ? 'WARN' : 'FAIL', `last run finished ${ago(last.finishedAt)}`);
-} else if (tick.json && tick.json.serverless === false) add('Scheduled tick (every 10 min)', 'INFO', 'always-on host (no tick)');
-else add('Scheduled tick (every 10 min)', 'FAIL', 'no tick recorded');
+  add('Scheduled tick (hourly)', age < 75 * 60_000 ? 'OK' : age < 150 * 60_000 ? 'WARN' : 'FAIL', `last run finished ${ago(last.finishedAt)}`);
+} else if (tick.json && tick.json.serverless === false) add('Scheduled tick (hourly)', 'INFO', 'always-on host (no tick)');
+else add('Scheduled tick (hourly)', 'FAIL', 'no tick recorded');
 
 const jobs = diag.json?.jobs;
 if (jobs?.lastRun) {

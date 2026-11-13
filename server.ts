@@ -178,7 +178,7 @@ import { passphraseMatches, bearerToken } from './src/utils/syncAuth.ts';
 import { createStore, getPacked, setPacked } from './server/store.ts';
 import { ARENA_MANAGER_MODEL, FUND_MANAGERS, parseFundArena, probabilityPicks, sentimentPicks, stepFundArena, type FundManagerId, type FundQuote } from './src/ai/fundArena.ts';
 import { arenaLiveBoard, emptyArenaLog, evaluateArenaLog, parseArenaLog, pendingArenaSymbols, recordArenaDay, type ArenaLog } from './src/ai/arena.ts';
-import { SERVERLESS, afterMs, everyMs, keepAlive } from './server/runtime.ts';
+import { CLOUD_RUN, SERVERLESS, STREAMS, afterMs, everyMs, keepAlive, streamEveryMs } from './server/runtime.ts';
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
 import { diagnosticsProbes, registerDiagnosticsRoute } from './server/diagnostics.ts';
@@ -423,7 +423,7 @@ async function ensureNewsFresh(): Promise<void> {
   if (!newsHub.initialized) await pollNews(true);
   else if (Date.now() - newsHub.lastPollAt >= FEED_INTERVAL_MS) {
     // Serverless (no background loop): answer with what the hub has, refresh behind the response
-    if (SERVERLESS) keepAlive(pollNews()).catch(() => {});
+    if (!STREAMS) keepAlive(pollNews()).catch(() => {});
     else await pollNews();
   }
 }
@@ -446,7 +446,7 @@ async function fetchNewsForAsset(asset: Asset): Promise<MarketNewsItem[]> {
 }
 
 // Background loop: keeps polling while browsers are connected or recently asked for news
-everyMs(() => {
+streamEveryMs(() => {
   const active =
     newsHub.clients.size > 0 || Date.now() - newsHub.lastDemandAt < NEWS_IDLE_AFTER_MS;
   if (active) pollNews().catch(() => {});
@@ -1118,7 +1118,7 @@ async function streamTick(): Promise<void> {
   }
 }
 
-everyMs(() => {
+streamEveryMs(() => {
   streamTick().catch(() => {});
 }, 1000);
 
@@ -1232,7 +1232,7 @@ function flushFinnhubTrades(): Record<string, PriceTick> {
   return out;
 }
 
-everyMs(() => {
+streamEveryMs(() => {
   if (finnhub.state === 'off') return;
   if (priceStream.clients.size === 0) {
     if (finnhub.ws && Date.now() - priceStream.lastDemandAt > 5 * 60_000) disconnectFinnhub();
@@ -2482,7 +2482,7 @@ async function runIdxSweep(): Promise<void> {
 }
 
 // Sweep in the background while someone looked at IDX data in the last 10 minutes
-everyMs(() => {
+streamEveryMs(() => {
   const now = Date.now();
   if (now - idxSweep.lastDemandAt > 10 * 60_000) return;
   const every = isExchangeOpen('IDX', now) ? IDX_SWEEP_OPEN_MS : IDX_SWEEP_CLOSED_MS;
@@ -3422,7 +3422,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
           if (pts.length) return pts;
           throw new Error('no observations');
         } catch (err) {
-          if (!fredId || SERVERLESS) throw err;
+          if (!fredId || (SERVERLESS && !CLOUD_RUN)) throw err;
           return parseFredCsv(await fetchFred(fredId));
         }
       },
@@ -3439,7 +3439,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     oecd('oecd-cpi-index', OECD_SERIES.cpiIndex, 'IDNCPIALLMINMEI'),
     oecd('oecd-gdp', OECD_SERIES.gdpYoy, 'IDNGDPRQPSMEI'),
     // Monthly reserves are IMF data (FRED, IMF block Vercel): FRED where it answers, else annual World Bank
-    SERVERLESS ? Promise.resolve([] as MacroPoint[]) : fred('TRESEGIDM052N'),
+    SERVERLESS && !CLOUD_RUN ? Promise.resolve([] as MacroPoint[]) : fred('TRESEGIDM052N'),
     oecd('oecd-trade', OECD_SERIES.tradeBalance, 'XTNTVA01IDM667S'),
     oecd('oecd-usdidr', OECD_SERIES.usdIdr, 'CCUSMA02IDM618N'),
     wb('FP.CPI.TOTL.ZG'),
@@ -3520,7 +3520,7 @@ async function computeIndonesiaMacro(): Promise<IndonesiaMacroPayload> {
     oecd('oecd-imports', OECD_SERIES.imports, 'XTIMVA01IDM667S'),
     oecd('oecd-current-account', OECD_SERIES.currentAccount, 'IDNB6BLTT02STSAQ'),
     oecd('oecd-reer', OECD_SERIES.reer, 'CCRETT01IDM661N'),
-    SERVERLESS ? Promise.resolve([] as MacroPoint[]) : fred('GGGDTAIDA188N'),
+    SERVERLESS && !CLOUD_RUN ? Promise.resolve([] as MacroPoint[]) : fred('GGGDTAIDA188N'),
     stats('bis-credit', bisUrl(BIS_SERIES.privateCredit, '2014'), 'CRDQIDAPABIS'),
     stats('bis-property', bisUrl(BIS_SERIES.housePrices, '2014'), 'QIDN628BIS'),
     oecd('oecd-confidence', OECD_SERIES.confidence, 'CSCICP03IDM665S'),
@@ -4935,8 +4935,8 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
 
 // ---- Cron tick (serverless): alerts, daily jobs and the long scans in deadline-bound steps ----------
 
-/** Work time of one tick (hourly; kept short so the background work fits Vercel Hobby's 4 CPU-hours a month). */
-const TICK_BUDGET_MS = 90_000;
+/** Work time of one tick (hourly). A ceiling: once the scans have caught up a tick ends early. Cloud Run timeout and Scheduler deadline are 10 min. */
+const TICK_BUDGET_MS = 300_000;
 const crossPersist: CrossPersist = { get: (k) => getPacked(store, k), set: (k, v) => setPacked(store, k, v) };
 const tickState = { running: null as Promise<Record<string, unknown>> | null };
 
@@ -6036,8 +6036,8 @@ export async function createApp(): Promise<express.Express> {
 
   // 9. Live news stream (Server-Sent Events): a snapshot first, then every new headline
   app.get('/api/market/news-stream', async (req, res) => {
-    // Serverless: no long-lived responses; 204 tells EventSource not to reconnect (the client polls)
-    if (SERVERLESS) {
+    // No long-lived responses on Vercel; 204 tells EventSource not to reconnect (the client polls)
+    if (!STREAMS) {
       res.status(204).end();
       return;
     }
@@ -6073,7 +6073,7 @@ export async function createApp(): Promise<express.Express> {
 
   // 9b. Live price stream (Server-Sent Events): a snapshot first, then only the changed quotes
   app.get('/api/market/price-stream', async (req, res) => {
-    if (SERVERLESS) {
+    if (!STREAMS) {
       res.status(204).end();
       return;
     }

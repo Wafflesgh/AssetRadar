@@ -5,7 +5,7 @@ description: Health report of the live AssetRadar app for the owner. Use when th
 
 # Status check (AssetRadar)
 
-Run the report against the live app (Vercel), wait for it (up to ~5 min when the macro page is cold):
+Run the report against the live app (Cloud Run), wait for it (up to ~5 min when the macro page is cold):
 
 ```bash
 node scripts/status-check.mjs
@@ -23,7 +23,7 @@ machine-readable version, or pass another base URL (e.g. `http://localhost:3000`
    - **Data terbaru** — prices per market (open/closed and how recent), news, Indonesia macro (failed / empty /
      "older than usual" indicators — slow official releases such as annual reserves are normal), sentiment
      scans, screener, IDX calendar, SBN, Binance, monthly commodities.
-   - **Fitur & tugas otomatis** — the 10-minute tick, daily jobs (morning brief ≥07:30 WIB; forward test
+   - **Fitur & tugas otomatis** — the hourly tick, daily jobs (morning brief ≥07:30 WIB; forward test
      weekdays ≥16:15 WIB; analyst ≥16:15 WIB), AI forward test / model arena counts, optional features on/off.
 3. For every WARN/FAIL: what it means in plain words and the next step (and offer to fix it). Closed markets
    (US stocks at night WIB, weekends) having older prices is normal, not a problem.
