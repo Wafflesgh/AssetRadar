@@ -34,8 +34,8 @@ import {
   type StapleSummary,
 } from '../utils/staples.ts';
 
-type Range = 'm1' | 'm3' | 'y1';
-const RANGE_DAYS: Record<Range, number> = { m1: 31, m3: 92, y1: 366 };
+type Range = 'm1' | 'm3' | 'y1' | 'y3';
+const RANGE_DAYS: Record<Range, number> = { m1: 31, m3: 92, y1: 366, y3: 3 * 366 };
 
 const DAY = (date: string, withYear = true) =>
   new Intl.DateTimeFormat(getLang() === 'id' ? 'id-ID' : 'en-GB', { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}), timeZone: 'UTC' }).format(
@@ -567,7 +567,7 @@ export function KitchenRadarView() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex gap-1" role="group" aria-label={t('kitchen.rangeLabel')}>
-              {(['m1', 'm3', 'y1'] as const).map((r) => (
+              {(['m1', 'm3', 'y1', 'y3'] as const).map((r) => (
                 <button key={r} type="button" onClick={() => setRange(r)} aria-pressed={range === r} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={chip(range === r)}>
                   {t(`kitchen.${r}`)}
                 </button>

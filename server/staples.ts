@@ -19,7 +19,7 @@ const STORE_KEY = 'staples:data';
 const REFRESH_MS = 6 * 3600_000;
 const RECENT_DAYS = 21;
 const CHUNK_DAYS = 60;
-const HISTORY_DAYS = 365;
+const HISTORY_DAYS = 3 * 365;
 const NEWS_MS = 30 * 60_000;
 const NEWS_QUERY =
   '"harga beras" OR "harga cabai" OR "harga bawang" OR "harga telur" OR "harga minyak goreng" OR "harga gula" OR "harga daging" OR "harga pangan" when:3d';
@@ -91,6 +91,9 @@ async function load(store: KvStore): Promise<Map<string, StapleItem>> {
   if (state.items) return state.items;
   const saved = await getPacked<StapleItem[]>(store, STORE_KEY).catch(() => null);
   state.items = new Map((saved ?? []).map((i) => [i.id, i]));
+  // History used to stop at 1 year: items saved as complete before the 3-year window reopen their backfill
+  const target = addDays(todayWib(), -HISTORY_DAYS + 5);
+  for (const i of state.items.values()) if (i.backfilled && i.points.length && i.points[0][0] > target) i.backfilled = false;
   for (const s of STAPLES) if (!state.items.has(s.id)) state.items.set(s.id, { id: s.id, points: [], provinces: [], updatedAt: 0, backfilled: false });
   return state.items;
 }
