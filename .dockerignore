@@ -1,0 +1,10 @@
+# .dockerignore — keeps local files, secrets and build output out of the Cloud Run image
+node_modules
+dist
+.env*
+!.env.example
+.git
+.vercel
+backups
+.codebase-memory
+*.log

@@ -5041,9 +5041,10 @@ export async function createApp(): Promise<express.Express> {
     res.json({ history: serverAlerts.history, active: serverAlerts.active, ready: serverAlertsReady() });
   });
 
-  // Serverless scheduler (Supabase pg_cron every 10 minutes): alerts, daily jobs and one step of the
-  // long scans. Answers at once (202); the work goes on in the background up to the function's limit.
-  app.post('/api/cron/tick', (req, res) => {
+  // Serverless scheduler (hourly: Cloud Scheduler on Cloud Run, Supabase pg_cron on Vercel): alerts,
+  // daily jobs and one step of the long scans. Vercel answers at once (202) and finishes in waitUntil;
+  // Cloud Run gives CPU only while a request is open, so there the response waits for the work.
+  app.post('/api/cron/tick', async (req, res) => {
     if (!cronAuthorized(req, res)) return;
     if (tickState.running) {
       res.status(202).json({ ok: true, running: true });
@@ -5052,8 +5053,16 @@ export async function createApp(): Promise<express.Express> {
     tickState.running = runTick().finally(() => {
       tickState.running = null;
     });
-    keepAlive(tickState.running).catch((err) => console.warn('[Tick] failed:', err instanceof Error ? err.message : err));
-    res.status(202).json({ ok: true, started: Date.now() });
+    if (process.env.VERCEL) {
+      keepAlive(tickState.running).catch((err) => console.warn('[Tick] failed:', err instanceof Error ? err.message : err));
+      res.status(202).json({ ok: true, started: Date.now() });
+      return;
+    }
+    try {
+      res.json({ ok: true, result: await tickState.running });
+    } catch (err) {
+      res.status(502).json({ ok: false, error: err instanceof Error ? err.message : 'Tick failed' });
+    }
   });
 
   // What the last tick did (no secrets: counts, statuses and short error texts)
@@ -6149,7 +6158,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AssetRadar server listening on http://localhost:${PORT} (host: ${hostingFrom(process.env).host})`);
     // Warm up the AI outlook so the first visitor does not wait for 10 years of data
-    setTimeout(() => getAiOutlook(20).catch((err) => console.warn('[AI] warm-up failed:', err)), 3000);
+    afterMs(() => getAiOutlook(20).catch((err) => console.warn('[AI] warm-up failed:', err)), 3000);
     // Always-on hosts (Railway) run the daily jobs from a timer; the cron endpoint stays as a backup
     if (internalSchedulerOn(process.env)) {
       console.log('[Jobs] internal scheduler on (checks every 5 minutes)');
@@ -6159,5 +6168,5 @@ async function startServer() {
   });
 }
 
-// On a serverless host the function imports createApp() instead (server/vercelEntry.ts)
-if (!SERVERLESS) startServer();
+// Vercel imports createApp() instead (server/vercelEntry.ts); Cloud Run listens here in serverless mode
+if (!process.env.VERCEL) startServer();
