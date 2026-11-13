@@ -143,15 +143,18 @@ const round = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
 const chgOf = (r: ScreenerRow, p: RotationPeriod) => (p === 'd1' ? r.chg1d : r.chg1w);
 const finite = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
 
+// Watchlist-board stocks (special notation, often after a reverse split) carry stale share counts, so a Rp1→Rp32 jump would swing a whole sector
+const weightOf = (r: ScreenerRow) => (r.board !== 'Watchlist' && finite(r.marketCap) && r.marketCap > 0 ? r.marketCap : 0);
+
 /** Cap-weighted change of a set of rows. */
 function capWeightedChange(rows: ScreenerRow[], p: RotationPeriod): number | null {
   let w = 0;
   let s = 0;
   for (const r of rows) {
     const c = chgOf(r, p);
-    if (finite(c) && finite(r.marketCap) && r.marketCap > 0) {
-      w += r.marketCap;
-      s += r.marketCap * c;
+    if (finite(c) && weightOf(r) > 0) {
+      w += weightOf(r);
+      s += weightOf(r) * c;
     }
   }
   return w > 0 ? s / w : null;
@@ -176,7 +179,7 @@ function periodStats(rows: ScreenerRow[], p: RotationPeriod, market: number | nu
     let best = 0;
     for (const r of withChg) {
       const c = chgOf(r, p) as number;
-      const contrib = (finite(r.marketCap) ? r.marketCap : 0) * c * dir;
+      const contrib = weightOf(r) * c * dir;
       if (Math.sign(c) === dir && contrib > best) {
         best = contrib;
         leader = mover(r, p);

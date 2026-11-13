@@ -92,3 +92,10 @@ test('lastChangePct', () => {
   assert.equal(lastChangePct([{ value: 100 }, { value: 104 }]), 4);
   assert.equal(lastChangePct([{ value: 100 }]), null);
 });
+
+test('Watchlist-board stocks do not weigh on the cap-weighted change', () => {
+  const rows = [row('AAA', 'Energy', 0, 2, 1e12), { ...row('ZZZ', 'Energy', 0, 357, 30e12), board: 'Watchlist' }];
+  const e = computeSectorRotation(rows, noDrivers, '2026-11-13').sectors[0];
+  assert.equal(e.w1.capWeighted, 2);
+  assert.equal(e.w1.equalWeighted, 179.5);
+});
