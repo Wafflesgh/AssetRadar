@@ -212,7 +212,8 @@ import {
   type TraceLabel,
 } from './src/ai/recommendationTrace.ts';
 import { registerSbnRoute } from './server/sbn.ts';
-import { registerStaplesRoute, staplesStep } from './server/staples.ts';
+import { STAPLES } from './src/utils/staples.ts';
+import { registerStaplesRoute, stapleWeekChanges, staplesStep } from './server/staples.ts';
 import { addToIdxStats, IDX_TRACE_MAX_CALLS, idxStatsSummaries, idxTraceDay, parseIdxStats } from './src/ai/idxTrace.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
@@ -4914,7 +4915,23 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
   const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
   const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
   const lang = await pushLang(store).catch(() => 'en' as const);
+  const stapleWeek = list.some((a) => a.kind === 'stapleMove') ? await stapleWeekChanges(store).catch(() => ({}) as Record<string, number>) : {};
   for (const alert of list) {
+    if (alert.kind === 'stapleMove') {
+      const def = STAPLES.find((s) => s.id === alert.symbol);
+      const { fire, state } = evaluateAlert(alert, serverAlerts.states[alert.id] ?? {}, {
+        now,
+        changePct24h: alert.symbol ? stapleWeek[alert.symbol] : undefined,
+        name: def ? translate(lang, `kitchen.item.${def.key}` as TranslationKey) : alert.symbol,
+        lang,
+      });
+      if (JSON.stringify(state) !== JSON.stringify(serverAlerts.states[alert.id] ?? {})) {
+        serverAlerts.states[alert.id] = state;
+        serverAlerts.statesDirty = true;
+      }
+      if (fire) await deliverServerAlert(alert, { ...fire, url: '#/kitchen' }, now);
+      continue;
+    }
     const asset = alert.symbol ? getAssetBySymbol(alert.symbol) : undefined;
     const tick = alert.symbol ? ticks[alert.symbol] : undefined;
     const usable = tick && tick.status !== 'error' && Number.isFinite(tick.price);

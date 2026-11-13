@@ -10,7 +10,7 @@ import type { CalendarEvent } from './corporateCalendar.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
 import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
-export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo';
+export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo' | 'stapleMove';
 
 /** English labels (also the list of valid kinds); the UI uses alertKindLabel() for the chosen language. */
 export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
@@ -20,6 +20,7 @@ export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   calendar: 'Ex-dividend / earnings tomorrow',
   news: 'New headline',
   geo: 'Geopolitical alert (high)',
+  stapleMove: 'Staple food weekly move',
 };
 
 export function alertKindLabel(kind: AlertKind, lang: AppLang = 'en'): string {
@@ -29,9 +30,9 @@ export function alertKindLabel(kind: AlertKind, lang: AppLang = 'en'): string {
 export interface UserAlert {
   id: string;
   kind: AlertKind;
-  /** Asset symbol (not used by 'geo'). */
+  /** Asset symbol (not used by 'geo'); a staple id (e.g. "rice-medium") for 'stapleMove'. */
   symbol?: string;
-  /** Price level for priceAbove/priceBelow, percent for dailyMove. */
+  /** Price level for priceAbove/priceBelow, percent for dailyMove and stapleMove. */
   value?: number;
   /** false = fire once, then switch off. */
   repeat: boolean;
@@ -57,6 +58,7 @@ export interface AlertState {
 export interface AlertContext {
   now: number;
   price?: number;
+  /** % change over 24 h; for stapleMove the 1-week change of the staple's national price. */
   changePct24h?: number;
   /** Corporate events of the alert's stock (or of the watched stocks for holdings alerts). */
   events?: CalendarEvent[];
@@ -87,7 +89,7 @@ export function validateAlert(a: Partial<UserAlert>, lang: AppLang = 'en'): stri
   if (!a.kind || !(a.kind in ALERT_KIND_LABELS)) e('alerts.err.kind');
   if (a.kind !== 'geo' && !a.symbol) e('alerts.err.asset');
   if ((a.kind === 'priceAbove' || a.kind === 'priceBelow') && !(typeof a.value === 'number' && a.value > 0)) e('alerts.err.price');
-  if (a.kind === 'dailyMove' && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) e('alerts.err.move');
+  if ((a.kind === 'dailyMove' || a.kind === 'stapleMove') && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) e('alerts.err.move');
   return errors;
 }
 
@@ -147,7 +149,9 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       }
       break;
     }
-    case 'dailyMove': {
+    case 'dailyMove':
+    case 'stapleMove': {
+      const staple = alert.kind === 'stapleMove';
       const chg = ctx.changePct24h;
       if (chg === undefined || !Number.isFinite(chg) || alert.value === undefined) return { fire: null, state };
       const beyond = Math.abs(chg) >= alert.value;
@@ -156,9 +160,9 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       else if (armed && cooledDown(alert, state, ctx.now)) {
         next.armed = false;
         fire = {
-          title: tx(chg >= 0 ? 'alerts.fire.up' : 'alerts.fire.down', { name, pct: Math.abs(chg).toFixed(2) }),
+          title: tx(staple ? (chg >= 0 ? 'alerts.fire.stapleUp' : 'alerts.fire.stapleDown') : chg >= 0 ? 'alerts.fire.up' : 'alerts.fire.down', { name, pct: Math.abs(chg).toFixed(staple ? 1 : 2) }),
           body:
-            tx('alerts.fire.moveBody', { value: alert.value }) + (ctx.price !== undefined ? ` ${tx('alerts.fire.price', { price: fmt(ctx.price) })}` : ''),
+            tx(staple ? 'alerts.fire.stapleBody' : 'alerts.fire.moveBody', { value: alert.value }) + (ctx.price !== undefined ? ` ${tx('alerts.fire.price', { price: fmt(ctx.price) })}` : ''),
         };
       }
       break;

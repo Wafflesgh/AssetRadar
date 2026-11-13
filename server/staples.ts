@@ -13,7 +13,7 @@ import { getPacked, setPacked, type KvStore } from './store.ts';
 import { keepAlive } from './runtime.ts';
 import { parseRssItems } from '../src/utils/sentiment.ts';
 import { parseOni, type EnsoReading } from '../src/utils/stapleDrivers.ts';
-import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, type StapleItem, type StaplesPayload } from '../src/utils/staples.ts';
+import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, stapleSummary, type StapleItem, type StaplesPayload } from '../src/utils/staples.ts';
 
 const STORE_KEY = 'staples:data';
 const REFRESH_MS = 6 * 3600_000;
@@ -223,4 +223,15 @@ export function registerStaplesRoute(app: Express, store: KvStore): void {
       res.status(502).json({ error: 'Staple prices unavailable' });
     }
   });
+}
+
+/** 1-week % change of each staple's national price (for staple alerts); loads the saved data once. */
+export async function stapleWeekChanges(store: KvStore): Promise<Record<string, number>> {
+  const items = await load(store);
+  const out: Record<string, number> = {};
+  for (const [id, item] of items) {
+    const w1 = stapleSummary(item).change.w1;
+    if (w1 !== null) out[id] = w1;
+  }
+  return out;
 }

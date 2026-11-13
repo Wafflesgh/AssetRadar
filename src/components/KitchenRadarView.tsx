@@ -12,7 +12,9 @@
  */
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
+import { Bell, BellRing, ChevronDown, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
+import { getMyProvince, saveMyProvince } from '../utils/storage.ts';
+import { loadAlerts, newAlertId, storeAlerts } from '../services/alertService.ts';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchIndonesiaMacro, fetchStaples } from '../services/marketDataService.ts';
 import { activeChain, readDrivers, STAPLE_FACTORS, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
@@ -48,6 +50,31 @@ function Change({ value, label }: { value: number | null; label: string }) {
       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
       {value === null ? '—' : `${value > 0 ? '+' : ''}${formatNumber(value, 1)}%`}
     </span>
+  );
+}
+
+const STAPLE_ALERT_PCT = 10;
+
+/** One-tap alert: a phone notification when this staple's national price moves ≥10% in a week. */
+function StapleAlertToggle({ id }: { id: string }) {
+  const t = useT();
+  const [on, setOn] = useState(() => loadAlerts().some((a) => a.kind === 'stapleMove' && a.symbol === id && a.active));
+  const toggle = () => {
+    const list = loadAlerts();
+    if (on) storeAlerts(list.filter((a) => !(a.kind === 'stapleMove' && a.symbol === id)));
+    else
+      storeAlerts([
+        ...list,
+        { id: newAlertId(), kind: 'stapleMove', symbol: id, value: STAPLE_ALERT_PCT, repeat: true, cooldownMin: 24 * 60, active: true, createdAt: Date.now() },
+      ]);
+    setOn(!on);
+  };
+  const Icon = on ? BellRing : Bell;
+  return (
+    <button type="button" onClick={toggle} aria-pressed={on} title={t('kitchen.alertHelp')} className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: on ? 'var(--accent-radar)' : 'var(--text-secondary)' }}>
+      <Icon size={13} aria-hidden="true" />
+      {t(on ? 'kitchen.alertOn' : 'kitchen.alertOff', { value: STAPLE_ALERT_PCT })}
+    </button>
   );
 }
 
@@ -224,7 +251,7 @@ function WhySection({ item, inputs, policy }: { item: StapleItem; inputs: Driver
   );
 }
 
-function StapleCard({ item, range, inputs, policy }: { item: StapleItem; range: Range; inputs: DriverInputs; policy: PolicyNews | null }) {
+function StapleCard({ item, range, inputs, policy, myProvince }: { item: StapleItem; range: Range; inputs: DriverInputs; policy: PolicyNews | null; myProvince: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const def = STAPLES.find((s) => s.id === item.id)!;
@@ -257,6 +284,17 @@ function StapleCard({ item, range, inputs, policy }: { item: StapleItem; range: 
         <Change value={s.change.m3} label={t('kitchen.m3')} />
         <Change value={s.change.y1} label={t('kitchen.y1')} />
       </div>
+      {(() => {
+        const mine = myProvince ? item.provinces.find((p) => p.name === myProvince) : undefined;
+        if (!mine || !s.latest) return null;
+        const gap = ((mine.price - s.latest[1]) / s.latest[1]) * 100;
+        return (
+          <p className="text-xs font-mono-num">
+            {t('kitchen.myProvinceRow', { province: mine.name, price: formatRupiah(mine.price, 0), gap: `${gap > 0 ? '+' : ''}${formatNumber(gap, 1)}%` })}
+          </p>
+        );
+      })()}
+      <StapleAlertToggle id={item.id} />
       {chart.length >= 2 ? (
         <div className="h-28">
           <ResponsiveContainer width="100%" height="100%">
@@ -396,6 +434,7 @@ export function KitchenRadarView() {
   const [cat, setCat] = useState<StapleCategory | 'all'>('all');
   const [range, setRange] = useState<Range>('m3');
   const [allVarieties, setAllVarieties] = useState(false);
+  const [myProvince, setMyProvince] = useState(getMyProvince);
   // Rupiah, yuan, world rice / palm oil and oil prices for the price drivers (best effort)
   const [macroSeries, setMacroSeries] = useState<DriverInputs['series']>({});
   useEffect(() => {
@@ -534,6 +573,25 @@ export function KitchenRadarView() {
                 </button>
               ))}
             </div>
+            <label className="flex items-center gap-2 text-xs">
+              {t('kitchen.myProvince')}
+              <select
+                value={myProvince}
+                onChange={(e) => {
+                  setMyProvince(e.target.value);
+                  saveMyProvince(e.target.value);
+                }}
+                className="px-2 py-1 rounded-md border text-xs"
+                style={{ backgroundColor: 'var(--bg-surface-subtle)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+              >
+                <option value="">{t('kitchen.myProvinceNone')}</option>
+                {[...new Set(items.flatMap((i) => i.provinces.map((p) => p.name)))].sort().map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
             {cat === 'all' && (
               <label className="flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={allVarieties} onChange={(e) => setAllVarieties(e.target.checked)} />
@@ -544,7 +602,7 @@ export function KitchenRadarView() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shown.map((i) => (
-              <StapleCard key={i.id} item={i} range={range} inputs={inputs} policy={data.policyNews ?? null} />
+              <StapleCard key={i.id} item={i} range={range} inputs={inputs} policy={data.policyNews ?? null} myProvince={myProvince} />
             ))}
           </div>
 

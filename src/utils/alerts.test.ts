@@ -76,6 +76,13 @@ test('daily move fires once until the move falls back under the threshold', () =
   assert.deepEqual(fires, [false, true, false, false, true]);
 });
 
+test('staple move uses the weekly wording and re-arms like the daily move', () => {
+  const alert = base({ kind: 'stapleMove', symbol: 'chili-red', value: 10, repeat: true });
+  const r = evaluateAlert(alert, {}, { now: T0, changePct24h: 12.3, name: 'Chili' });
+  assert.equal(r.fire?.title, 'Chili up 12.3% this week');
+  assert.equal(evaluateAlert(alert, r.state, { now: T0 + 86_400_000, changePct24h: 13 }).fire, null);
+});
+
 test('calendar: ex-dividend and earnings tomorrow in WIB, each event once', () => {
   const events: CalendarEvent[] = [
     { symbol: 'BBCA.JK', type: 'exDividend', date: '2026-10-21', amount: 50 },

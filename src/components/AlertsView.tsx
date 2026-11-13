@@ -30,6 +30,7 @@ import { AlertEditor } from './AlertEditor.tsx';
 import { dateLocale, t as tr, useLang, useT, type AppLang, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { assetShortName } from '../i18n/assetNames.ts';
+import { STAPLES } from '../utils/staples.ts';
 
 const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
 const muted = { color: 'var(--text-secondary)' };
@@ -49,6 +50,10 @@ function describe(a: UserAlert, lang: AppLang): string {
       return tr('alerts.v.descNews', { name });
     case 'geo':
       return alertKindLabel('geo', lang);
+    case 'stapleMove': {
+      const def = STAPLES.find((s) => s.id === a.symbol);
+      return tr('alerts.v.descStaple', { name: def ? tr(`kitchen.item.${def.key}` as TranslationKey) : name, value: a.value ?? '' });
+    }
   }
 }
 
@@ -252,9 +257,12 @@ export function AlertsView({ ticks, onSelectAsset }: { ticks: Record<string, Pri
                   <button type="button" onClick={() => update(alerts.map((x) => (x.id === a.id ? { ...x, active: !x.active } : x)))} className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--border-subtle)' }}>
                     {a.active ? t('alerts.v.pause') : t('alerts.v.turnOn')}
                   </button>
-                  <button type="button" onClick={() => setEditing(a)} aria-label={t('alerts.v.edit')} className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Staple alerts are set on the Kitchen Radar page; the editor here only knows assets */}
+                  {a.kind !== 'stapleMove' && (
+                    <button type="button" onClick={() => setEditing(a)} aria-label={t('alerts.v.edit')} className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button type="button" onClick={() => update(alerts.filter((x) => x.id !== a.id))} aria-label={t('alerts.v.delete')} className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--color-down)' }}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

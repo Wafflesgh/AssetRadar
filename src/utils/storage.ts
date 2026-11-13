@@ -113,6 +113,16 @@ export function saveStartInTerminal(enabled: boolean): void {
 }
 
 /** Desktop sidebar collapsed to icons (wider view, e.g. in the Terminal). */
+/** Province picked on the Kitchen Radar page (empty = national average only). */
+export function getMyProvince(): string {
+  return safeGet('assetradar_my_province_v1') ?? '';
+}
+
+export function saveMyProvince(name: string): void {
+  if (name) safeSet('assetradar_my_province_v1', name);
+  else safeRemove('assetradar_my_province_v1');
+}
+
 export function getSidebarCollapsed(): boolean {
   return safeGet(STORAGE_KEYS.SIDEBAR_COLLAPSED) === '1';
 }

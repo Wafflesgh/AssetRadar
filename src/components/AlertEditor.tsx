@@ -83,7 +83,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
             {t('alerts.ed.type')}
           </span>
           <select value={kind} onChange={(e) => setKind(e.target.value as AlertKind)} className="w-full px-3 py-2 rounded-lg border" style={inputStyle}>
-            {(Object.keys(ALERT_KIND_LABELS) as AlertKind[]).map((k) => (
+            {(Object.keys(ALERT_KIND_LABELS) as AlertKind[]).filter((k) => k !== 'stapleMove' || kind === k).map((k) => (
               <option key={k} value={k}>
                 {alertKindLabel(k, lang)}
               </option>
