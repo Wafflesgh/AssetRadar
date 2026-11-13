@@ -81,3 +81,26 @@ test('picks follow conviction and the board ranks by value', () => {
   assert.equal(s.startDate, '2026-10-30');
   assert.equal(parseFundArena({ version: 2 }), null);
 });
+
+test('long-horizon managers hold their picks until their period ends', () => {
+  const q = (a: number) => ({ A: { price: a, idr: false }, B: { price: 50, idr: false } });
+  let s = stepFundArena(null, { date: '2026-11-02', usdIdr: 16000, quotes: q(10), picks: { sentLong: ['A'], sentShort: ['A'] }, benchmark: 'jci' });
+  // A week later both switch to B: the short manager trades, the long one only follows A's price
+  s = stepFundArena(s, { date: '2026-11-09', usdIdr: 16000, quotes: q(12), picks: { sentLong: ['B'], sentShort: ['B'] }, benchmark: 'jci' });
+  assert.deepEqual(s.managers.sentShort.positions.map((p) => p.symbol), ['B']);
+  assert.deepEqual(s.managers.sentLong.positions.map((p) => p.symbol), ['A']);
+  near(s.managers.sentLong.positions[0].value, FUND_START_USD * (1 - FUND_COST) * 1.2);
+  assert.equal(s.managers.sentLong.rebalancedAt, '2026-11-02');
+  // 30 days after its last rebalance the long manager moves too
+  s = stepFundArena(s, { date: '2026-12-02', usdIdr: 16000, quotes: q(12), picks: { sentLong: ['B'], sentShort: ['B'] }, benchmark: 'jci' });
+  assert.deepEqual(s.managers.sentLong.positions.map((p) => p.symbol), ['B']);
+});
+
+test('the S&P 500 yardstick can start from the arena first day', () => {
+  const s = stepFundArena(
+    { ...stepFundArena(null, { date: '2026-10-30', usdIdr: 16000, quotes: {}, picks: {}, benchmark: 'jci' }) },
+    { date: '2026-11-13', usdIdr: 16000, quotes: { SPX: { price: 110, idr: false } }, picks: {}, benchmark: 'jci', benchmarkUs: 'SPX', benchmarkUsStart: { date: '2026-10-30', price: 100, fx: 16000 } }
+  );
+  assert.deepEqual(s.benchmarkUs!.history.map(([d]) => d), ['2026-10-30', '2026-11-13']);
+  near(s.benchmarkUs!.history[1][1], 110);
+});

@@ -1,8 +1,9 @@
 /**
  * fundArena.ts — AI Fund Arena: ten simulated fund managers, one per model the app already has
  * (sentiment short/medium/long, the AI Advisor verdict, and six arena models), each starting with
- * US$100 of pretend money. Every day after the evening job each manager holds an equal-weight
- * portfolio of up to FUND_PICKS assets it believes will rise (or cash when it believes in none),
+ * US$100 of pretend money. After the evening job each manager holds an equal-weight portfolio of
+ * up to FUND_PICKS assets it believes will rise (or cash when it believes in none), rebalanced as
+ * often as its forecast horizon (FUND_HOLD_DAYS) and only marked to market in between,
  * pays FUND_COST on every trade, and is marked to market with the day's prices. Values are in US
  * dollars: Rupiah-priced assets are converted with USD/IDR; other quote currencies are taken as
  * their local return (foreign exchange of non-US markets is not modelled). Pure helpers only; the
@@ -30,6 +31,20 @@ export const FUND_MANAGERS = [
   'ensemble',
 ] as const;
 export type FundManagerId = (typeof FUND_MANAGERS)[number];
+
+/** Days between rebalances: a long-horizon call is held, not re-traded every evening. */
+export const FUND_HOLD_DAYS: Record<FundManagerId, number> = {
+  sentShort: 1,
+  sentMedium: 7,
+  sentLong: 30,
+  advisor: 30,
+  logistic: 1,
+  naiveBayes: 1,
+  trend: 1,
+  momentum: 1,
+  meanReversion: 1,
+  ensemble: 1,
+};
 
 /** Arena model behind each arena manager. */
 export const ARENA_MANAGER_MODEL: Partial<Record<FundManagerId, string>> = {
@@ -66,6 +81,14 @@ export interface FundManager {
   history: Array<[string, number]>;
   /** Most recent trades (newest last). */
   trades: FundTrade[];
+  /** Day of the last rebalance (missing in states saved before holding periods). */
+  rebalancedAt?: string;
+}
+
+interface FundBenchmark {
+  symbol: string;
+  position: FundPosition | null;
+  history: Array<[string, number]>;
 }
 
 export interface FundArenaState {
@@ -74,7 +97,9 @@ export interface FundArenaState {
   lastDate: string;
   managers: Record<FundManagerId, FundManager>;
   /** Buy and hold of the IDX Composite with the same US$100 (a yardstick, not a manager). */
-  benchmark: { symbol: string; position: FundPosition | null; history: Array<[string, number]> };
+  benchmark: FundBenchmark;
+  /** Buy and hold of the S&P 500 (many managers hold US and world assets). Missing in older states. */
+  benchmarkUs?: FundBenchmark;
 }
 
 /** A price for the day: quote currency decides whether the dollar conversion applies. */
@@ -127,13 +152,45 @@ export function rebalanceManager(
   });
   const cash = wanted.length ? 0 : net;
   const history = [...m.history.filter(([d]) => d !== date), [date, cash + positions.reduce((a, p) => a + p.value, 0)] as [string, number]];
-  return { cash, positions, history, trades: [...m.trades, ...trades].slice(-KEEP_TRADES) };
+  return { cash, positions, history, trades: [...m.trades, ...trades].slice(-KEEP_TRADES), rebalancedAt: date };
+}
+
+/** Holding day: positions only follow the prices. */
+export function markManager(m: FundManager, date: string, quotes: Record<string, FundQuote>, usdIdr: number): FundManager {
+  const positions = m.positions.map((p) => markPosition(p, quotes[p.symbol], usdIdr));
+  const history = [...m.history.filter(([d]) => d !== date), [date, managerValue({ cash: m.cash, positions })] as [string, number]];
+  return { ...m, positions, history };
+}
+
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+
+/** Buy on the first priced day (or at `start` on that earlier day), then only mark. */
+function stepBenchmark(b: FundBenchmark, date: string, quotes: Record<string, FundQuote>, usdIdr: number, start?: { date: string; price: number; fx: number }): FundBenchmark {
+  const q = quotes[b.symbol];
+  let position = b.position;
+  let history = b.history;
+  if (!position && start && start.price > 0) {
+    position = { symbol: b.symbol, value: FUND_START_USD, price: start.price, fx: start.fx, since: start.date };
+    history = [[start.date, FUND_START_USD]];
+  }
+  if (position) position = markPosition(position, q, usdIdr);
+  else if (q?.price > 0) position = { symbol: b.symbol, value: FUND_START_USD, price: q.price, fx: usdIdr, since: date };
+  return { ...b, position, history: position ? [...history.filter(([d]) => d !== date), [date, position.value] as [string, number]] : history };
 }
 
 /** One day of the arena: every manager rebalances to its picks; the benchmark is marked. */
 export function stepFundArena(
   state: FundArenaState | null,
-  input: { date: string; usdIdr: number; quotes: Record<string, FundQuote>; picks: Partial<Record<FundManagerId, string[]>>; benchmark: string }
+  input: {
+    date: string;
+    usdIdr: number;
+    quotes: Record<string, FundQuote>;
+    picks: Partial<Record<FundManagerId, string[]>>;
+    benchmark: string;
+    benchmarkUs?: string;
+    /** Price of `benchmarkUs` on the arena's start day, so both yardsticks start together. */
+    benchmarkUsStart?: { date: string; price: number; fx: number };
+  }
 ): FundArenaState {
   const { date, usdIdr, quotes } = input;
   const base: FundArenaState = state ?? {
@@ -144,14 +201,15 @@ export function stepFundArena(
     benchmark: { symbol: input.benchmark, position: null, history: [] },
   };
   const managers = { ...base.managers };
-  for (const id of FUND_MANAGERS) managers[id] = rebalanceManager(managers[id] ?? newManager(date), date, input.picks[id] ?? [], quotes, usdIdr);
-  // Benchmark: buy on the first day it has a price, then only mark
-  const bq = quotes[base.benchmark.symbol];
-  let position = base.benchmark.position;
-  if (position) position = markPosition(position, bq, usdIdr);
-  else if (bq?.price > 0) position = { symbol: base.benchmark.symbol, value: FUND_START_USD, price: bq.price, fx: usdIdr, since: date };
-  const benchHistory = position ? [...base.benchmark.history.filter(([d]) => d !== date), [date, position.value] as [string, number]] : base.benchmark.history;
-  return { ...base, lastDate: date, managers, benchmark: { ...base.benchmark, position, history: benchHistory } };
+  for (const id of FUND_MANAGERS) {
+    const m = managers[id] ?? newManager(date);
+    const due = !m.rebalancedAt || daysBetween(m.rebalancedAt, date) >= FUND_HOLD_DAYS[id];
+    managers[id] = due ? rebalanceManager(m, date, input.picks[id] ?? [], quotes, usdIdr) : markManager(m, date, quotes, usdIdr);
+  }
+  const benchmark = stepBenchmark(base.benchmark, date, quotes, usdIdr);
+  const us = base.benchmarkUs ?? (input.benchmarkUs ? { symbol: input.benchmarkUs, position: null, history: [] } : undefined);
+  const benchmarkUs = us && stepBenchmark(us, date, quotes, usdIdr, base.benchmarkUs ? undefined : input.benchmarkUsStart);
+  return { ...base, lastDate: date, managers, benchmark, ...(benchmarkUs ? { benchmarkUs } : {}) };
 }
 
 // ---- Picks ------------------------------------------------------------------------------------

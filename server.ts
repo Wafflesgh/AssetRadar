@@ -4214,7 +4214,14 @@ async function runFundArenaDay(): Promise<{ date: string; managers: Record<strin
     }
   }
   const before = parseFundArena(await store.get(FUNDARENA_KEY));
-  const next = stepFundArena(before, { date, usdIdr, quotes, picks, benchmark: '^JKSE' });
+  // The S&P 500 yardstick came later: start it from the arena's first-day snapshot
+  let benchmarkUsStart: { date: string; price: number; fx: number } | undefined;
+  if (before && !before.benchmarkUs) {
+    const first = parseSnapshot(await store.get(`${SNAP_PREFIX}${before.startDate}`).catch(() => null));
+    const p = first?.assets['^GSPC']?.p;
+    if (p && p > 0) benchmarkUsStart = { date: before.startDate, price: p, fx: first.assets['USD/IDR']?.p ?? usdIdr };
+  }
+  const next = stepFundArena(before, { date, usdIdr, quotes, picks, benchmark: '^JKSE', benchmarkUs: '^GSPC', benchmarkUsStart });
   await store.set(FUNDARENA_KEY, next);
   fundArenaCache = null;
   await markJobDone('fundArena', date);

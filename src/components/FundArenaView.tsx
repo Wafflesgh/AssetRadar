@@ -73,11 +73,14 @@ export function FundArenaView({ ticks, onSelectAsset }: FundArenaViewProps) {
     };
     for (const [id, m] of Object.entries(state.managers)) put(id, m.history);
     put('benchmark', state.benchmark.history);
+    if (state.benchmarkUs) put('benchmarkUs', state.benchmarkUs.history);
     return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
   }, [state]);
 
   const bench = state?.benchmark.history.at(-1)?.[1] ?? null;
-  const nameOf = (id: string) => (id === 'benchmark' ? t('fund.benchmark') : t(`fund.m.${id}` as TranslationKey));
+  const benchUs = state?.benchmarkUs?.history.at(-1)?.[1] ?? null;
+  const nameOf = (id: string) =>
+    id === 'benchmark' ? t('fund.benchmark') : id === 'benchmarkUs' ? t('fund.benchmarkUs') : t(`fund.m.${id}` as TranslationKey);
   const colorOf = (id: string) => COLORS[Object.keys(state?.managers ?? {}).indexOf(id)] ?? '#94A3B8';
 
   return (
@@ -112,6 +115,7 @@ export function FundArenaView({ ticks, onSelectAsset }: FundArenaViewProps) {
           <p className="text-xs" style={muted}>
             {t('fund.since', { start: state.startDate, last: state.lastDate })}
             {bench !== null && <> · {t('fund.benchLine', { value: usd(bench), ret: formatPercent((bench / FUND_START_USD - 1) * 100) })}</>}
+            {benchUs !== null && <> · {t('fund.benchLineUs', { value: usd(benchUs), ret: formatPercent((benchUs / FUND_START_USD - 1) * 100) })}</>}
           </p>
           <ol className="space-y-2">
             {board.map((row, i) => (
@@ -176,6 +180,9 @@ export function FundArenaView({ ticks, onSelectAsset }: FundArenaViewProps) {
                       <Line key={id} type="monotone" dataKey={id} dot={false} strokeWidth={2} stroke={colorOf(id)} isAnimationActive={false} connectNulls />
                     ))}
                     <Line type="monotone" dataKey="benchmark" dot={false} strokeWidth={2} stroke="var(--text-secondary)" strokeDasharray="5 4" isAnimationActive={false} connectNulls />
+                    {state.benchmarkUs && (
+                      <Line type="monotone" dataKey="benchmarkUs" dot={false} strokeWidth={2} stroke="var(--text-secondary)" strokeDasharray="1 3" isAnimationActive={false} connectNulls />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
