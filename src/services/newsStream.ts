@@ -40,11 +40,23 @@ class NewsStore {
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
-    if (this.listeners.size === 1) this.start();
+    if (this.listeners.size === 1) {
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility);
+      this.start();
+    }
     return () => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0) this.stop();
+      if (this.listeners.size === 0) {
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
+        this.stop();
+      }
     };
+  };
+
+  // A hidden tab drops the stream: on Cloud Run an open stream keeps the server (and its bill) running
+  private onVisibility = (): void => {
+    if (document.visibilityState === 'hidden') this.stop();
+    else if (this.listeners.size > 0) this.start();
   };
 
   /** Manual refresh (e.g. a "Reload" button). */
