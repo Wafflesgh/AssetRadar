@@ -1,7 +1,7 @@
 /**
  * secCik.ts — SEC EDGAR Central Index Keys (CIK) for the US stocks in the asset list, used to
  * load their 10-Q/10-K figures from data.sec.gov. Each number was checked against the company
- * name SEC returns (October 2026). Stocks without an entry (foreign filers such as TSMC and
+ * name SEC returns (October 2026; the last eight in November 2026). Stocks without an entry (foreign filers such as TSMC and
  * ASML, or companies not filing with SEC) use Yahoo Finance only.
  */
 export const SEC_CIK: Record<string, number> = {
@@ -33,6 +33,14 @@ export const SEC_CIK: Record<string, number> = {
   KO: 21344,
   BAC: 70858,
   UNH: 731766,
+  CSCO: 858877,
+  PG: 80424,
+  MRK: 310158,
+  HD: 354950,
+  GE: 40545,
+  PM: 1413329,
+  MS: 895421,
+  CAT: 18230,
 };
 
 export function secCikFor(code: string): string | null {

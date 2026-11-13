@@ -44,10 +44,12 @@ test('quant simulator route', () => {
 test('IDX page and universe stock detail routes', () => {
   assert.deepEqual(parseHashRoute('#/idx'), { tab: 'idx' });
   assert.equal(buildHashRoute('idx'), '#/idx');
-  assert.equal(buildHashRoute('detail', 'BUMI.JK'), '#/asset/idx-bumi');
-  assert.deepEqual(parseHashRoute('#/asset/idx-bumi'), { tab: 'detail', assetSymbol: 'BUMI.JK' });
+  assert.equal(buildHashRoute('detail', 'MEDC.JK'), '#/asset/idx-medc');
+  assert.deepEqual(parseHashRoute('#/asset/idx-medc'), { tab: 'detail', assetSymbol: 'MEDC.JK' });
   // A plain IDX code also works
-  assert.deepEqual(parseHashRoute('#/asset/bumi'), { tab: 'detail', assetSymbol: 'BUMI.JK' });
+  assert.deepEqual(parseHashRoute('#/asset/medc'), { tab: 'detail', assetSymbol: 'MEDC.JK' });
+  // A stock promoted to the core list still opens from its old universe link
+  assert.deepEqual(parseHashRoute('#/asset/idx-bren'), { tab: 'detail', assetSymbol: 'BREN.JK' });
 });
 
 test('portfolio route', () => {

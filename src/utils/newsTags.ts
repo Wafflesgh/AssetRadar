@@ -43,7 +43,7 @@ const MACRO_PATTERN =
   /\b(fed|fomc|federal reserve|powell|interest rates?|rate (hike|cut)s?|inflation|inflasi|cpi|nonfarm|payrolls|suku bunga|bi rate|bank indonesia|the fed|treasury yields?|recession|resesi|tariffs?|tarif|ecb|boj|bank of japan|bank of england|boe|central banks?|bank sentral)\b/i;
 
 // Tickers that are also ordinary words are never matched on their own ("cost", "meta")
-const AMBIGUOUS_TICKERS = new Set(['COST', 'META', 'PLAT', 'GOTO']);
+const AMBIGUOUS_TICKERS = new Set(['COST', 'META', 'PLAT', 'GOTO', 'BUMI']);
 const STOCK_GROUPS = new Set(['idStock', 'usStock', 'globalStock']);
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

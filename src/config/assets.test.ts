@@ -100,9 +100,9 @@ test('asset universe covers every group with searchable names', () => {
 
 test('the full IDX universe is searchable without clashing with core codes', () => {
   assert.ok(IDX_UNIVERSE.length > 900, `universe ${IDX_UNIVERSE.length}`);
-  assert.equal(getAssetByCode('BUMI')?.symbol, 'BUMI.JK');
-  assert.equal(getAssetBySymbol('BUMI.JK')?.universe, true);
-  assert.equal(getAssetBySymbol('BUMI.JK')?.sector, 'Energy');
+  assert.equal(getAssetByCode('MEDC')?.symbol, 'MEDC.JK');
+  assert.equal(getAssetBySymbol('MEDC.JK')?.universe, true);
+  assert.equal(getAssetBySymbol('MEDC.JK')?.sector, 'Energy');
   // Core codes keep pointing at the core asset; the IDX stock gets "<CODE>.JK"
   assert.equal(getAssetByCode('LINK')?.group, 'crypto');
   assert.equal(getAssetBySymbol('LINK.JK')?.code, 'LINK.JK');

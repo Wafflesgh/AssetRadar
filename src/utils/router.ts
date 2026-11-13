@@ -144,6 +144,8 @@ export function parseHashRoute(hash: string): ParsedRoute {
           a.shortName.toLowerCase() === rawId
       ) ??
       getAssetBySymbol(LEGACY_ASSET_IDS[rawId] ?? '') ??
+      // An IDX stock promoted to the core list keeps its old idx-<code> links working
+      (rawId.startsWith('idx-') ? getAssetBySymbol(`${rawId.slice(4).toUpperCase()}.JK`) : undefined) ??
       ASSETS[0];
     return {
       tab: 'detail',

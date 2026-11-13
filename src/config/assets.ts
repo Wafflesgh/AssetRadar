@@ -535,6 +535,12 @@ export const ASSETS: AssetConfig[] = [
   idStock('ANTM', 'Aneka Tambang (Antam)', 24.03e9, ['aneka tambang', 'antam']),
   idStock('PTBA', 'Bukit Asam', 11.52e9, ['bukit asam']),
   idStock('AADI', 'Adaro Andalan Indonesia', 7.787e9, ['adaro andalan']),
+  idStock('BREN', 'Barito Renewables Energy', 1.338e11, ['barito renewables']),
+  idStock('DSSA', 'Dian Swastatika Sentosa', 1.926e11, ['dian swastatika']),
+  idStock('PANI', 'Pantai Indah Kapuk Dua', 1.819e10, ['pantai indah kapuk', 'pik2', 'pik 2']),
+  idStock('ADMR', 'Alamtri Minerals Indonesia', 4.088e10, ['alamtri minerals', 'adaro minerals']),
+  idStock('BRIS', 'Bank Syariah Indonesia', 4.567e10, ['bank syariah indonesia']),
+  idStock('BUMI', 'Bumi Resources', 3.713e11, ['bumi resources']),
 
   // ---- US stocks (delayed) ----
   usStock('NVDA', 'NVIDIA', 2.415e10, ['nvidia'], { ai: true }),
@@ -566,6 +572,14 @@ export const ASSETS: AssetConfig[] = [
   usStock('KO', 'Coca-Cola', 4.303e9, ['coca-cola', 'coca cola']),
   usStock('BAC', 'Bank of America', 6.993e9, ['bank of america']),
   usStock('UNH', 'UnitedHealth', 8.976e8, ['unitedhealth']),
+  usStock('CSCO', 'Cisco Systems', 3946000000, ['cisco']),
+  usStock('PG', 'Procter & Gamble', 2318000000, ['procter & gamble', 'procter and gamble']),
+  usStock('MRK', 'Merck & Co.', 2467000000, ['merck & co', 'merck']),
+  usStock('HD', 'Home Depot', 9.98e8, ['home depot']),
+  usStock('GE', 'GE Aerospace', 1038000000, ['ge aerospace', 'general electric']),
+  usStock('PM', 'Philip Morris International', 1559000000, ['philip morris']),
+  usStock('MS', 'Morgan Stanley', 1565000000, ['morgan stanley']),
+  usStock('CAT', 'Caterpillar', 4.576e8, ['caterpillar']),
 
   // ---- World stocks ----
   worldStock('tsm', 'TSM', 'TSM', 'TSMC', 'NYSE', 'USD', 5.186e9, ['tsmc', 'taiwan semiconductor'], {
