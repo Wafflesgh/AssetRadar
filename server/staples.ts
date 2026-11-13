@@ -1,8 +1,9 @@
 /**
  * staples.ts — GET /api/staples: staple food prices for "Kitchen Radar" from Bank Indonesia's
  * PIHPS (the JSON its own price-table page loads; no key). A short window (3 weeks) answers in
- * under a second, but a full year takes almost a minute, so the server keeps a one-year history per
- * item in the database (`staples:data`, gzip): every update fetches the last 3 weeks of each item and
+ * under a second, but a full year takes almost a minute, so the server keeps the whole history (from
+ * early 2018) per item in the database (`staples:data`, gzip; province and city series in
+ * `staples:detail:<id>`, served one province at a time by GET /api/staples/region): every update fetches the last 3 weeks of each item and
  * reaches 60 more days back for items whose history is still short, as time allows (on a request and
  * on each cron tick). Plus recent Indonesian news on staple prices (Google News, 30 minutes) and
  * the latest El Niño / La Niña reading (NOAA Oceanic Niño Index, 24 hours) for the price drivers.
@@ -13,13 +14,14 @@ import { getPacked, setPacked, type KvStore } from './store.ts';
 import { keepAlive } from './runtime.ts';
 import { parseRssItems } from '../src/utils/sentiment.ts';
 import { parseOni, type EnsoReading } from '../src/utils/stapleDrivers.ts';
-import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, stapleSummary, type StaplePoint, type StapleItem, type StaplesPayload } from '../src/utils/staples.ts';
+import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, stapleSummary, denseMerge, type StapleDetail, type StapleItem, type StapleRegionPayload, type StaplesPayload } from '../src/utils/staples.ts';
 
 const STORE_KEY = 'staples:data';
 const REFRESH_MS = 6 * 3600_000;
 const RECENT_DAYS = 21;
 const CHUNK_DAYS = 60;
-const HISTORY_DAYS = 3 * 365;
+// PIHPS starts in early 2018; an empty older window ends the backfill before this
+const HISTORY_DAYS = 10 * 365;
 const NEWS_MS = 30 * 60_000;
 const NEWS_QUERY =
   '"harga beras" OR "harga cabai" OR "harga bawang" OR "harga telur" OR "harga minyak goreng" OR "harga gula" OR "harga daging" OR "harga pangan" when:3d';
@@ -73,7 +75,7 @@ async function fetchGrid(id: string, from: string, to: string, timeoutMs: number
     comcat_id: id,
     province_id: '',
     regency_id: '',
-    showKota: 'false',
+    showKota: 'true',
     showPasar: 'false',
     tipe_laporan: '1',
     start_date: from,
@@ -87,21 +89,33 @@ async function fetchGrid(id: string, from: string, to: string, timeoutMs: number
   return parsePihpsGrid(await res.json());
 }
 
-function mergeRegions(item: StapleItem, fresh: Record<string, StaplePoint[]>): void {
-  item.regions ??= {};
-  for (const [name, pts] of Object.entries(fresh)) item.regions[name] = mergeStaplePoints(item.regions[name] ?? [], pts, HISTORY_DAYS + 35);
+const detailKey = (id: string) => `staples:detail:${id}`;
+const regionCache = new Map<string, { at: number; value: StapleRegionPayload }>();
+
+/** Adds one grid answer's province and city series to the item's detail record (read, merge, save). */
+async function saveDetail(store: KvStore, id: string, g: ReturnType<typeof parsePihpsGrid>): Promise<void> {
+  const d = (await getPacked<StapleDetail>(store, detailKey(id)).catch(() => null)) ?? { provinces: {}, cities: {} };
+  for (const [name, pts] of Object.entries(g.regions)) d.provinces[name] = denseMerge(d.provinces[name], pts);
+  for (const [prov, list] of Object.entries(g.cities))
+    for (const [city, pts] of Object.entries(list)) (d.cities[prov] ??= {})[city] = denseMerge(d.cities[prov]?.[city], pts);
+  await setPacked(store, detailKey(id), d);
 }
 
 async function load(store: KvStore): Promise<Map<string, StapleItem>> {
   if (state.items) return state.items;
   const saved = await getPacked<StapleItem[]>(store, STORE_KEY).catch(() => null);
   state.items = new Map((saved ?? []).map((i) => [i.id, i]));
-  // History used to stop at 1 year: items saved as complete before the 3-year window reopen their backfill
-  const target = addDays(todayWib(), -HISTORY_DAYS + 5);
-  // Province series came later: items without them go back through the whole window once more
-  for (const i of state.items.values()) if (i.backfilled && i.points.length && (i.points[0][0] > target || !i.regionsFrom)) i.backfilled = false;
-  // The recent fetch sets the cursor; without it the backfill would skip the year already saved
-  for (const i of state.items.values()) if (!i.regionsFrom) i.updatedAt = 0;
+  for (const i of state.items.values()) {
+    // Older saves kept province series inline (dropped: they now live in staples:detail:<id>)
+    delete (i as StapleItem & { regions?: unknown; regionsFrom?: unknown }).regions;
+    delete (i as StapleItem & { regionsFrom?: unknown }).regionsFrom;
+    // Province and city series came later: go back through the whole history once more for them,
+    // starting with a recent fetch (it sets the cursor)
+    if (!i.detailFrom) {
+      i.backfilled = false;
+      i.updatedAt = 0;
+    }
+  }
   for (const s of STAPLES) if (!state.items.has(s.id)) state.items.set(s.id, { id: s.id, points: [], provinces: [], updatedAt: 0, backfilled: false });
   return state.items;
 }
@@ -122,8 +136,8 @@ async function work(store: KvStore, until: number): Promise<{ refreshed: number;
           const g = await fetchGrid(item.id, addDays(today, -RECENT_DAYS), today, 30_000);
           if (!g.national.length) throw new Error('no prices');
           item.points = mergeStaplePoints(item.points, g.national, HISTORY_DAYS + 35);
-          mergeRegions(item, g.regions);
-          item.regionsFrom ??= addDays(today, -RECENT_DAYS);
+          await saveDetail(store, item.id, g);
+          item.detailFrom ??= addDays(today, -RECENT_DAYS);
           if (g.provinces.length) item.provinces = g.provinces;
           item.updatedAt = Date.now();
           state.dirty = true;
@@ -137,9 +151,9 @@ async function work(store: KvStore, until: number): Promise<{ refreshed: number;
   // Older history, one chunk at a time (the slow part)
   const target = addDays(today, -HISTORY_DAYS);
   for (const item of items.values()) {
-    if (item.backfilled || !item.points.length || !item.regionsFrom) continue;
+    if (item.backfilled || !item.points.length || !item.detailFrom) continue;
     if (Date.now() > until - 12_000) break;
-    const earliest = item.regionsFrom;
+    const earliest = item.detailFrom;
     if (earliest <= target) {
       item.backfilled = true;
       state.dirty = true;
@@ -148,13 +162,13 @@ async function work(store: KvStore, until: number): Promise<{ refreshed: number;
     const to = addDays(earliest, -1);
     const from = addDays(earliest, -CHUNK_DAYS) < target ? target : addDays(earliest, -CHUNK_DAYS);
     try {
-      const g = await fetchGrid(item.id, from, to, 45_000);
+      const g = await fetchGrid(item.id, from, to, 60_000);
       // An empty answer for a whole older window means the data does not go further back
       if (!g.national.length) item.backfilled = true;
       else {
         item.points = mergeStaplePoints(item.points, g.national, HISTORY_DAYS + 35);
-        mergeRegions(item, g.regions);
-        item.regionsFrom = from;
+        await saveDetail(store, item.id, g);
+        item.detailFrom = from;
       }
       state.dirty = true;
       backfilled++;
@@ -209,11 +223,20 @@ export function registerStaplesRoute(app: Express, store: KvStore): void {
   app.get('/api/staples/region', async (req, res) => {
     const name = String(req.query.name ?? '').slice(0, 80);
     try {
-      const items = await load(store);
-      const out: Record<string, StaplePoint[]> = {};
-      for (const [id, item] of items) if (item.regions?.[name]?.length) out[id] = item.regions[name];
+      let hit = regionCache.get(name);
+      if (!hit || Date.now() - hit.at > 3600_000) {
+        const value: StapleRegionPayload = { name, items: {}, cities: {} };
+        // One detail record per staple, read one after another (each holds every province)
+        for (const def of STAPLES) {
+          const d = await getPacked<StapleDetail>(store, detailKey(def.id)).catch(() => null);
+          if (d?.provinces[name]) value.items[def.id] = d.provinces[name];
+          for (const [city, series] of Object.entries(d?.cities[name] ?? {})) (value.cities[city] ??= {})[def.id] = series;
+        }
+        hit = { at: Date.now(), value };
+        regionCache.set(name, hit);
+      }
       res.setHeader('Cache-Control', 'public, max-age=600');
-      res.json({ name, items: out });
+      res.json(hit.value);
     } catch {
       res.status(502).json({ error: 'Staple prices unavailable' });
     }
@@ -239,8 +262,7 @@ export function registerStaplesRoute(app: Express, store: KvStore): void {
         return;
       }
       const payload: StaplesPayload = {
-        // The province series stay on the server (several MB); /api/staples/region sends one province
-        items: list.map(({ regions: _r, ...rest }) => rest),
+        items: list,
         news: headlines,
         checkedAt: Math.max(...list.map((i) => i.updatedAt)),
         source: 'PIHPS Nasional, Bank Indonesia (traditional markets)',

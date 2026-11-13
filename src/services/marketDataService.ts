@@ -910,11 +910,11 @@ export async function fetchIndonesiaMacro(): Promise<IndonesiaMacro> {
   return await res.json();
 }
 
-/** Daily prices of every staple in one province (id → points). */
-export async function fetchStapleRegion(name: string): Promise<Record<string, import('../utils/staples.ts').StaplePoint[]>> {
+/** Daily prices of every staple in one province and its cities. */
+export async function fetchStapleRegion(name: string): Promise<import('../utils/staples.ts').StapleRegionPayload> {
   const res = await fetch(`/api/staples/region?name=${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()).items ?? {};
+  return await res.json();
 }
 
 export async function fetchStaples(): Promise<import('../utils/staples.ts').StaplesPayload> {

@@ -1,7 +1,7 @@
 /** staples.test.ts — Tests for the PIHPS staple price parser, history merge and summaries. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, basketChange, weeklySummary, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
+import { addDays, basketChange, denseMerge, denseToPoints, weeklySummary, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, parsePihpsPrice, pihpsDate, STAPLES, stapleSummary, type StapleItem, type StaplePoint } from './staples.ts';
 
 test('prices and dates in the PIHPS format', () => {
   assert.equal(parsePihpsPrice('16,400'), 16400);
@@ -20,9 +20,11 @@ test('the grid gives the national series and first/last price per province', () 
       { no: 'II', name: 'Aceh', level: 1, '15/10/2026': '15,600', '16/10/2026': '15,550' },
       { no: 'III', name: 'Papua ', level: 1, '15/10/2026': '' },
       { no: 'IV', name: 'Bali', level: 1, '16/10/2026': '14,000' },
+      { no: 1, name: 'Kota Denpasar', level: 2, '16/10/2026': '13,900' },
     ],
   };
-  const { national, provinces, regions } = parsePihpsGrid(json);
+  const { national, provinces, regions, cities } = parsePihpsGrid(json);
+  assert.deepEqual(cities, { Bali: { 'Kota Denpasar': [['2026-10-16', 13900]] } });
   assert.deepEqual(regions.Aceh, [
     ['2026-10-15', 15600],
     ['2026-10-16', 15550],
@@ -35,8 +37,16 @@ test('the grid gives the national series and first/last price per province', () 
     { name: 'Aceh', price: 15550, earlier: 15600 },
     { name: 'Bali', price: 14000, earlier: null },
   ]);
-  assert.deepEqual(parsePihpsGrid({ data: [{}] }), { national: [], provinces: [], regions: {} });
-  assert.deepEqual(parsePihpsGrid(null), { national: [], provinces: [], regions: {} });
+  assert.deepEqual(parsePihpsGrid({ data: [{}] }), { national: [], provinces: [], regions: {}, cities: {} });
+  assert.deepEqual(parsePihpsGrid(null), { national: [], provinces: [], regions: {}, cities: {} });
+});
+
+test('dense series keep one slot per day and round-trip with new prices winning', () => {
+  const a = denseMerge(undefined, [['2026-10-16', 2], ['2026-10-14', 1]]);
+  assert.deepEqual(a, { from: '2026-10-14', v: [1, null, 2] });
+  const b = denseMerge(a, [['2026-10-13', 5], ['2026-10-16', 3]]);
+  assert.deepEqual(denseToPoints(b), [['2026-10-13', 5], ['2026-10-14', 1], ['2026-10-16', 3]]);
+  assert.deepEqual(denseToPoints(undefined), []);
 });
 
 test('merging keeps one value per date, newest wins, within the kept days', () => {

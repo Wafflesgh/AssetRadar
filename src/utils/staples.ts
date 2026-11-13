@@ -55,12 +55,51 @@ export interface StapleItem {
   /** Latest price per province (latest day of the last update). */
   provinces: StapleProvince[];
   updatedAt: number;
-  /** The history reaches back as far as it will (3 years, or the start of PIHPS data). */
+  /** The history reaches back as far as it will (the start of PIHPS data, early 2018). */
   backfilled: boolean;
-  /** Daily price per province, oldest first (server only; the browser asks for one province at a time). */
-  regions?: Record<string, StaplePoint[]>;
-  /** Earliest date fetched together with the province series (the backfill cursor). */
-  regionsFrom?: string;
+  /** Earliest date fetched together with the province and city series (the backfill cursor). */
+  detailFrom?: string;
+}
+
+/** One slot per calendar day from `from` (null = no price that day): about a third of the size of date pairs. */
+export interface DenseSeries {
+  from: string;
+  v: Array<number | null>;
+}
+
+/** Province and city series of one staple (server key `staples:detail:<id>`). */
+export interface StapleDetail {
+  provinces: Record<string, DenseSeries>;
+  /** Province → city → series. */
+  cities: Record<string, Record<string, DenseSeries>>;
+}
+
+/** One province's series for every staple (GET /api/staples/region). */
+export interface StapleRegionPayload {
+  name: string;
+  items: Record<string, DenseSeries>;
+  /** City → staple id → series. */
+  cities: Record<string, Record<string, DenseSeries>>;
+}
+
+const dayIndex = (from: string, d: string) => Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+export function denseToPoints(s: DenseSeries | undefined): StaplePoint[] {
+  const out: StaplePoint[] = [];
+  s?.v.forEach((p, i) => {
+    if (p !== null) out.push([addDays(s.from, i), p]);
+  });
+  return out;
+}
+
+/** Adds dated prices to a dense series (new prices win). */
+export function denseMerge(old: DenseSeries | undefined, pts: StaplePoint[]): DenseSeries {
+  const merged = mergeStaplePoints(denseToPoints(old), pts, 100_000);
+  if (!merged.length) return { from: '', v: [] };
+  const from = merged[0][0];
+  const v: Array<number | null> = new Array(dayIndex(from, merged[merged.length - 1][0]) + 1).fill(null);
+  for (const [d, p] of merged) v[dayIndex(from, d)] = p;
+  return { from, v };
 }
 
 export interface StaplesPayload {
@@ -114,7 +153,12 @@ export function pihpsDate(key: string): string | null {
 }
 
 /** National series and provinces (first and last price in the window) from one PIHPS grid answer. */
-export function parsePihpsGrid(json: unknown): { national: StaplePoint[]; provinces: StapleProvince[]; regions: Record<string, StaplePoint[]> } {
+export function parsePihpsGrid(json: unknown): {
+  national: StaplePoint[];
+  provinces: StapleProvince[];
+  regions: Record<string, StaplePoint[]>;
+  cities: Record<string, Record<string, StaplePoint[]>>;
+} {
   const rows = ((json as { data?: unknown[] })?.data ?? []) as Array<Record<string, unknown>>;
   const series = (row: Record<string, unknown>): StaplePoint[] =>
     Object.entries(row)
@@ -124,14 +168,24 @@ export function parsePihpsGrid(json: unknown): { national: StaplePoint[]; provin
   const nationalRow = rows.find((r) => r.level === 0);
   const provinces: StapleProvince[] = [];
   const regions: Record<string, StaplePoint[]> = {};
+  const cities: Record<string, Record<string, StaplePoint[]>> = {};
+  let province = '';
   for (const r of rows) {
-    if (r.level !== 1 || typeof r.name !== 'string') continue;
+    if (typeof r.name !== 'string') continue;
+    // City rows (level 2) follow their province row
+    if (r.level === 2 && province) {
+      const c = series(r);
+      if (c.length) (cities[province] ??= {})[r.name.trim()] = c;
+      continue;
+    }
+    if (r.level !== 1) continue;
+    province = r.name.trim();
     const s = series(r);
     if (!s.length) continue;
     provinces.push({ name: r.name.trim(), price: s[s.length - 1][1], earlier: s.length > 1 ? s[0][1] : null });
     regions[r.name.trim()] = s;
   }
-  return { national: nationalRow ? series(nationalRow) : [], provinces, regions };
+  return { national: nationalRow ? series(nationalRow) : [], provinces, regions, cities };
 }
 
 /** Old and new points by date (new wins), oldest first, only the last `keepDays` days. */
