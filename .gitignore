@@ -8,3 +8,5 @@ coverage/
 !.env.example
 .vercel/
 .codebase-memory/
+backups/
+.claude/settings.local.json
