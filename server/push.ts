@@ -5,7 +5,7 @@
  * /api/push/* endpoints. Without VAPID keys or a database, alerts are checked in the browser
  * while the app is open instead.
  */
-import express, { type Express } from 'express';
+import type { Express } from 'express';
 import webpush from 'web-push';
 import { KeyedMutex, type KvStore } from './store.ts';
 import type { OwnerAuth } from './sync.ts';
@@ -53,9 +53,15 @@ function ensureVapid(env: NodeJS.ProcessEnv = process.env): boolean {
   return vapidReady;
 }
 
-export async function loadSubscriptions(store: KvStore): Promise<StoredSubscription[]> {
-  const raw = await store.get<StoredSubscription[]>(PUSH_SUBS_KEY).catch(() => null);
+/** Throws when the database cannot be read: whoever writes the list back must not take that for "no devices". */
+async function readSubscriptions(store: KvStore): Promise<StoredSubscription[]> {
+  const raw = await store.get<StoredSubscription[]>(PUSH_SUBS_KEY);
   return Array.isArray(raw) ? raw.filter((s) => s && typeof s.endpoint === 'string' && s.keys?.p256dh && s.keys?.auth) : [];
+}
+
+/** For sending and counting only: an unreadable list counts as empty. */
+export function loadSubscriptions(store: KvStore): Promise<StoredSubscription[]> {
+  return readSubscriptions(store).catch(() => []);
 }
 
 /** Language for server-made notifications: that of the most recently subscribed device (single owner). */
@@ -85,10 +91,13 @@ export async function sendPushToAll(store: KvStore, payload: PushPayload): Promi
     })
   );
   if (gone.length) {
-    await mutex.run(PUSH_SUBS_KEY, async () => {
-      const current = await loadSubscriptions(store);
-      await store.set(PUSH_SUBS_KEY, current.filter((s) => !gone.includes(s.endpoint)));
-    });
+    // Clean-up only: skipped when the database is unavailable (the next send tries again)
+    await mutex
+      .run(PUSH_SUBS_KEY, async () => {
+        const current = await readSubscriptions(store);
+        await store.set(PUSH_SUBS_KEY, current.filter((s) => !gone.includes(s.endpoint)));
+      })
+      .catch(() => {});
   }
   return { sent, failed };
 }
@@ -118,7 +127,7 @@ export function registerPushRoutes(app: Express, store: KvStore, auth: OwnerAuth
     });
   });
 
-  app.post('/api/push/subscribe', auth.requireOwner, express.json({ limit: '8kb' }), async (req, res) => {
+  app.post('/api/push/subscribe', auth.requireOwner, async (req, res) => {
     if (!vapidConfigured()) {
       res.status(503).json({ error: 'Push is not configured on this server' });
       return;
@@ -128,20 +137,28 @@ export function registerPushRoutes(app: Express, store: KvStore, auth: OwnerAuth
       res.status(400).json({ error: 'Invalid subscription' });
       return;
     }
-    await mutex.run(PUSH_SUBS_KEY, async () => {
-      const list = (await loadSubscriptions(store)).filter((s) => s.endpoint !== sub.endpoint);
-      await store.set(PUSH_SUBS_KEY, [...list, sub].slice(-20));
-    });
-    res.json({ ok: true });
+    try {
+      await mutex.run(PUSH_SUBS_KEY, async () => {
+        const list = (await readSubscriptions(store)).filter((s) => s.endpoint !== sub.endpoint);
+        await store.set(PUSH_SUBS_KEY, [...list, sub].slice(-20));
+      });
+      res.json({ ok: true });
+    } catch {
+      res.status(502).json({ error: 'Database unavailable' });
+    }
   });
 
-  app.post('/api/push/unsubscribe', auth.requireOwner, express.json({ limit: '8kb' }), async (req, res) => {
+  app.post('/api/push/unsubscribe', auth.requireOwner, async (req, res) => {
     const endpoint = String(req.body?.endpoint ?? '');
-    await mutex.run(PUSH_SUBS_KEY, async () => {
-      const list = await loadSubscriptions(store);
-      await store.set(PUSH_SUBS_KEY, list.filter((s) => s.endpoint !== endpoint));
-    });
-    res.json({ ok: true });
+    try {
+      await mutex.run(PUSH_SUBS_KEY, async () => {
+        const list = await readSubscriptions(store);
+        await store.set(PUSH_SUBS_KEY, list.filter((s) => s.endpoint !== endpoint));
+      });
+      res.json({ ok: true });
+    } catch {
+      res.status(502).json({ error: 'Database unavailable' });
+    }
   });
 
   app.post('/api/push/test', auth.requireOwner, async (_req, res) => {

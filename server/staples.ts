@@ -97,7 +97,8 @@ const regionCache = new Map<string, { at: number; value: StapleRegionPayload }>(
 
 /** Adds one grid answer's province and city series to the item's detail record (read, merge, save). */
 async function saveDetail(store: KvStore, id: string, g: ReturnType<typeof parsePihpsGrid>): Promise<void> {
-  const d = (await getPacked<StapleDetail>(store, detailKey(id)).catch(() => null)) ?? { provinces: {}, cities: {} };
+  // A failed read throws: saving on top of it would wipe the history
+  const d = (await getPacked<StapleDetail>(store, detailKey(id))) ?? { provinces: {}, cities: {} };
   for (const [name, pts] of Object.entries(g.regions)) d.provinces[name] = denseMerge(d.provinces[name], pts);
   for (const [prov, list] of Object.entries(g.cities))
     for (const [city, pts] of Object.entries(list)) (d.cities[prov] ??= {})[city] = denseMerge(d.cities[prov]?.[city], pts);
@@ -106,7 +107,8 @@ async function saveDetail(store: KvStore, id: string, g: ReturnType<typeof parse
 
 async function load(store: KvStore): Promise<Map<string, StapleItem>> {
   if (state.items) return state.items;
-  const saved = await getPacked<StapleItem[]>(store, STORE_KEY).catch(() => null);
+  // A failed read throws (and is retried next time): an empty start would be saved over the history
+  const saved = await getPacked<StapleItem[]>(store, STORE_KEY);
   state.items = new Map((saved ?? []).map((i) => [i.id, i]));
   for (const i of state.items.values()) {
     // Older saves kept province series inline (dropped: they now live in staples:detail:<id>)

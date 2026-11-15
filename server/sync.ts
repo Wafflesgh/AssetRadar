@@ -99,7 +99,7 @@ export function registerSyncRoutes(app: Express, store: KvStore, auth: ReturnTyp
     });
   });
 
-  app.post('/api/sync/login', express.json({ limit: '4kb' }), (req, res) => {
+  app.post('/api/sync/login', (req, res) => {
     if (!ready()) {
       res.status(503).json({ error: 'Sync is not configured on this server' });
       return;

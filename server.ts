@@ -4434,14 +4434,15 @@ async function idxTraceStep(until: number): Promise<unknown> {
   const date = idxTraceDay(Date.now());
   if (!date) return 'market open';
   if (!store.persistent) return 'no database';
-  const saved = await store.get<{ date: string; next: number; recorded: number }>(IDXTRACE_PROGRESS).catch(() => null);
+  // Failed reads throw (the step is retried next tick): zeros would be saved over the running totals
+  const saved = await store.get<{ date: string; next: number; recorded: number }>(IDXTRACE_PROGRESS);
   const p = saved?.date === date ? saved : { date, next: 0, recorded: 0 };
   const core = new Set(ASSETS.map((a) => a.symbol));
   const list = IDX_UNIVERSE_STOCKS()
     .filter((a) => !core.has(a.symbol))
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
   if (p.next >= list.length) return { date, done: true, total: list.length, recorded: p.recorded };
-  let stats = parseIdxStats(await store.get(IDXTRACE_STATS).catch(() => null));
+  let stats = parseIdxStats(await store.get(IDXTRACE_STATS));
   const start = p.next;
   let failed = 0;
   while (p.next < list.length && Date.now() < until - 15_000) {
@@ -4678,6 +4679,8 @@ async function runMorningBrief(): Promise<{ date: string; telegram: boolean; pus
 /** Runs the daily jobs that are due (called on API requests and by POST /api/cron/daily). */
 async function runDueJobs(trigger: 'request' | 'cron' | 'tick'): Promise<Record<string, unknown>> {
   await loadJobState();
+  // The record of what already ran could not be read: running now could send the brief twice
+  if (store.persistent && !jobs.loaded) return { skipped: 'job state unavailable' };
   const now = Date.now();
   const results: Record<string, unknown> = {};
   const allowed = (name: string) => trigger === 'cron' || (jobs.retryAfter.get(name) ?? 0) <= now;
@@ -5212,7 +5215,7 @@ export async function createApp(): Promise<express.Express> {
   });
 
   // An outside agent (e.g. Argon in Google AI Studio) adds its own note to a day's analysis
-  app.post('/api/analyst/notes', express.json({ limit: '16kb' }), async (req, res) => {
+  app.post('/api/analyst/notes', async (req, res) => {
     if (!cronAuthorized(req, res)) return;
     const body = (req.body ?? {}) as { date?: unknown; author?: unknown; text?: unknown };
     const date = isDate(body.date) ? body.date : wibDate(Date.now());
@@ -5351,6 +5354,9 @@ export async function createApp(): Promise<express.Express> {
   // Headline translation (Gemini, only with GEMINI_API_KEY; cached 24 h). Without a key: 503 and
   // the browser opens Google Translate instead.
   const translateCache = new Map<string, CacheEntry<string>>();
+  // No login on this endpoint, so new translations are capped per hour (cached ones are free)
+  const TRANSLATE_PER_HOUR = 120;
+  const translateBudget = { hour: 0, used: 0 };
   app.get('/api/translate', async (req, res) => {
     const text = String(req.query.text || '').trim().slice(0, 300);
     const to = req.query.to === 'id' ? 'id' : 'en';
@@ -5367,6 +5373,12 @@ export async function createApp(): Promise<express.Express> {
     const cached = translateCache.get(key);
     if (cached && cached.expiresAt > Date.now()) {
       res.json({ translated: cached.data, cached: true });
+      return;
+    }
+    const hour = Math.floor(Date.now() / 3600_000);
+    if (translateBudget.hour !== hour) Object.assign(translateBudget, { hour, used: 0 });
+    if (++translateBudget.used > TRANSLATE_PER_HOUR) {
+      res.status(429).json({ error: 'Translation limit reached, try again later' });
       return;
     }
     try {
@@ -5449,6 +5461,10 @@ export async function createApp(): Promise<express.Express> {
   // 5. Sentiment Analysis & Related Market News endpoint
   app.get('/api/market/intelligence', async (req, res) => {
     const symbol = String(req.query.symbol || 'BTC/IDR');
+    if (!getAssetBySymbol(symbol)) {
+      res.status(404).json({ error: 'Unknown symbol' });
+      return;
+    }
     try {
       // Find latest tick from cache if available
       let currentTick: PriceTick | undefined;
