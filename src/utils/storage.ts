@@ -123,6 +123,20 @@ export function saveMyProvince(name: string): void {
   else safeRemove('assetradar_my_province_v1');
 }
 
+/** Monthly shopping list for Kitchen Radar's "my kitchen inflation" (staple id → kg or litres per month; synced with settings). */
+export function getKitchenBasket(): Record<string, number> {
+  const raw = readJson('assetradar_kitchen_basket_v1');
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [id, q] of Object.entries(raw)) if (typeof q === 'number' && Number.isFinite(q) && q > 0) out[id] = q;
+  }
+  return out;
+}
+
+export function saveKitchenBasket(qty: Record<string, number>): void {
+  tracked('settings', () => safeSet('assetradar_kitchen_basket_v1', JSON.stringify(qty)));
+}
+
 export function getSidebarCollapsed(): boolean {
   return safeGet(STORAGE_KEYS.SIDEBAR_COLLAPSED) === '1';
 }
@@ -576,6 +590,8 @@ registerSyncAdapter('settings', {
     out.startInTerminal = getStartInTerminal();
     const alertSettings = readJson(STORAGE_KEYS.ALERT_SETTINGS);
     if (alertSettings) out.alertSettings = alertSettings;
+    const kitchenBasket = readJson('assetradar_kitchen_basket_v1');
+    if (kitchenBasket) out.kitchenBasket = kitchenBasket;
     return out;
   },
   write(items) {
@@ -585,6 +601,7 @@ registerSyncAdapter('settings', {
     if (items.startInTerminal === true) safeSet(STORAGE_KEYS.START_IN_TERMINAL, '1');
     else if (items.startInTerminal === false) safeRemove(STORAGE_KEYS.START_IN_TERMINAL);
     if (items.alertSettings && typeof items.alertSettings === 'object') safeSet(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(items.alertSettings));
+    if (items.kitchenBasket && typeof items.kitchenBasket === 'object') safeSet('assetradar_kitchen_basket_v1', JSON.stringify(items.kitchenBasket));
   },
 });
 

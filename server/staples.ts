@@ -7,6 +7,8 @@
  * reaches 60 more days back for items whose history is still short, as time allows (on a request and
  * on each cron tick). Plus recent Indonesian news on staple prices (Google News, 30 minutes) and
  * the latest El Niño / La Niña reading (NOAA Oceanic Niño Index, 24 hours) for the price drivers.
+ * GET /api/staples/map?id= gives monthly prices per province (map animation) and GET /api/staples/anomalies
+ * the unusual province moves of the main staples with matching Google News headlines (both 1 hour).
  * No numbers are made up: an item that cannot be read keeps its last saved prices or stays empty.
  */
 import type { Express } from 'express';
@@ -14,7 +16,8 @@ import { getPacked, setPacked, type KvStore } from './store.ts';
 import { keepAlive } from './runtime.ts';
 import { parseRssItems } from '../src/utils/sentiment.ts';
 import { parseOni, type EnsoReading } from '../src/utils/stapleDrivers.ts';
-import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, PIHPS_API, PIHPS_PAGE, STAPLES, stapleSummary, denseMerge, type StapleDetail, type StapleItem, type StapleRegionPayload, type StaplesPayload } from '../src/utils/staples.ts';
+import { addDays, classifyPolicyNews, mergeStaplePoints, parsePihpsGrid, denseToPoints, PIHPS_API, PIHPS_PAGE, STAPLES, stapleSummary, denseMerge, type StapleDetail, type StapleItem, type StapleRegionPayload, type StaplesPayload } from '../src/utils/staples.ts';
+import { detectAnomaly, matchesStapleNews, provinceMonthly, STAPLE_NEWS_TERM, type StapleAnomalyRow, type StapleMapPayload } from '../src/utils/stapleInsights.ts';
 
 const STORE_KEY = 'staples:data';
 const REFRESH_MS = 6 * 3600_000;
@@ -219,7 +222,88 @@ async function stapleNews(): Promise<StaplesPayload['news']> {
   return news.items;
 }
 
+const mapCache = new Map<string, { at: number; value: StapleMapPayload }>();
+const anomalies: { at: number; value: StapleAnomalyRow[] } = { at: 0, value: [] };
+// News is searched only for the strongest moves, so one round never sends more than this many requests
+const ANOMALY_NEWS_MAX = 6;
+
+/** Headlines of the last 7 days that name the staple and the place; null when the search failed. */
+async function anomalyNews(term: string, places: string[]): Promise<StapleAnomalyRow['news']> {
+  try {
+    const q = `"harga ${term}" ${places[0]} when:7d`;
+    const res = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=id&gl=ID&ceid=ID:id`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (AssetRadar personal research app)' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return parseRssItems(await res.text(), 30)
+      .filter((n) => matchesStapleNews(n.title, term, places))
+      .slice(0, 3)
+      .map((n) => ({ title: n.title, link: n.link, source: n.source }));
+  } catch {
+    return null;
+  }
+}
+
+/** Unusual 1-week moves of the main staples in any province, strongest first, with related headlines. */
+async function findAnomalies(store: KvStore): Promise<StapleAnomalyRow[]> {
+  const today = todayWib();
+  const rows: Array<StapleAnomalyRow & { places: string[]; term: string }> = [];
+  for (const def of STAPLES.filter((s) => s.main)) {
+    const d = await getPacked<StapleDetail>(store, detailKey(def.id)).catch(() => null);
+    for (const [province, series] of Object.entries(d?.provinces ?? {})) {
+      // Only the last 400 days are judged
+      const skip = Math.max(0, series.v.length - 400);
+      const a = detectAnomaly(denseToPoints({ from: addDays(series.from, skip), v: series.v.slice(skip) }), today);
+      if (a) rows.push({ ...a, id: def.id, key: def.key, province, news: null, places: [province, ...Object.keys(d?.cities[province] ?? {})], term: STAPLE_NEWS_TERM[def.category] });
+    }
+  }
+  rows.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+  const top = rows.slice(0, 12);
+  await Promise.all(
+    top
+      .filter((r) => r.kind === 'move')
+      .slice(0, ANOMALY_NEWS_MAX)
+      .map(async (r) => {
+        r.news = await anomalyNews(r.term, r.places);
+      })
+  );
+  return top.map(({ places: _p, term: _t, ...r }) => r);
+}
+
 export function registerStaplesRoute(app: Express, store: KvStore): void {
+  app.get('/api/staples/map', async (req, res) => {
+    const id = String(req.query.id ?? '');
+    if (!STAPLES.some((s) => s.id === id)) {
+      res.status(400).json({ error: 'Unknown staple' });
+      return;
+    }
+    try {
+      let hit = mapCache.get(id);
+      if (!hit || Date.now() - hit.at > 3600_000) {
+        hit = { at: Date.now(), value: provinceMonthly(id, await getPacked<StapleDetail>(store, detailKey(id))) };
+        mapCache.set(id, hit);
+      }
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      res.json(hit.value);
+    } catch {
+      res.status(502).json({ error: 'Staple prices unavailable' });
+    }
+  });
+
+  app.get('/api/staples/anomalies', async (_req, res) => {
+    try {
+      if (Date.now() - anomalies.at > 3600_000) {
+        anomalies.value = await findAnomalies(store);
+        anomalies.at = Date.now();
+      }
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      res.json({ items: anomalies.value, checkedAt: anomalies.at });
+    } catch {
+      res.status(502).json({ error: 'Staple prices unavailable' });
+    }
+  });
+
   app.get('/api/staples/region', async (req, res) => {
     const name = String(req.query.name ?? '').slice(0, 80);
     try {

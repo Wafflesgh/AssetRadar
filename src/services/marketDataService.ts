@@ -917,6 +917,20 @@ export async function fetchStapleRegion(name: string): Promise<import('../utils/
   return await res.json();
 }
 
+/** Monthly prices of one staple in every province (map animation). */
+export async function fetchStapleMap(id: string): Promise<import('../utils/stapleInsights.ts').StapleMapPayload> {
+  const res = await fetch(`/api/staples/map?id=${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** Unusual province price moves with related headlines. */
+export async function fetchStapleAnomalies(): Promise<import('../utils/stapleInsights.ts').StapleAnomalyRow[]> {
+  const res = await fetch('/api/staples/anomalies');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).items ?? [];
+}
+
 export async function fetchStaples(): Promise<import('../utils/staples.ts').StaplesPayload> {
   const res = await fetch('/api/staples');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

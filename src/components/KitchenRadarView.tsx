@@ -8,15 +8,22 @@
  * Each card also lists the popular (most populous, most reported) provinces and explains why the
  * price moves: live factors (rupiah, yuan, world rice and palm oil, oil, El Niño, season, holidays,
  * school meals MBG, village cooperatives KDMP with their recent headlines), the cause → effect chains with the one that applies now, Indonesia's exposure
- * and politics / policy (src/utils/stapleDrivers.ts).
+ * and politics / policy (src/utils/stapleDrivers.ts). Also: Indonesia on a globe coloured by price with a
+ * month-by-month replay (KitchenGlobe), unusual province moves with related news, the seasonal
+ * pattern on each card and the owner's own basket inflation (KitchenInsights).
  */
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Bell, BellRing, ChevronDown, MapPin, ExternalLink, RefreshCw, ShoppingBasket } from 'lucide-react';
 import { getMyProvince, saveMyProvince } from '../utils/storage.ts';
 import { loadAlerts, newAlertId, storeAlerts } from '../services/alertService.ts';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { fetchIndonesiaMacro, fetchStapleRegion, fetchStaples } from '../services/marketDataService.ts';
+import { fetchIndonesiaMacro, fetchStapleAnomalies, fetchStapleRegion, fetchStaples } from '../services/marketDataService.ts';
+import type { StapleAnomalyRow } from '../utils/stapleInsights.ts';
+import { AnomalyCard, BasketCard, SeasonBlock } from './KitchenInsights.tsx';
+
+// The globe brings the map projection code: loaded only when this page opens
+const KitchenGlobe = lazy(() => import('./KitchenGlobe.tsx').then((m) => ({ default: m.KitchenGlobe })));
 import { activeChain, readDrivers, STAPLE_FACTORS, type DriverEffect, type DriverInputs } from '../utils/stapleDrivers.ts';
 import { formatNumber, formatRupiah } from '../utils/format.ts';
 import {
@@ -379,6 +386,7 @@ function StapleCard({ item, range, inputs, policy, myProvince, regionLabel, regi
           )}
         </div>
       )}
+      <SeasonBlock points={pts} />
       <WhySection item={item} inputs={inputs} policy={policy} />
     </article>
   );
@@ -448,6 +456,12 @@ export function KitchenRadarView() {
   const [myProvince, setMyProvince] = useState(getMyProvince);
   const [region, setRegion] = useState<StapleRegionPayload | null>(null);
   const [city, setCity] = useState('');
+  const [anomalies, setAnomalies] = useState<StapleAnomalyRow[] | null>(null);
+  useEffect(() => {
+    fetchStapleAnomalies()
+      .then(setAnomalies)
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     setRegion(null);
     setCity('');
@@ -588,6 +602,20 @@ export function KitchenRadarView() {
             )}
           </section>
 
+          <Suspense fallback={null}>
+            <KitchenGlobe
+              items={items}
+              myProvince={myProvince}
+              anomalies={anomalies ?? []}
+              onPick={(name) => {
+                setMyProvince(name);
+                saveMyProvince(name);
+              }}
+            />
+          </Suspense>
+
+          <AnomalyCard rows={anomalies} />
+
           <WeekSummaryCard items={items} />
 
           <section className="p-5 rounded-xl border grid grid-cols-1 md:grid-cols-3 gap-4" style={card} aria-labelledby="basket-heading">
@@ -629,6 +657,20 @@ export function KitchenRadarView() {
               </div>
             ))}
           </section>
+
+          <BasketCard
+            series={Object.fromEntries(items.map((i) => [i.id, (regionPoints[i.id]?.length ?? 0) >= 2 ? regionPoints[i.id] : i.points]))}
+            where={city || myProvince || t('kitchen.nationalAvg')}
+            official={(
+              [
+                ['kitchen.mine.cpi', 'inflationYoy'],
+                ['kitchen.mine.volatile', 'volatileFoodInflation'],
+              ] as const
+            ).flatMap(([label, id]) => {
+              const last = macroSeries[id]?.at(-1);
+              return last ? [{ label: t(label), value: last.value }] : [];
+            })}
+          />
 
           {data.filling > 0 && (
             <p className="text-xs p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-subtle)', color: 'var(--text-secondary)' }}>

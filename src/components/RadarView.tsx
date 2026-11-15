@@ -19,6 +19,8 @@ import { MonthlyCommodities } from './MonthlyCommodities.tsx';
 import { MoversPanel } from './MoversPanel.tsx';
 
 const SentimentLeaders = lazy(() => import('./sentiment/SentimentLeaders.tsx').then((m) => ({ default: m.SentimentLeaders })));
+// The globe brings the map projection code: kept out of the first download
+const WorldMarketGlobe = lazy(() => import('./WorldMarketGlobe.tsx').then((m) => ({ default: m.WorldMarketGlobe })));
 import { NewsTape } from './NewsTape.tsx';
 import { InstallAppBanner } from './InstallApp.tsx';
 import { KeyIndicesStrip } from './KeyIndicesStrip.tsx';
@@ -157,6 +159,10 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       </section>
 
       <KeyIndicesStrip ticks={ticks} onSelect={onSelectAsset} />
+
+      <Suspense fallback={null}>
+        <WorldMarketGlobe ticks={ticks} onSelectAsset={onSelectAsset} />
+      </Suspense>
 
       <MoversPanel ticks={ticks} onSelect={onSelectAsset} />
 

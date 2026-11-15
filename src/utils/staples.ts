@@ -203,6 +203,21 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** Last price on or before `days` before the latest point (null when the history is shorter). */
+export function priceDaysAgo(pts: StaplePoint[], days: number): number | null {
+  const latest = pts[pts.length - 1];
+  if (!latest) return null;
+  const target = addDays(latest[0], -days);
+  // Allow a few days of slack for weekends and holidays
+  if (pts[0][0] > addDays(target, 5)) return null;
+  let found: number | null = null;
+  for (const [d, v] of pts) {
+    if (d > target) break;
+    found = v;
+  }
+  return found ?? pts[0][1];
+}
+
 export interface StapleSummary {
   latest: StaplePoint | null;
   /** % change against the last price on or before 7 / 30 / 91 / 365 days earlier (null when the history is shorter). */
@@ -217,20 +232,8 @@ export interface StapleSummary {
 export function stapleSummary(item: Pick<StapleItem, 'points' | 'provinces'>, top = 3): StapleSummary {
   const pts = item.points;
   const latest = pts.length ? pts[pts.length - 1] : null;
-  const at = (days: number): number | null => {
-    if (!latest) return null;
-    const target = addDays(latest[0], -days);
-    // Allow a few days of slack for weekends and holidays
-    if (!pts.length || pts[0][0] > addDays(target, 5)) return null;
-    let found: number | null = null;
-    for (const [d, v] of pts) {
-      if (d > target) break;
-      found = v;
-    }
-    return found ?? pts[0][1];
-  };
   const pct = (days: number) => {
-    const base = at(days);
+    const base = priceDaysAgo(pts, days);
     return latest && base ? ((latest[1] - base) / base) * 100 : null;
   };
   const byPrice = [...item.provinces].sort((a, b) => a.price - b.price);
