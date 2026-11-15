@@ -4,7 +4,8 @@
  * per cron tick), saves each stock's sentiment call per horizon with that day's close in its own
  * record (`idxtrace:<SYMBOL>`), and scores older calls when their horizon has passed using the same
  * daily closes. Running totals per horizon and label (`idxtrace:stats`) give the accuracy over the
- * whole market without reading every record. Pure helpers: the trading day to record, and the
+ * whole market without reading every record; the server adds only stocks liquid enough to trade
+ * (a price that never moves is not "down", and it made every Bearish call look right). Pure helpers: the trading day to record, and the
  * totals and their summaries (same shape as methodSummaries in recommendationTrace.ts).
  */
 import { callHit, direction, type MethodSummary, type SentimentCall, type TraceHorizon } from './recommendationTrace.ts';
@@ -39,26 +40,32 @@ export function idxTraceDay(nowMs: number): string | null {
 
 type Cell = { n: number; up: number; ret: number };
 
+/** 2 = totals count liquid stocks only and keep the scored days (older totals are rebuilt from the records). */
+export const IDX_STATS_VERSION = 2;
+
 export interface IdxTraceStats {
-  version: 1;
+  version: typeof IDX_STATS_VERSION;
   firstDate: string | null;
   /** Calls saved per horizon. */
   saved: Record<TraceHorizon, number>;
   /** Scored calls per horizon and label. */
   scored: Record<TraceHorizon, Record<string, Cell>>;
+  /** Call dates that have scored calls, per horizon. */
+  days: Record<TraceHorizon, string[]>;
 }
 
 export function emptyIdxStats(): IdxTraceStats {
   const h = () => Object.fromEntries(LABELS.map((l) => [l, { n: 0, up: 0, ret: 0 }])) as Record<string, Cell>;
-  return { version: 1, firstDate: null, saved: { short: 0, medium: 0, long: 0 }, scored: { short: h(), medium: h(), long: h() } };
+  return { version: IDX_STATS_VERSION, firstDate: null, saved: { short: 0, medium: 0, long: 0 }, scored: { short: h(), medium: h(), long: h() }, days: { short: [], medium: [], long: [] } };
 }
 
 export function parseIdxStats(raw: unknown): IdxTraceStats {
   const s = raw as Partial<IdxTraceStats> | null;
-  if (!s || s.version !== 1 || !s.saved || !s.scored) return emptyIdxStats();
+  if (!s || s.version !== IDX_STATS_VERSION || !s.saved || !s.scored) return emptyIdxStats();
   const base = emptyIdxStats();
   for (const h of HORIZONS) {
     base.saved[h] = Number(s.saved[h]) || 0;
+    base.days[h] = Array.isArray(s.days?.[h]) ? s.days[h].filter((d) => typeof d === 'string') : [];
     for (const l of LABELS) {
       const c = s.scored[h]?.[l];
       if (c) base.scored[h][l] = { n: Number(c.n) || 0, up: Number(c.up) || 0, ret: Number(c.ret) || 0 };
@@ -81,6 +88,7 @@ export function addToIdxStats(stats: IdxTraceStats, saved: SentimentCall[], scor
     cell.n += 1;
     cell.up += c.outcome.up ? 1 : 0;
     cell.ret += c.outcome.ret;
+    if (!next.days[c.horizon].includes(c.date)) next.days[c.horizon].push(c.date);
   }
   return next;
 }
@@ -111,6 +119,7 @@ export function idxStatsSummaries(stats: IdxTraceStats): MethodSummary[] {
       horizon: h,
       saved: stats.saved[h],
       evaluated: done,
+      days: stats.days[h].length,
       baseUpRate: rate(ups, done),
       rows: LABELS.map((l) => ({
         call: l,

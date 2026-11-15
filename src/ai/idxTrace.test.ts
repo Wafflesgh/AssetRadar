@@ -38,6 +38,10 @@ test('totals give the hit rate per horizon against the base rate', () => {
   assert.equal(s.firstDate, '2026-10-21');
   const medium = idxStatsSummaries(s).find((m) => m.horizon === 'medium')!;
   assert.equal(medium.evaluated, 4);
+  // Four scored calls, all made on one day
+  assert.equal(medium.days, 1);
+  // Totals from before the liquidity rule (version 1) are not read: they are rebuilt
+  assert.deepEqual(parseIdxStats({ ...s, version: 1 }), emptyIdxStats());
   // Bullish up, Bullish down, Bearish down → 2 of 3 directional calls right
   assert.equal(medium.hitRate!.toFixed(3), (2 / 3).toFixed(3));
   assert.equal(medium.rows.find((r) => r.call === 'Bullish')!.samples, 2);

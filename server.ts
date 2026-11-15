@@ -75,7 +75,7 @@ import {
 } from './server/binanceFeed.ts';
 import { CrossSection, monthlyFromBars, type CrossMarket, type CrossPersist } from './server/crossSection.ts';
 import { ANALYST_MODULES, parseAnalystData, type AnalystData } from './src/utils/analyst.ts';
-import { marketPillars, type MarketPillars, type StockPillars } from './src/sentiment/pillars.ts';
+import { LIQUIDITY_THRESHOLD, marketPillars, type MarketPillars, type StockPillars } from './src/sentiment/pillars.ts';
 import { newsByHorizon, HORIZONS, type Horizon } from './src/sentiment/newsHorizon.ts';
 import { derivativesScore, scoreHorizon, shortTechnical, trendScore, tsMomentumScore, type HorizonScore } from './src/sentiment/horizons.ts';
 import { nextCatalyst, type Catalyst } from './src/sentiment/cadence.ts';
@@ -214,7 +214,7 @@ import {
 import { registerSbnRoute } from './server/sbn.ts';
 import { STAPLES } from './src/utils/staples.ts';
 import { registerStaplesRoute, stapleWeekChanges, staplesStep } from './server/staples.ts';
-import { addToIdxStats, IDX_TRACE_MAX_CALLS, idxStatsSummaries, idxTraceDay, parseIdxStats } from './src/ai/idxTrace.ts';
+import { addToIdxStats, emptyIdxStats, IDX_STATS_VERSION, IDX_TRACE_MAX_CALLS, idxStatsSummaries, idxTraceDay, parseIdxStats } from './src/ai/idxTrace.ts';
 import { hostingFrom, internalSchedulerOn } from './src/utils/hosting.ts';
 import { readXlsxSheet } from './server/xlsx.ts';
 import { readXls } from './server/xls.ts';
@@ -4285,8 +4285,7 @@ async function runDailyAnalyst(): Promise<{ date: string; assets: number; sentim
   const log = recordSentimentCalls(
     before,
     date,
-    // Only crypto trades at the weekend: a call for a closed market would repeat Friday's close and be counted again
-    priced.filter((a) => a.group === 'crypto' || ![0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay())).map((a) => ({
+    priced.map((a) => ({
       symbol: a.symbol,
       crypto: a.group === 'crypto',
       price: snapAssets[a.symbol]?.p,
@@ -4397,7 +4396,7 @@ const IDXTRACE_PROGRESS = 'idxtrace:progress';
 const callId = (c: { date: string; horizon: string }) => `${c.date}|${c.horizon}`;
 
 /** One stock: save today's calls (only when it traded that day) and score its calls that are due. */
-async function recordIdxCalls(asset: Asset, date: string): Promise<{ saved: SentimentLog['calls']; scored: SentimentLog['calls'] }> {
+async function recordIdxCalls(asset: Asset, date: string): Promise<{ saved: SentimentLog['calls']; scored: SentimentLog['calls']; all: SentimentLog['calls'] }> {
   try {
     const bars = await recentHistoryFor(asset);
     const last = bars[bars.length - 1];
@@ -4422,7 +4421,7 @@ async function recordIdxCalls(asset: Asset, date: string): Promise<{ saved: Sent
     if (evaluated !== before) {
       await store.set(key, evaluated.calls.length > IDX_TRACE_MAX_CALLS ? { version: 1, calls: evaluated.calls.slice(-IDX_TRACE_MAX_CALLS) } : evaluated);
     }
-    return { saved, scored };
+    return { saved, scored, all: evaluated.calls };
   } finally {
     // ~960 ten-year histories would not fit in memory: drop each one once used
     if (asset.yahooSymbol) aiHistoryCache.delete(`y:${asset.yahooSymbol}`);
@@ -4436,27 +4435,36 @@ async function idxTraceStep(until: number): Promise<unknown> {
   if (!date) return 'market open';
   if (!store.persistent) return 'no database';
   // Failed reads throw (the step is retried next tick): zeros would be saved over the running totals
-  const saved = await store.get<{ date: string; next: number; recorded: number }>(IDXTRACE_PROGRESS);
-  const p = saved?.date === date ? saved : { date, next: 0, recorded: 0 };
+  const saved = await store.get<{ date: string; next: number; recorded: number; rebuild?: boolean }>(IDXTRACE_PROGRESS);
+  const rawStats = await store.get<{ version?: number }>(IDXTRACE_STATS);
   const core = new Set(ASSETS.map((a) => a.symbol));
   const list = IDX_UNIVERSE_STOCKS()
     .filter((a) => !core.has(a.symbol))
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  // Totals in an older format (or a rebuild cut short by the next trading day) are rebuilt from the
+  // saved records: one full pass adds every call of every liquid stock, not only the new ones
+  const rebuild = rawStats?.version !== IDX_STATS_VERSION || Boolean(saved?.rebuild && saved.date !== date && saved.next < list.length);
+  const p = rebuild ? { date, next: 0, recorded: 0, rebuild: true } : saved?.date === date ? saved : { date, next: 0, recorded: 0 };
   if (p.next >= list.length) return { date, done: true, total: list.length, recorded: p.recorded };
-  let stats = parseIdxStats(await store.get(IDXTRACE_STATS));
+  // Liquidity comes from the IDX price sweep (the day's value traded, as the sentiment pillars use it)
+  if (idxSweep.ticks.size === 0) await runIdxSweep().catch(() => {});
+  if (idxSweep.ticks.size === 0) return 'no prices';
+  // shortcut: one day's value traded decides, switch to a 20-day median if stocks near the line flip in and out
+  const liquid = (symbol: string) => (idxSweep.ticks.get(symbol)?.valueTraded ?? 0) >= LIQUIDITY_THRESHOLD.idx;
+  let stats = rebuild ? emptyIdxStats() : parseIdxStats(rawStats);
   const start = p.next;
   let failed = 0;
   while (p.next < list.length && Date.now() < until - 15_000) {
     const batch = list.slice(p.next, p.next + 4);
     p.next += batch.length;
     const results = await Promise.all(batch.map((a) => recordIdxCalls(a, date).catch(() => null)));
-    for (const r of results) {
+    for (const [i, r] of results.entries()) {
       if (!r) {
         failed++;
         continue;
       }
-      stats = addToIdxStats(stats, r.saved, r.scored);
-      if (r.saved.length) p.recorded++;
+      if (liquid(batch[i].symbol)) stats = p.rebuild ? addToIdxStats(stats, r.all, r.all) : addToIdxStats(stats, r.saved, r.scored);
+      if (r.all.some((c) => c.date === date)) p.recorded++;
     }
   }
   await store.set(IDXTRACE_STATS, stats);

@@ -141,6 +141,8 @@ export interface MethodSummary {
   /** Share of all scored calls followed by a rise (what guessing "up" would have scored). */
   baseUpRate: number | null;
   rows: MethodRow[];
+  /** Distinct days on which scored calls were made: thousands of calls from a few days are still a few days of evidence. */
+  days: number;
   /** Directional hit rate over all bullish + bearish calls. */
   hitRate: number | null;
   /** hit rate − the better of always-up / always-down; > 0 means the method beat the base rate. */
@@ -185,6 +187,7 @@ function summarize(
     profile,
     saved: items.length,
     evaluated: done.length,
+    days: new Set(done.map((x) => x.date)).size,
     baseUpRate,
     rows,
     hitRate,

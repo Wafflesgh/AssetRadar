@@ -2,14 +2,16 @@
  * MethodAccuracy.tsx — How each method has scored so far on real prices: sentiment per horizon
  * (short / medium / long) and the AI Advisor per horizon (20 / 60 trading days), with the number
  * of saved and scored calls, the directional hit rate versus always guessing the more common
- * direction, and a plain status: not enough results yet (< 30), beats the base rate, or needs
- * review. Used on the daily analysis page, the AI Advisor page and the asset page.
+ * direction, and a plain status: not enough results yet (< 30 calls or < 30 different days),
+ * beats the base rate, or needs review. Used on the daily analysis page, the AI Advisor page and the asset page.
  */
 import { useT, type TranslationKey } from '../i18n/index.ts';
 import type { MethodSummary } from '../ai/recommendationTrace.ts';
 import { formatDecimal } from '../utils/format.ts';
 
 export const MIN_SCORED = 30;
+/** Calls made on the same day rise and fall together, so a verdict also needs this many different days. */
+export const MIN_DAYS = 30;
 
 const pct = (v: number | null) => (v === null ? '—' : `${formatDecimal(v * 100, 1)}%`);
 
@@ -21,7 +23,7 @@ export function methodName(m: MethodSummary, t: ReturnType<typeof useT>): string
 
 export function methodStatus(m: MethodSummary): 'few' | 'good' | 'review' {
   const directional = m.rows.filter((r) => r.hitRate !== null).reduce((a, r) => a + r.samples, 0);
-  if (directional < MIN_SCORED || m.edge === null) return 'few';
+  if (directional < MIN_SCORED || m.days < MIN_DAYS || m.edge === null) return 'few';
   return m.edge > 0 ? 'good' : 'review';
 }
 
@@ -56,7 +58,7 @@ export function MethodAccuracy({ methods }: { methods: MethodSummary[] }) {
                   {m.edge === null ? '—' : `${m.edge > 0 ? '+' : ''}${formatDecimal(m.edge * 100, 1)} pt`}
                 </td>
                 <td className="py-1.5" style={{ color: color[st] }}>
-                  {st === 'few' ? t('trace.st.few', { n: directional, min: MIN_SCORED }) : t(`trace.st.${st}` as TranslationKey)}
+                  {st !== 'few' ? t(`trace.st.${st}` as TranslationKey) : directional < MIN_SCORED ? t('trace.st.few', { n: directional, min: MIN_SCORED }) : t('trace.st.fewDays', { n: m.days, min: MIN_DAYS })}
                 </td>
               </tr>
             );
