@@ -4285,7 +4285,8 @@ async function runDailyAnalyst(): Promise<{ date: string; assets: number; sentim
   const log = recordSentimentCalls(
     before,
     date,
-    priced.map((a) => ({
+    // Only crypto trades at the weekend: a call for a closed market would repeat Friday's close and be counted again
+    priced.filter((a) => a.group === 'crypto' || ![0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay())).map((a) => ({
       symbol: a.symbol,
       crypto: a.group === 'crypto',
       price: snapAssets[a.symbol]?.p,

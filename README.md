@@ -110,6 +110,11 @@ backtester. The interface is available in English and Bahasa Indonesia.
   several methods (pivots, moving averages, 52-week high/low, classic pivots, volume nodes),
   pattern targets with their historical hit rate, optional Fibonacci (low evidence), and lines
   on the alternative chart.
+- **Monte Carlo simulation** (asset page): 2,000 possible price paths for 1 month, 3 months or
+  1 year, drawn from the asset's own daily moves of the last five years in 5-day blocks (block
+  bootstrap, no bell curve assumed) with the past trend removed: the fan of outcomes around
+  today's price, the chance of a 10% dip or rise on the way and the typical worst drop. It shows
+  how wide the outcomes can be, not an expected gain.
 - **Crypto Binance** (`#/crypto`): the top 100 Binance USDT pairs by volume (price, 1h / 4h /
   24h / 7d change, volume, funding, sentiment), search, a pair page `#/crypto/<PAIR>` with
   closed-candle charts, ranges, levels and futures positioning (funding, open interest,
@@ -608,6 +613,7 @@ instead (as a new app), then Publish.
 | `CryptoBinanceView.tsx` | Crypto Binance page and pair pages (lazy-loaded). |
 | `sentiment/InvestmentSentimentPanel.tsx` | Short / Medium / Long investment sentiment card on the asset page. |
 | `sentiment/TechnicalLevelsPanel.tsx` | Technical ranges, ATR, levels and pattern targets. |
+| `sentiment/MonteCarloPanel.tsx` | Monte Carlo fan of price paths per asset (`src/utils/monteCarlo.ts`). |
 | `sentiment/SentimentLeaders.tsx` | Sentiment leaders card on the Radar. |
 | `FinancialStatementsPanel.tsx` | Financial statements and ratios on stock pages (lazy-loaded). |
 | `InstallApp.tsx` | "Install app" card and banner. |

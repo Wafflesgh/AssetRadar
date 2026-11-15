@@ -38,6 +38,7 @@ import type { ChartLine } from './sentiment/TechnicalLevelsPanel.tsx';
 const FinancialStatementsPanel = lazy(() => import('./FinancialStatementsPanel.tsx').then((m) => ({ default: m.FinancialStatementsPanel })));
 const InvestmentSentimentPanel = lazy(() => import('./sentiment/InvestmentSentimentPanel.tsx').then((m) => ({ default: m.InvestmentSentimentPanel })));
 const TechnicalLevelsPanel = lazy(() => import('./sentiment/TechnicalLevelsPanel.tsx').then((m) => ({ default: m.TechnicalLevelsPanel })));
+const MonteCarloPanel = lazy(() => import('./sentiment/MonteCarloPanel.tsx').then((m) => ({ default: m.MonteCarloPanel })));
 const RecommendationHistory = lazy(() => import('./RecommendationHistory.tsx').then((m) => ({ default: m.RecommendationHistory })));
 
 interface AssetDetailViewProps {
@@ -512,6 +513,7 @@ export function AssetDetailView({
       <Suspense fallback={null}>
         <InvestmentSentimentPanel asset={asset} />
         <TechnicalLevelsPanel asset={asset} onChartLines={setChartLines} />
+        <MonteCarloPanel asset={asset} />
         <RecommendationHistory asset={asset} />
       </Suspense>
 
