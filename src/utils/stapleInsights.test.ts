@@ -21,6 +21,10 @@ test('seasonalPattern finds the month that always rises and needs enough years',
   assert.equal(s[11].up, s[11].n);
   assert.ok(s[0].avg < -16 && s[0].up === 0);
   assert.equal(seasonalPattern(daily('2025-01-01', 400, () => 100)), null);
+  // Two days of a new month at a wild price are not a month: the pattern ignores them
+  const flat = daily('2020-01-01', 365 * 4, () => 100);
+  const cut = flat.filter(([d]) => d <= '2023-06-02').map(([d, v]) => [d, d >= '2023-06-01' ? 500 : v] as StaplePoint);
+  assert.equal(seasonalPattern(cut)![5].avg, 0);
 });
 
 test('eidEffect measures the run-up before Eid', () => {
@@ -86,4 +90,8 @@ test('matchesStapleNews needs the staple and the place', () => {
   assert.ok(matchesStapleNews('Harga beras naik di Sumatera Barat', 'beras', ['Sumatera Barat']));
   assert.ok(!matchesStapleNews('Harga beras naik di Jawa Timur', 'beras', ['Sumatera Barat', 'Kota Padang']));
   assert.ok(!matchesStapleNews('Banjir di Padang', 'beras', ['Kota Padang']));
+  assert.ok(!matchesStapleNews('Harga beras di Kepulauan Riau naik', 'beras', ['Riau']));
+  assert.ok(matchesStapleNews('Harga beras di Kepulauan Riau naik', 'beras', ['Kepulauan Riau']));
+  assert.ok(!matchesStapleNews('Harga telur ayam di Aceh naik', 'ayam', ['Aceh']));
+  assert.ok(matchesStapleNews('Harga telur ayam di Aceh naik', 'telur', ['Aceh']));
 });

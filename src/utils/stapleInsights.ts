@@ -38,7 +38,8 @@ export interface SeasonStat {
 export function seasonalPattern(points: StaplePoint[], minYears = 3): SeasonStat[] | null {
   const monthly = monthlyAverages(points);
   const byMonth: number[][] = Array.from({ length: 12 }, () => []);
-  for (let i = 1; i < monthly.length; i++) {
+  // The last month of the history is still running: a few days are not a month
+  for (let i = 1; i < monthly.length - 1; i++) {
     if (nextMonth(monthly[i - 1][0]) !== monthly[i][0]) continue;
     byMonth[Number(monthly[i][0].slice(5)) - 1].push(((monthly[i][1] - monthly[i - 1][1]) / monthly[i - 1][1]) * 100);
   }
@@ -196,12 +197,18 @@ export const STAPLE_NEWS_TERM: Record<StapleCategory, string> = {
   sugar: 'gula',
 };
 
+// Provinces whose name contains another province's name: a headline about them is not about the shorter one
+const LONGER_PROVINCES = ['kepulauan riau', 'maluku utara', 'papua barat'];
+
 /** A headline is "related" when it names the staple and the province (or one of its cities). Keyword match only. */
 export function matchesStapleNews(title: string, term: string, places: string[]): boolean {
-  const text = title.toLowerCase().replace(/cabe/g, 'cabai');
+  let text = title.toLowerCase().replace(/cabe/g, 'cabai');
+  // "Telur ayam" is about eggs, not chicken meat
+  if (term === 'ayam') text = text.replace(/telur ayam/g, 'telur');
   if (!term.split(' ').every((w) => text.includes(w))) return false;
   return places.some((p) => {
     const name = p.toLowerCase().replace(/^(kota|kab\.?|kabupaten|dki|di)\s+/, '').trim();
-    return name.length >= 4 && text.includes(name);
+    const rest = LONGER_PROVINCES.filter((n) => n !== name).reduce((s, n) => s.replaceAll(n, ''), text);
+    return name.length >= 4 && rest.includes(name);
   });
 }

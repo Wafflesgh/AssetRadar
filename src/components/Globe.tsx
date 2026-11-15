@@ -66,7 +66,7 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
   const [view, setView] = useState({ lon: center[0], lat: center[1], k: zoom });
   const [hover, setHover] = useState<{ id: string; x: number; y: number; node: ReactNode } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; moved: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: number; touch: boolean } | null>(null);
 
   const path = useMemo(() => {
     const projection = geoOrthographic()
@@ -74,15 +74,17 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
       .scale((H / 2 - 6) * view.k)
       .rotate([-view.lon, -view.lat])
       .clipAngle(90);
-    return { d: geoPath(projection), projection };
-  }, [view]);
+    const d = geoPath(projection);
+    // Projected once per view, not on every hover or price update
+    return { projection, sphere: d({ type: 'Sphere' }) ?? '', grid: d(geoGraticule10()) ?? '', shapes: shapes.map((s) => d(s)) };
+  }, [view, shapes]);
 
-  const place = (e: ReactPointerEvent, id: string, node: ReactNode) => {
+  const place = (e: { clientX: number; clientY: number }, id: string, node: ReactNode) => {
     const box = wrap.current?.getBoundingClientRect();
     if (box) setHover({ id, x: e.clientX - box.left, y: e.clientY - box.top, node });
   };
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    drag.current = { x: e.clientX, y: e.clientY, moved: 0 };
+    drag.current = { x: e.clientX, y: e.clientY, moved: 0, touch: e.pointerType !== 'mouse' };
   };
   const onMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const d = drag.current;
@@ -100,6 +102,14 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
   };
   // A click right after a drag is the end of the drag, not a pick
   const dragged = () => (drag.current?.moved ?? 0) >= 4;
+  // Touch has no hover: the first tap shows the tooltip, a second tap on the same thing picks it
+  const tap = (e: { clientX: number; clientY: number }, id: string, node: ReactNode, pick?: () => void) => {
+    if (dragged()) return;
+    if (drag.current?.touch && hover?.id !== id) place(e, id, node);
+    else pick?.();
+  };
+  // A finger "leaves" when it lifts, just before the click: only a mouse leaving hides the tooltip
+  const leave = (e: ReactPointerEvent) => e.pointerType === 'mouse' && setHover(null);
   const zoomBy = (f: number) => setView((v) => ({ ...v, k: Math.max(1, Math.min(14, v.k * f)) }));
   const button = 'w-8 h-8 inline-flex items-center justify-center rounded-lg border';
   const buttonStyle = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' };
@@ -116,16 +126,18 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={() => setTimeout(() => (drag.current = null), 0)}
-        onPointerLeave={() => {
+        onPointerCancel={() => (drag.current = null)}
+        onPointerLeave={(e) => {
+          if (e.pointerType !== 'mouse') return;
           drag.current = null;
           setHover(null);
         }}
       >
-        <path d={path.d({ type: 'Sphere' }) ?? ''} fill="var(--bg-canvas)" stroke="var(--border-strong)" strokeWidth={1} />
-        <path d={path.d(geoGraticule10()) ?? ''} fill="none" stroke="var(--border-subtle)" strokeWidth={0.5} />
-        {shapes.map((s) => {
+        <path d={path.sphere} fill="var(--bg-canvas)" stroke="var(--border-strong)" strokeWidth={1} />
+        <path d={path.grid} fill="none" stroke="var(--border-subtle)" strokeWidth={0.5} />
+        {shapes.map((s, i) => {
           const id = idOf(s);
-          const d = path.d(s);
+          const d = path.shapes[i];
           if (!d) return null;
           const color = fill(s);
           if (color === null) return <path key={id} d={d} fill="var(--border-subtle)" stroke="var(--bg-canvas)" strokeWidth={0.4} />;
@@ -140,8 +152,8 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
               strokeDasharray={marked?.has(id) && !active ? '4 2' : undefined}
               style={{ cursor: onPick ? 'pointer' : 'default' }}
               onPointerMove={(e) => !drag.current?.moved && place(e, id, tip(s))}
-              onPointerLeave={() => setHover(null)}
-              onClick={() => !dragged() && onPick?.(s)}
+              onPointerLeave={leave}
+              onClick={(e) => tap(e, id, tip(s), onPick && (() => onPick(s)))}
             />
           );
         })}
@@ -150,7 +162,7 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
           const p = path.projection([dot.lon, dot.lat]);
           if (!p) return null;
           return (
-            <g key={dot.id} style={{ cursor: dot.onPick ? 'pointer' : 'default' }} onPointerMove={(e) => place(e, dot.id, dot.tip)} onPointerLeave={() => setHover(null)} onClick={() => !dragged() && dot.onPick?.()}>
+            <g key={dot.id} style={{ cursor: dot.onPick ? 'pointer' : 'default' }} onPointerMove={(e) => place(e, dot.id, dot.tip)} onPointerLeave={leave} onClick={(e) => tap(e, dot.id, dot.tip, dot.onPick)}>
               {dot.pulse && <circle cx={p[0]} cy={p[1]} r={6} fill={dot.color} className="globe-pulse" />}
               <circle cx={p[0]} cy={p[1]} r={hover?.id === dot.id ? 6 : 4.5} fill={dot.color} stroke="var(--bg-canvas)" strokeWidth={1.2} />
             </g>

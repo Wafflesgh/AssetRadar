@@ -8,10 +8,11 @@
  *                 next to official inflation
  * Calculations live in src/utils/stapleInsights.ts. Short histories show "not enough data".
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, SearchCheck, ShoppingCart } from 'lucide-react';
 import { getLang, useT, type TranslationKey } from '../i18n/index.ts';
 import { formatNumber, formatRupiah } from '../utils/format.ts';
+import { onSyncApplied } from '../services/syncService.ts';
 import { getKitchenBasket, saveKitchenBasket } from '../utils/storage.ts';
 import { STAPLES, type StaplePoint } from '../utils/staples.ts';
 import { basketCost, eidEffect, seasonalPattern, type StapleAnomalyRow } from '../utils/stapleInsights.ts';
@@ -148,6 +149,16 @@ type OfficialRate = { label: string; value: number };
 export function BasketCard({ series, where, official }: BasketProps) {
   const t = useT();
   const [qty, setQty] = useState<Record<string, number>>(getKitchenBasket);
+  // Bumped when another device's list arrives, so the (uncontrolled) inputs show it
+  const [rev, setRev] = useState(0);
+  useEffect(
+    () =>
+      onSyncApplied(['settings'], () => {
+        setQty(getKitchenBasket());
+        setRev((r) => r + 1);
+      }),
+    []
+  );
   const cost = useMemo(() => basketCost(qty, series), [qty, series]);
   const change = (id: string, text: string) => {
     const n = Number(text.replace(',', '.'));
@@ -170,7 +181,7 @@ export function BasketCard({ series, where, official }: BasketProps) {
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {MAIN.map((s) => (
-          <label key={s.id} className="text-xs space-y-1 min-w-0">
+          <label key={`${s.id}-${rev}`} className="text-xs space-y-1 min-w-0">
             <span className="block truncate">{t(`kitchen.cat.${s.category}` as TranslationKey)}</span>
             <input
               type="number"
@@ -213,6 +224,11 @@ export function BasketCard({ series, where, official }: BasketProps) {
             </div>
           ))}
         </div>
+      )}
+      {cost && cost.missing.length > 0 && (
+        <p className="text-xs" style={{ color: 'var(--color-gold)' }}>
+          {t('kitchen.mine.missing', { items: cost.missing.map((id) => t(`kitchen.cat.${MAIN.find((s) => s.id === id)?.category}` as TranslationKey)).join(', ') })}
+        </p>
       )}
       {cost && official.length > 0 && (
         <p className="text-xs">

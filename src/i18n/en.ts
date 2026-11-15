@@ -3522,6 +3522,7 @@ export const en = {
   "kitchen.mine.official": "Official inflation, year on year:",
   "kitchen.mine.cpi": "all prices",
   "kitchen.mine.volatile": "volatile food",
+  "kitchen.mine.missing": "Not counted, no price yet: {items}.",
   "kitchen.mine.note": "Traditional-market prices of the main variety of each staple, so your own shop or brand will differ. The list is saved on this device and synced when sync is on.",
 } as const;
 

@@ -197,6 +197,15 @@ backtester. The interface is available in English and Bahasa Indonesia.
 - **Market heatmap** (`#/heatmap`): squarified treemap sized by market cap (radar assets by type,
   the 120 largest IDX stocks by sector) or by what you hold (watchlist, portfolio, paper trading),
   coloured by the 24h or 7d change.
+- **Kitchen Radar** (`#/kitchen`): daily traditional-market prices of 21 staples from Bank
+  Indonesia's PIHPS, per province and city. Indonesia on a globe coloured by price or change
+  (hover for the province, click to make it yours, month slider to replay the history), the usual
+  month-by-month pattern and the run-up before Eid on every card, unusual province moves with
+  keyword-matched related news (a lead, not a confirmation), and "my kitchen inflation" for your
+  own monthly shopping list next to official inflation.
+- **World markets globe** (Radar): each country coloured by its main index's change today, with
+  conflict headlines of the last 24 hours as pulsing dots. Maps: geoBoundaries / OpenStreetMap
+  (ODbL) and Natural Earth, built by `scripts/build-maps.mjs`.
 
 ## AI Advisor (scientific approach)
 

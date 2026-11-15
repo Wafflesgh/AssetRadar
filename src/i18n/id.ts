@@ -3523,5 +3523,6 @@ export const id: Record<TranslationKey, string> = {
   "kitchen.mine.official": "Inflasi resmi, tahun ke tahun:",
   "kitchen.mine.cpi": "semua harga",
   "kitchen.mine.volatile": "pangan bergejolak",
+  "kitchen.mine.missing": "Tidak dihitung, belum ada harga: {items}.",
   "kitchen.mine.note": "Harga pasar tradisional untuk jenis utama tiap bahan, jadi toko atau merek Anda bisa berbeda. Daftar disimpan di perangkat ini dan ikut sinkron bila sinkronisasi aktif.",
 };

@@ -250,7 +250,7 @@ async function findAnomalies(store: KvStore): Promise<StapleAnomalyRow[]> {
   const today = todayWib();
   const rows: Array<StapleAnomalyRow & { places: string[]; term: string }> = [];
   for (const def of STAPLES.filter((s) => s.main)) {
-    const d = await getPacked<StapleDetail>(store, detailKey(def.id)).catch(() => null);
+    const d = await getPacked<StapleDetail>(store, detailKey(def.id));
     for (const [province, series] of Object.entries(d?.provinces ?? {})) {
       // Only the last 400 days are judged
       const skip = Math.max(0, series.v.length - 400);
