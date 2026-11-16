@@ -121,7 +121,8 @@ export function Globe({ shapes, idOf, fill, tip, onPick, selected, marked, dots 
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label={label}
-        className="w-full block"
+        // Full width but capped in height: on wide screens the map stays centred instead of filling the page
+        className="w-full block max-h-[min(60vh,30rem)]"
         style={{ cursor: 'grab', touchAction: 'pan-y' }}
         onPointerDown={onDown}
         onPointerMove={onMove}

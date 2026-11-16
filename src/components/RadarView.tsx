@@ -5,7 +5,7 @@
  * Indonesian / US / world stocks, indices, forex), the live headline tape, and the sentiment
  * + news section with its own asset search.
  */
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { LineChart } from 'lucide-react';
 import { useT } from '../i18n/index.ts';
 import { assetName, assetShortName, groupSubtitle, groupTitle } from '../i18n/assetNames.ts';
@@ -109,7 +109,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
 
           {/* Market breadth: how many tracked assets are up, flat and down today */}
           <div className="w-full lg:w-72 shrink-0 space-y-2.5">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2">
               <SummaryStat label={t('radar.up')} value={`▲ ${upCount}`} color="var(--color-up)" />
               <SummaryStat label={t('radar.down')} value={`▼ ${downCount}`} color="var(--color-down)" />
               <SummaryStat label={t('radar.flat')} value={String(flatCount)} color="var(--text-primary)" />
@@ -140,12 +140,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
                 key={asset.id}
                 type="button"
                 onClick={() => onSelectAsset(asset.symbol)}
-                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                style={{
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  borderColor: 'var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                }}
+                className="chip shrink-0"
               >
                 <LineChart
                   className="w-3.5 h-3.5"
@@ -172,14 +167,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
 
       {/* Top 20 by market cap */}
       <section aria-labelledby="top20-heading" className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
-          <h2 id="top20-heading" className="text-base md:text-lg font-bold tracking-tight">
-            {t('radar.top20')}
-          </h2>
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            {t('radar.top20Note')}
-          </p>
-        </div>
+        <SectionHeading id="top20-heading" title={t('radar.top20')} note={t('radar.top20Note')} />
         {top20.length === 0 ? (
           <p
             className="p-5 rounded-xl border text-sm"
@@ -202,7 +190,11 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       </section>
 
       {/* Markets by type */}
-      <nav aria-label={t('radar.jump')} className="flex flex-wrap gap-1.5">
+      <nav
+        aria-label={t('radar.jump')}
+        className="radar-jump sticky z-[5] -mx-1 px-1 py-2 flex gap-1.5 overflow-x-auto sm:flex-wrap"
+        style={{ backgroundColor: 'color-mix(in srgb, var(--bg-canvas) 88%, transparent)', backdropFilter: 'blur(8px)' }}
+      >
         {ASSET_GROUPS.map((g) => (
           <a
             key={g.key}
@@ -212,8 +204,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
               e.preventDefault();
               document.getElementById(`group-${g.key}`)?.scrollIntoView({ block: 'start' });
             }}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+            className="chip shrink-0"
           >
             {groupTitle(g.key)}
           </a>
@@ -231,20 +222,15 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
             key={groupMeta.key}
             id={`group-${groupMeta.key}`}
             aria-labelledby={`group-heading-${groupMeta.key}`}
-            className="space-y-3 scroll-mt-20"
+            className="space-y-3 scroll-mt-32"
           >
-            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
-              <h2 id={`group-heading-${groupMeta.key}`} className="text-base md:text-lg font-bold tracking-tight">
-                {groupTitle(groupMeta.key)}
-                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  {all.length}
-                </span>
-                {groupMeta.key === 'crypto' && <CryptoQuoteToggle className="ml-2" />}
-              </h2>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {groupSubtitle(groupMeta.key)}
-              </p>
-            </div>
+            <SectionHeading
+              id={`group-heading-${groupMeta.key}`}
+              title={groupTitle(groupMeta.key)}
+              count={all.length}
+              extra={groupMeta.key === 'crypto' ? <CryptoQuoteToggle /> : undefined}
+              note={groupSubtitle(groupMeta.key)}
+            />
             <MarketTable
               caption={groupTitle(groupMeta.key)}
               assets={rows}
@@ -276,12 +262,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
       <section aria-labelledby="radar-sentiment-heading" className="space-y-4 pt-2">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h2 id="radar-sentiment-heading" className="text-base md:text-lg font-bold tracking-tight">
-              {t('radar.sentimentTitle')}
-            </h2>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {t('radar.sentimentNote')}
-            </p>
+            <SectionHeading id="radar-sentiment-heading" title={t('radar.sentimentTitle')} note={t('radar.sentimentNote')} />
           </div>
           <AssetSearch
             className="w-full md:w-96"
@@ -298,9 +279,31 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
   );
 }
 
+/** One heading style for every dashboard block: accent bar, title, optional count / control, note. */
+function SectionHeading({ id, title, note, count, extra }: { id: string; title: string; note?: string; count?: number; extra?: ReactNode }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+      <h2 id={id} className="section-title text-base md:text-lg font-bold tracking-tight">
+        {title}
+        {count !== undefined && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-semibold font-mono-num" style={{ backgroundColor: 'var(--bg-surface-subtle)', color: 'var(--text-secondary)' }}>
+            {count}
+          </span>
+        )}
+        {extra}
+      </h2>
+      {note && (
+        <p className="text-xs sm:text-right" style={{ color: 'var(--text-secondary)' }}>
+          {note}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SummaryStat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div>
+    <div className="stat-tile">
       <span className="text-xs block" style={{ color: 'var(--text-secondary)' }}>
         {label}
       </span>
