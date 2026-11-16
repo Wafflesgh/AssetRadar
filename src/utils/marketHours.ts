@@ -60,6 +60,17 @@ export const EXCHANGE_HOURS: Record<Exclude<ExchangeId, 'CRYPTO' | 'FX' | 'FUTUR
   NSE: { timeZone: 'Asia/Kolkata', sessions: [[hm(9, 15), hm(15, 30)]], label: 'Mumbai' },
   ASX: { timeZone: 'Australia/Sydney', sessions: [[hm(10), hm(16)]], label: 'Sydney' },
   TADAWUL: { timeZone: 'Asia/Riyadh', sessions: [[hm(10), hm(15)]], label: 'Riyadh', days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'] },
+  TSX: { timeZone: 'America/Toronto', sessions: [[hm(9, 30), hm(16)]], label: 'Toronto' },
+  B3: { timeZone: 'America/Sao_Paulo', sessions: [[hm(10), hm(17)]], label: 'São Paulo' },
+  BMV: { timeZone: 'America/Mexico_City', sessions: [[hm(8, 30), hm(15)]], label: 'Mexico City' },
+  TWSE: { timeZone: 'Asia/Taipei', sessions: [[hm(9), hm(13, 30)]], label: 'Taipei' },
+  BURSA: { timeZone: 'Asia/Kuala_Lumpur', sessions: [[hm(9), hm(12, 30)], [hm(14, 30), hm(17)]], label: 'Kuala Lumpur' },
+  SETX: { timeZone: 'Asia/Bangkok', sessions: [[hm(10), hm(12, 30)], [hm(14, 30), hm(16, 30)]], label: 'Bangkok' },
+  PSE: { timeZone: 'Asia/Manila', sessions: [[hm(9, 30), hm(12)], [hm(13), hm(15)]], label: 'Manila' },
+  SIX: { timeZone: 'Europe/Zurich', sessions: [[hm(9), hm(17, 30)]], label: 'Zurich' },
+  BME: { timeZone: 'Europe/Madrid', sessions: [[hm(9), hm(17, 30)]], label: 'Madrid' },
+  BIT: { timeZone: 'Europe/Rome', sessions: [[hm(9), hm(17, 30)]], label: 'Milan' },
+  NZX: { timeZone: 'Pacific/Auckland', sessions: [[hm(10), hm(16, 45)]], label: 'Wellington' },
 };
 
 function localWeekdayMinutes(nowMs: number, timeZone: string): { weekday: string; minutes: number } {

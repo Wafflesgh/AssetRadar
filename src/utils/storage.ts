@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   DISMISSED_ALERTS: 'assetradar_dismissed_alerts',
   AI_PREFS: 'assetradar_ai_prefs',
   SIDEBAR_COLLAPSED: 'assetradar_sidebar_collapsed',
+  WORLD_GLOBE_HIDDEN: 'assetradar_world_globe_hidden',
   SENTIMENT_REFRESH: 'assetradar_sentiment_refresh_v1',
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
@@ -146,7 +147,17 @@ export function saveSidebarCollapsed(collapsed: boolean): void {
   else safeRemove(STORAGE_KEYS.SIDEBAR_COLLAPSED);
 }
 
-export type SentimentRefresh = '2m' | '1h' | 'manual';
+/** The Radar world globe folded away by the viewer. */
+export function getWorldGlobeHidden(): boolean {
+  return safeGet(STORAGE_KEYS.WORLD_GLOBE_HIDDEN) === '1';
+}
+
+export function saveWorldGlobeHidden(hidden: boolean): void {
+  if (hidden) safeSet(STORAGE_KEYS.WORLD_GLOBE_HIDDEN, '1');
+  else safeRemove(STORAGE_KEYS.WORLD_GLOBE_HIDDEN);
+}
+
+export type SentimentRefresh ='2m' | '1h' | 'manual';
 
 /** How often the sentiment card reloads by itself (default every 2 minutes). */
 export function getSentimentRefresh(): SentimentRefresh {

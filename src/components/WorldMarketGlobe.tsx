@@ -6,8 +6,9 @@
  * last 24 hours pulse as dots where they happen (src/utils/geoPlaces.ts). Countries without an
  * index in the app stay grey.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { Globe2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, Globe2, Maximize2, Minimize2 } from 'lucide-react';
+import { getWorldGlobeHidden, saveWorldGlobeHidden } from '../utils/storage.ts';
 import { useT } from '../i18n/index.ts';
 import { assetName } from '../i18n/assetNames.ts';
 import { ASSETS, type AssetConfig, type PriceTick } from '../config/assets.ts';
@@ -30,6 +31,19 @@ const MARKETS: Array<{ iso: string; asset: string; at?: [number, number] }> = [
   { iso: 'AU', asset: 'asx' },
   { iso: 'HK', asset: 'hsi', at: [114.17, 22.3] },
   { iso: 'SG', asset: 'sti', at: [103.82, 1.35] },
+  { iso: 'CA', asset: 'tsx' },
+  { iso: 'BR', asset: 'ibov' },
+  { iso: 'MX', asset: 'ipc' },
+  { iso: 'TW', asset: 'taiex' },
+  { iso: 'MY', asset: 'klci' },
+  { iso: 'TH', asset: 'seti' },
+  { iso: 'PH', asset: 'psei' },
+  { iso: 'SA', asset: 'tasi' },
+  { iso: 'CH', asset: 'smi' },
+  { iso: 'ES', asset: 'ibex' },
+  { iso: 'IT', asset: 'mib' },
+  { iso: 'NL', asset: 'aex' },
+  { iso: 'NZ', asset: 'nz50' },
 ];
 
 const DAY_MS = 24 * 3600_000;
@@ -41,6 +55,24 @@ export function WorldMarketGlobe({ ticks, onSelectAsset }: { ticks: Record<strin
   const news = useLiveNews();
   const [shapes, setShapes] = useState<GlobeShape[] | null>(null);
   const [mapError, setMapError] = useState(false);
+  const [hidden, setHidden] = useState(getWorldGlobeHidden);
+  const [full, setFull] = useState(false);
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const sync = () => setFull(document.fullscreenElement === box.current);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  const toggleHidden = () => {
+    saveWorldGlobeHidden(!hidden);
+    setHidden(!hidden);
+  };
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else box.current?.requestFullscreen().catch(() => {});
+  };
+  const headButton = 'w-8 h-8 inline-flex items-center justify-center rounded-lg border';
+  const headStyle = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' };
   useEffect(() => {
     loadMap('world')
       .then(setShapes)
@@ -116,14 +148,29 @@ export function WorldMarketGlobe({ ticks, onSelectAsset }: { ticks: Record<strin
   ];
 
   return (
-    <section className="p-4 md:p-5 rounded-xl border space-y-3" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} aria-labelledby="world-globe-heading">
+    <section
+      ref={box}
+      className="world-globe p-4 md:p-5 rounded-xl border space-y-3"
+      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+      aria-labelledby="world-globe-heading"
+    >
       <div className="flex items-center gap-2">
         <Globe2 size={18} style={{ color: 'var(--accent-radar)' }} aria-hidden="true" />
-        <h3 id="world-globe-heading" className="text-sm font-bold">
+        <h3 id="world-globe-heading" className="text-sm font-bold flex-1">
           {t('globe.world.title')}
         </h3>
+        {!hidden && document.fullscreenEnabled && (
+          <button type="button" onClick={toggleFull} className={headButton} style={headStyle} aria-label={t(full ? 'globe.exitFullscreen' : 'globe.fullscreen')} title={t(full ? 'globe.exitFullscreen' : 'globe.fullscreen')}>
+            {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+        )}
+        {!full && (
+          <button type="button" onClick={toggleHidden} className={headButton} style={headStyle} aria-expanded={!hidden} aria-label={t(hidden ? 'globe.expand' : 'globe.minimize')} title={t(hidden ? 'globe.expand' : 'globe.minimize')}>
+            {hidden ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          </button>
+        )}
       </div>
-      {mapError ? (
+      {hidden ? null : mapError ? (
         <p className="text-sm" role="alert">
           {t('globe.mapError')}
         </p>
@@ -147,7 +194,7 @@ export function WorldMarketGlobe({ ticks, onSelectAsset }: { ticks: Record<strin
           label={t('globe.world.title')}
         />
       )}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+      {!hidden && <><div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
         <span className="inline-flex items-center gap-1.5 font-mono-num">
           −2%
           <span className="inline-flex rounded overflow-hidden border" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -170,7 +217,7 @@ export function WorldMarketGlobe({ ticks, onSelectAsset }: { ticks: Record<strin
             </li>
           ))}
         </ul>
-      )}
+      )}</>}
     </section>
   );
 }

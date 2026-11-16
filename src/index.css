@@ -358,6 +358,11 @@
   background-color: color-mix(in srgb, var(--bg-surface-subtle) 80%, transparent);
 }
 
+/* Radar world globe: a little smaller than other globes; full screen uses the whole height */
+.world-globe svg[role="img"] { max-height: min(50vh, 25rem); }
+.world-globe:fullscreen { overflow-y: auto; border-radius: 0; }
+.world-globe:fullscreen svg[role="img"] { max-height: calc(100vh - 7rem); }
+
 /* Market breadth bar (gainers / flat / losers share) */
 .breadth-bar {
   display: flex;

@@ -135,6 +135,17 @@ export type ExchangeId =
   | 'NSE'
   | 'ASX'
   | 'TADAWUL'
+  | 'TSX'
+  | 'B3'
+  | 'BMV'
+  | 'TWSE'
+  | 'BURSA'
+  | 'SETX'
+  | 'PSE'
+  | 'SIX'
+  | 'BME'
+  | 'BIT'
+  | 'NZX'
   | 'FX'
   | 'FUTURES';
 
@@ -653,6 +664,33 @@ export const ASSETS: AssetConfig[] = [
     'The 200 largest companies on the Australian Securities Exchange.', { ai: true }),
   globalIndex('sti', 'STI', '^STI', 'Straits Times Index', 'SGX', 'TVC:STI', 'Singapore', ['SINGAPORE'],
     'The benchmark index of the 30 largest companies on the Singapore Exchange.', { ai: true }),
+  // More national benchmarks (16 Nov 2026), mainly so the Radar globe covers the world's big markets
+  globalIndex('tsx', 'TSX', '^GSPTSE', 'S&P/TSX Composite', 'TSX', null, 'Canada', ['CANADA'],
+    'The main index of the Toronto Stock Exchange, heavy in banks, energy and mining.'),
+  globalIndex('ibov', 'IBOV', '^BVSP', 'Ibovespa', 'B3', null, 'Brazil', ['BOVESPA', 'BRAZIL'],
+    'The benchmark index of the São Paulo exchange (B3), the largest market in Latin America.'),
+  globalIndex('ipc', 'IPC', '^MXX', 'S&P/BMV IPC', 'BMV', null, 'Mexico', ['MEXICO'],
+    'The main index of the Mexican Stock Exchange.'),
+  globalIndex('taiex', 'TAIEX', '^TWII', 'TAIEX', 'TWSE', null, 'Taiwan', ['TAIWAN'],
+    'All stocks on the Taiwan Stock Exchange, dominated by chipmakers such as TSMC.'),
+  globalIndex('klci', 'KLCI', '^KLSE', 'FTSE Bursa Malaysia KLCI', 'BURSA', null, 'Malaysia', ['MALAYSIA'],
+    'The 30 largest companies on Bursa Malaysia.'),
+  globalIndex('seti', 'SETI', '^SET.BK', 'SET Index', 'SETX', null, 'Thailand', ['THAILAND'],
+    'All stocks on the Stock Exchange of Thailand.'),
+  globalIndex('psei', 'PSEI', 'PSEI.PS', 'PSEi', 'PSE', null, 'Philippines', ['PHILIPPINES'],
+    'The 30 largest companies on the Philippine Stock Exchange.'),
+  globalIndex('tasi', 'TASI', '^TASI.SR', 'Tadawul All Share', 'TADAWUL', null, 'Saudi Arabia', ['SAUDI'],
+    'All stocks on the Saudi Exchange (Tadawul), the largest market in the Middle East. Trades Sunday–Thursday.'),
+  globalIndex('smi', 'SMI', '^SSMI', 'Swiss Market Index', 'SIX', null, 'Switzerland', ['SWISS'],
+    'The 20 largest Swiss companies on the SIX exchange.'),
+  globalIndex('ibex', 'IBEX', '^IBEX', 'IBEX 35', 'BME', null, 'Spain', ['SPAIN'],
+    'The 35 most traded companies on the Madrid exchange.'),
+  globalIndex('mib', 'MIB', 'FTSEMIB.MI', 'FTSE MIB', 'BIT', null, 'Italy', ['ITALY'],
+    'The 40 largest companies on Borsa Italiana in Milan.'),
+  globalIndex('aex', 'AEX', '^AEX', 'AEX', 'EURONEXT', null, 'Netherlands', ['AMSTERDAM'],
+    'The 25 largest companies on Euronext Amsterdam.'),
+  globalIndex('nz50', 'NZ50', '^NZ50', 'S&P/NZX 50', 'NZX', null, 'New Zealand', ['NZX'],
+    'The 50 largest companies on the New Zealand exchange.'),
 
   // ---- Forex ----
   {
