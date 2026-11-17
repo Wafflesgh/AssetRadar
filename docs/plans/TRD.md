@@ -106,3 +106,40 @@ added to `morningBrief.ts`. No new data source, no buy/sell wording.
 - UX: 375 px without horizontal scroll, light and dark readable, EN + ID.
 - Testing: every new pure module has a test; `npm run lint && npm test && npm run build` and
   `check-i18n` = 0.
+
+---
+
+# Addendum 2026-11-17 — My Portfolio and sector 1M (plan: `PLAN_MyPortfolio.md`)
+
+## T8 — Portfolio concentration (M)
+**Requirement:** show how concentrated holdings are, by asset, sector, currency, country and asset class.
+**Design:** pure `src/utils/concentration.ts` (+ test) on the existing valued positions (`valuePosition`):
+weights in IDR; HHI = Σw², effective number of holdings = 1/HHI; labels: <0.15 diversified,
+0.15–0.25 moderate, >0.25 concentrated. Sector: IDX-IC from `idxStocks.json`, GICS sub-industry from
+`sp500.json`, otherwise group name; anything unknown stays "Unclassified" (never guessed).
+UI: section in `PortfolioView` (later its own tab, T11). No buy/sell wording, no target weights.
+**Acceptance:** one holding → HHI 1; two equal → 0.5; unknown sector counted as Unclassified.
+
+## T9 — Decision journal (M)
+**Requirement:** a dated note per asset/transaction with an automatic evidence snapshot, reviewed later.
+**Design:** new synced collection `journal` (add to the collection list in `src/utils/sync.ts` and wrap
+the saver with `tracked()` in `storage.ts`). Entry `{ id, symbol, txId?, createdAt, note (≤1000 chars),
+snapshot: { price, currency, sentiment: {short, medium, long}, evidenceScore } }`. Snapshot read from
+data the page already has; missing parts stored as null. Review view: change since the note at
+1W/1M/3M from `/api/market/daily`. Pure logic `src/utils/journal.ts` (+ test). Notes never leave the
+browser except through the owner's own sync.
+**Acceptance:** add → sync round trip in memory; review returns null (not 0) when history is missing.
+
+## T10 — Sector rotation 1-month change (S–M)
+**Requirement:** fill the 1M column in `#/sectors` from real closes.
+**Design:** at the end of `idxTraceStep`, keep one compact store key `idx:closes` =
+`{ dates: string[≤30], closes: Record<symbol, Array<number|null>> }` updated with the day's closes
+(packed with `setPacked`). `/api/sectors/idx` passes 1M % per stock (latest vs 21 trading days back;
+null if not available) into the existing pure `sectorRotation.ts`, which already supports 1M.
+Before 21 days exist the UI says "not enough history yet".
+**Acceptance:** fixture with 22 dates → correct 1M; 10 dates → null; no extra upstream fetches.
+
+## T11 — My Portfolio tabs (M)
+**Requirement:** reorganize `#/portfolio` into tabs: Summary, Positions, Concentration, Journal,
+Income & Risk. Existing components move, not rewritten. Tab kept in the hash (`#/portfolio/journal`)
+via `router.ts` (+ test). 375 px, light/dark, EN + ID.
