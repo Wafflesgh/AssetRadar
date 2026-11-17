@@ -75,6 +75,19 @@ Paket gratis Cloud Scheduler: 3 job per akun per bulan, jadi satu job ini gratis
 - Cek Billing → Reports: biaya (sebelum kredit) seharusnya sangat kecil.
 - Kalau semua baik, Vercel boleh dibiarkan atau dihapus (Vercel → Project → Settings → Delete).
 
+## Cadangan harian (opsional)
+
+Fitur mati sampai `GCS_BACKUP_BUCKET` diisi. Tidak perlu memasukkan kunci layanan ke aplikasi.
+
+1. Buat bucket Cloud Storage di **asia-southeast1**, pilih **uniform bucket-level access** dan aktifkan **public access prevention**. Cadangan berisi data pribadi dan langganan push; jangan dibagikan publik.
+2. Tambahkan dua aturan lifecycle **Delete object**: awalan `backups/daily/` dengan umur **35 hari**, dan awalan `backups/weekly/` dengan umur **120 hari**. Periksa juga pengaturan soft delete karena salinan yang masih dipertahankan dapat menambah biaya.
+3. Pada izin bucket itu saja, beri service account yang dipakai Cloud Run peran **Storage Object Creator**. Jangan berikan izin untuk seluruh project.
+4. Tambahkan variabel Cloud Run `GCS_BACKUP_BUCKET` berisi nama bucket, tanpa `gs://`. Cadangan dicoba setelah 02:00 WIB ketika tick masih punya waktu; setiap Minggu dibuat juga salinan mingguan.
+5. Untuk memeriksa pemulihan, unduh satu file memakai akun pemilik yang punya akses baca, lalu jalankan dengan Node yang mendukung TypeScript seperti tes proyek: `node scripts/restore-backup.mjs <file.json.gz>`. Skrip memeriksa checksum dan memulihkan ke memori saja. Output hanya jumlah kunci dan OK/mismatch; tidak menulis ke Supabase.
+
+Upload tidak menimpa file yang sudah ada. Jika upload sebagian berhasil atau penyimpanan penanda gagal, percobaan ulang pada tanggal sama dapat menghasilkan HTTP 412. Jangan menghapus cadangan otomatis: minta Claude memeriksa file yang sudah ada dan statusnya. Hari berikutnya memakai nama baru.
+Cadangan dibaca bertahap, bukan snapshot transaksi serentak; perubahan saat pencadangan bisa berasal dari waktu berbeda. Checksum mendeteksi kerusakan isi, bukan menjamin konsistensi antarcatatan atau keaslian file. Uji pemulihan berkala dan simpan hasil unduhan di tempat pribadi.
+
 ## Kalau ada masalah
 
 - Build gagal: Cloud Build → History → klik build merah → kirim **pesan error-nya saja** ke Claude (bukan nilai secrets).

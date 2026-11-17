@@ -182,6 +182,7 @@ import { CLOUD_RUN, SERVERLESS, STREAMS, afterMs, everyMs, keepAlive, streamEver
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
 import { diagnosticsProbes, registerDiagnosticsRoute } from './server/diagnostics.ts';
+import { backupStep } from './server/backup.ts';
 import { registerFreshnessRoute, type FreshnessInput } from './server/freshness.ts';
 import { getSbnRetail } from './server/sbn.ts';
 import { sbnStatus } from './src/utils/sbnRetail.ts';
@@ -5068,6 +5069,7 @@ async function runTick(): Promise<Record<string, unknown>> {
     ['screener', screenerStep],
     ['calendar', calendarStep],
     ['staples', (until) => staplesStep(store, until)],
+    ['backup', (until) => backupStep(store, until)],
   ];
   for (let i = 0; i < steps.length; i++) {
     // One share stays for the results below; the IDX trace (first) may use half the tick
