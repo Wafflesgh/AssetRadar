@@ -182,6 +182,7 @@ import { CLOUD_RUN, SERVERLESS, STREAMS, afterMs, everyMs, keepAlive, streamEver
 import { createOwnerAuth, liveValues, loadSyncData, registerSyncRoutes, syncStorageReady, updateSyncData } from './server/sync.ts';
 import { loadSubscriptions, pushLang, registerPushRoutes, sendPushToAll, vapidConfigured } from './server/push.ts';
 import { diagnosticsProbes, registerDiagnosticsRoute } from './server/diagnostics.ts';
+import { registerFreshnessRoute, type FreshnessInput } from './server/freshness.ts';
 import { getSbnRetail } from './server/sbn.ts';
 import { sbnStatus } from './src/utils/sbnRetail.ts';
 import {
@@ -4792,6 +4793,31 @@ async function diagnosticsLive(): Promise<Record<string, unknown>> {
   };
 }
 
+/** Read stored completion dates and existing caches without refreshing any source. */
+async function freshnessLive(): Promise<FreshnessInput[]> {
+  const [tick, state] = await Promise.all([
+    store.get<Record<string, unknown>>('tick:last').catch(() => null),
+    store.get<Record<string, string>>('jobs:state').catch(() => null),
+  ]);
+  const at = typeof tick?.finishedAt === 'number' ? tick.finishedAt : null;
+  const items: FreshnessInput[] = [{ id: 'tick', lastOk: at, expectedMs: 2 * 3600_000 }];
+  for (const id of ['alerts', 'jobs', 'idxTrace', 'scanIdx', 'scanUs', 'screener', 'calendar', 'staples', 'results_idx', 'results_us', 'results_crypto']) {
+    items.push({ id: `step.${id}`, lastOk: tick?.[id] === undefined ? null : at, expectedMs: 2 * 3600_000, problem: tick?.[id] });
+  }
+  for (const [id, time] of [['forward', FORWARD_TIME], ['analyst', ANALYST_TIME], ['fundArena', ANALYST_TIME], ['brief', BRIEF_TIME], ['arenaLog', FORWARD_TIME]]) {
+    const date = state?.[id];
+    items.push({ id, lastOk: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T${time}:00+07:00`) : null,
+      expectedMs: 26 * 3600_000, weekdaysOnly: id === 'forward' || id === 'arenaLog' });
+  }
+  const ticks = [...yahooCache.values()].map((entry) => entry.data).concat(Object.values(indodaxCache.entry?.data ?? {}));
+  for (const [group, market] of [['idStock', 'IDX'], ['usStock', 'NYSE'], ['crypto', 'CRYPTO']] as const) {
+    const times = ticks.filter((t) => t.group === group && t.status !== 'error' && Number.isFinite(t.price) && t.price > 0).map((t) => t.updatedAt).filter(Number.isFinite);
+    items.push({ id: `prices.${group}`, lastOk: times.length ? Math.max(...times) : null, expectedMs: 15 * 60_000, market, viewerDriven: true });
+  }
+  items.push({ id: 'news', lastOk: Math.max(0, ...newsHub.lastFetchedAt.values()) || null, expectedMs: 15 * 60_000, viewerDriven: true });
+  return items;
+}
+
 let lastDueCheck = 0;
 /** Cheap check on API traffic: the first request after the scheduled time starts the job. */
 function checkDueJobsSoon(): void {
@@ -5070,6 +5096,7 @@ export async function createApp(): Promise<express.Express> {
   registerSyncRoutes(app, store, ownerAuth);
   registerPushRoutes(app, store, ownerAuth, serverAlertsReady);
   registerDiagnosticsRoute(app, diagnosticsLive);
+  registerFreshnessRoute(app, freshnessLive);
   registerSbnRoute(app, store);
   registerStaplesRoute(app, store);
 

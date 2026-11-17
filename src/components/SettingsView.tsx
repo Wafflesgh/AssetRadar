@@ -11,6 +11,7 @@ import { ThemePreference } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { DiagnosticsCard } from './DiagnosticsCard.tsx';
+import { FreshnessCard } from './FreshnessCard.tsx';
 
 interface SettingsViewProps {
   themePreference: ThemePreference;
@@ -62,6 +63,7 @@ export function SettingsView({
 
       <SyncCard />
       <DiagnosticsCard />
+      <FreshnessCard />
       {/* Language and number format */}
       <section
         aria-labelledby="settings-lang-heading"
