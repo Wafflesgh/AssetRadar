@@ -61,7 +61,10 @@ test('prompt carries only the facts and the disclaimer; notes are plain text', (
   assert.match(p, /Indonesian/);
   assert.match(p, /bukan nasihat investasi/);
   assert.match(p, /"Asset A"/);
-  assert.deepEqual(cleanNote('Argon', '<b>Data</b> looks fine'), { at: cleanNote('Argon', 'x y z')!.at, author: 'Argon', text: 'Data looks fine' });
+  // Compare the fields, not two Date.now() calls (they can differ by 1 ms)
+  const note = cleanNote('Argon', '<b>Data</b> looks fine')!;
+  assert.deepEqual({ author: note.author, text: note.text }, { author: 'Argon', text: 'Data looks fine' });
+  assert.ok(Number.isFinite(note.at) && Math.abs(Date.now() - note.at) < 5000);
   assert.equal(cleanNote('Argon', '  '), null);
   assert.equal(cleanNote('<script>', 'checked the data')?.author, 'agent');
   assert.equal(cleanNote('a', 'x'.repeat(5000))?.text.length, 4000);
