@@ -77,9 +77,10 @@ function idrSeriesFn(symbol: string, hist: Record<string, DailyHistory>): ((date
   };
 }
 
-export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: PortfolioTx[]; ticks: Record<string, PriceTick>; onSelectAsset: (s: string) => void }) {
+export function PortfolioAnalytics({ txs, ticks, onSelectAsset, section }: { section: 'performance' | 'income'; txs: PortfolioTx[]; ticks: Record<string, PriceTick>; onSelectAsset: (s: string) => void }) {
   const t = useT();
-  const [tab, setTab] = useState<Tab>('performance');
+  const [incomeTab, setTab] = useState<Tab>('risk');
+  const tab = section === 'performance' ? 'performance' : incomeTab;
   const [hist, setHist] = useState<Record<string, DailyHistory>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,7 +213,7 @@ export function PortfolioAnalytics({ txs, ticks, onSelectAsset }: { txs: Portfol
           {t('pfa.title')}
         </h2>
         <div className="flex flex-wrap gap-1" role="tablist" aria-label={t('pfa.title')}>
-          {tabs.map((x) => (
+          {tabs.filter(x => section === 'performance' ? x.id === 'performance' : x.id !== 'performance').map((x) => (
             <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} onClick={() => setTab(x.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: tab === x.id ? 'var(--accent-radar)' : 'var(--border-subtle)', color: tab === x.id ? 'var(--accent-radar)' : 'var(--text-primary)', backgroundColor: tab === x.id ? 'var(--accent-radar-soft)' : 'transparent' }}>
               {x.label}
             </button>

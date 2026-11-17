@@ -53,8 +53,8 @@ test('IDX page and universe stock detail routes', () => {
 });
 
 test('portfolio route', () => {
-  assert.deepEqual(parseHashRoute('#/portfolio'), { tab: 'portfolio' });
-  assert.deepEqual(parseHashRoute('#/portofolio'), { tab: 'portfolio' });
+  assert.deepEqual(parseHashRoute('#/portfolio'), { tab: 'portfolio', portfolioTab: 'summary' });
+  assert.deepEqual(parseHashRoute('#/portofolio'), { tab: 'portfolio', portfolioTab: 'summary' });
   assert.equal(buildHashRoute('portfolio'), '#/portfolio');
 });
 
@@ -144,4 +144,11 @@ test('stock story route: a stock by id, or the picker for anything else', () => 
   assert.equal(buildHashRoute('story', 'BBCA.JK'), '#/story/bbca');
   // Not a stock: the picker
   assert.equal(buildHashRoute('story', 'BTC/IDR'), '#/story');
+});
+
+test('portfolio sections and invalid section fallback', () => {
+  for (const tab of ['summary', 'positions', 'concentration', 'journal', 'income']) {
+    assert.deepEqual(parseHashRoute(`#/portfolio/${tab}`), { tab: 'portfolio', portfolioTab: tab });
+  }
+  assert.deepEqual(parseHashRoute('#/portfolio/unknown'), { tab: 'portfolio', portfolioTab: 'summary' });
 });

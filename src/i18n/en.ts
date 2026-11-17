@@ -4,6 +4,19 @@
  * Placeholders use {name}.
  */
 export const en = {
+  "pft.totalPl": "Total P/L (realized + unrealized)",
+  "pft.tabs": "Portfolio sections",
+  "pft.summary": "Summary",
+  "pft.positions": "Positions",
+  "pft.concentration": "Concentration",
+  "pft.journal": "Journal",
+  "pft.income": "Income & Risk",
+  "pft.change": "24-hour change",
+  "pft.changeNote": "Crypto uses 24 hours; stocks use the last session. Excluded positions: {n}.",
+  "pft.concentrationNote": "Asset concentration: {level}",
+  "pft.stale": "Missing, offline, failed or older-than-15-minute quotes: {n} positions. Closed markets may also have old quotes.",
+  "pft.up": "Top 3 gains · 24h %",
+  "pft.down": "Top 3 declines · 24h %",
   "export.title": "Export / import owner data",
   "export.description": "Download all synced collections on this device, including your journal. Login tokens and credentials are excluded. Keep the file private: it contains your personal records.",
   "export.download": "Download all data",

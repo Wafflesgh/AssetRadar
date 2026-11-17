@@ -9,6 +9,8 @@
  */
 import { t, t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
+import { PortfolioSummary } from './PortfolioSummary.tsx';
+import { parseHashRoute, PORTFOLIO_TABS, type PortfolioTab } from '../utils/router.ts';
 import { PortfolioConcentration } from './PortfolioConcentration.tsx';
 import { PortfolioJournal } from './PortfolioJournal.tsx';
 import { assetName } from '../i18n/assetNames.ts';
@@ -107,6 +109,13 @@ interface PortfolioViewProps {
 }
 
 export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
+  const [section, setSection] = useState<PortfolioTab>(() => parseHashRoute(window.location.hash).portfolioTab ?? 'summary');
+  useEffect(() => {
+    const update = () => setSection(parseHashRoute(window.location.hash).portfolioTab ?? 'summary');
+    window.addEventListener('hashchange', update);
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
+  const navigate = (tab: PortfolioTab) => { setSection(tab); window.location.hash = `/portfolio/${tab}`; };
   const [txs, setTxs] = useState<PortfolioTx[]>(() => getPortfolioTxs<PortfolioTx>());
   useT();
   const goldPrices = useGoldPrices();
@@ -186,6 +195,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const target: Allocation | null = saved?.customAllocation ? (saved.customAllocation as Allocation) : profile ? PROFILE_ALLOCATIONS[profile] : null;
 
   const startEdit = (t?: PortfolioTx) => {
+    navigate('positions');
     setErrors([]);
     if (!t) return setDraft(emptyDraft());
     const asset = getAssetBySymbol(t.symbol);
@@ -246,7 +256,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   const sortedTxs = [...txs].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       <section className="p-5 md:p-6 rounded-xl border space-y-3" style={card}>
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
@@ -289,6 +299,13 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         )}
       </section>
 
+      <nav aria-label={tr('pft.tabs')} className="flex gap-2 overflow-x-auto max-w-full min-w-0 pb-2">
+        {PORTFOLIO_TABS.map(tab => <a key={tab} href={`#/portfolio/${tab}`} aria-current={section === tab ? 'page' : undefined}
+          className="shrink-0 min-h-11 px-3 py-2 rounded-lg border text-sm"
+          style={{ borderColor: section === tab ? 'var(--accent-radar)' : 'var(--border-subtle)', color: section === tab ? 'var(--accent-radar)' : 'var(--text-primary)' }}>{tr(`pft.${tab}`)}</a>)}
+      </nav>
+      {section === 'summary' && <PortfolioSummary positions={open} ticks={ticks} total={total} realized={realized} unrealized={unrealized} onSelectAsset={onSelectAsset} />}
+      <div hidden={section !== 'positions'} className="space-y-6 min-w-0">
       {draft && (
         <TxForm draft={draft} setDraft={setDraft} errors={errors} ticks={ticks} onCancel={() => setDraft(null)} onSave={saveDraft} />
       )}
@@ -449,7 +466,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
             </div>
           </section>
 
-          <PortfolioConcentration positions={open} />
+
 
           <section className="rounded-xl border overflow-x-auto" style={card} aria-labelledby="tx-heading">
             <h2 id="tx-heading" className="text-base font-bold px-4 pt-4">
@@ -488,7 +505,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                       <td className="px-3 py-2 text-right font-mono-num hidden sm:table-cell">{money(t.price, unit?.currency ?? 'IDR')}</td>
                       <td className="px-3 py-2 text-right font-mono-num hidden md:table-cell">{t.fee ? money(t.fee, unit?.currency ?? 'IDR') : '—'}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button type="button" onClick={() => setJournalRequest({ symbol: t.symbol, txId: t.id })} className="block min-h-11 px-2 text-xs">
+                        <button type="button" onClick={() => { setJournalRequest({ symbol: t.symbol, txId: t.id }); navigate('journal'); }} className="block min-h-11 px-2 text-xs">
                           {tr('journal.add')}
                         </button>
                         <button type="button" aria-label={tr('pf.editLabel')} onClick={() => startEdit(t)} className="p-1">
@@ -507,9 +524,11 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         </>
       )}
 
-      <PortfolioJournal ticks={ticks} evidence={evidence} request={journalRequest} />
+      </div>
+      {section === 'concentration' && <PortfolioConcentration positions={open} />}
+      <div hidden={section !== 'journal'}><PortfolioJournal ticks={ticks} evidence={evidence} request={journalRequest} /></div>
 
-      {goldBasis && (
+      {goldBasis && (section === 'summary' || section === 'positions') && (
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           Physical gold is valued at{' '}
           {goldBasis.basis === 'buyback'
@@ -519,9 +538,9 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         </p>
       )}
 
-      {txs.length > 0 && (
+      {txs.length > 0 && (section === 'summary' || section === 'income') && (
         <Suspense fallback={<p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('pfa.loadingAnalytics')}</p>}>
-          <PortfolioAnalytics txs={txs} ticks={ticks} onSelectAsset={onSelectAsset} />
+          <PortfolioAnalytics section={section === 'summary' ? 'performance' : 'income'} txs={txs} ticks={ticks} onSelectAsset={onSelectAsset} />
         </Suspense>
       )}
 

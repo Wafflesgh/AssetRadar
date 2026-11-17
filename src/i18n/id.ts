@@ -5,6 +5,19 @@
 import type { TranslationKey } from './en.ts';
 
 export const id: Record<TranslationKey, string> = {
+  "pft.totalPl": "Total laba/rugi (terealisasi + belum terealisasi)",
+  "pft.tabs": "Bagian portofolio",
+  "pft.summary": "Ringkasan",
+  "pft.positions": "Posisi",
+  "pft.concentration": "Konsentrasi",
+  "pft.journal": "Jurnal",
+  "pft.income": "Pendapatan & Risiko",
+  "pft.change": "Perubahan 24 jam",
+  "pft.changeNote": "Crypto memakai 24 jam; saham memakai sesi terakhir. Posisi tidak termasuk: {n}.",
+  "pft.concentrationNote": "Konsentrasi aset: {level}",
+  "pft.stale": "Harga tidak tersedia, offline, gagal, atau lebih lama dari 15 menit: {n} posisi. Pasar tutup juga dapat memiliki harga lama.",
+  "pft.up": "3 kenaikan terbesar · 24 jam %",
+  "pft.down": "3 penurunan terbesar · 24 jam %",
   "export.title": "Ekspor / impor data pribadi",
   "export.description": "Unduh semua koleksi tersinkron di perangkat ini, termasuk jurnal. Token login dan kredensial tidak disertakan. Simpan file secara pribadi karena berisi catatan Anda.",
   "export.download": "Unduh semua data",

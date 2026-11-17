@@ -17,7 +17,11 @@ export type RouteTab =
   | 'calendar' | 'macro' | 'crypto' | 'alerts' | 'screener' | 'compare' | 'brief' | 'backtest' | 'analyst' | 'kitchen' | 'sectors' | 'fundArena'
   | 'paper' | 'story' | 'dividends' | 'dca' | 'heatmap';
 
+export const PORTFOLIO_TABS = ['summary', 'positions', 'concentration', 'journal', 'income'] as const;
+export type PortfolioTab = typeof PORTFOLIO_TABS[number];
+
 export interface ParsedRoute {
+  portfolioTab?: PortfolioTab;
   tab: RouteTab;
   assetSymbol?: string;
   /** Binance pair on #/crypto/<PAIR> (may contain non-Latin characters). */
@@ -102,8 +106,9 @@ export function parseHashRoute(hash: string): ParsedRoute {
   if (cleaned === 'idx' || cleaned === 'saham' || cleaned === 'stocks') {
     return { tab: 'idx' };
   }
-  if (cleaned === 'portfolio' || cleaned === 'portofolio') {
-    return { tab: 'portfolio' };
+  if (['portfolio', 'portofolio'].includes(path.split('/')[0])) {
+    const section = path.split('/')[1] as PortfolioTab;
+    return { tab: 'portfolio', portfolioTab: PORTFOLIO_TABS.includes(section) ? section : 'summary' };
   }
   if (cleaned === 'calendar' || cleaned === 'kalender') {
     return { tab: 'calendar' };
