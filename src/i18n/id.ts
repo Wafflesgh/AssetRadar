@@ -5,6 +5,20 @@
 import type { TranslationKey } from './en.ts';
 
 export const id: Record<TranslationKey, string> = {
+  "weekly.kind.earnings": "Laporan keuangan",
+  "weekly.kind.exDividend": "Ex-dividen",
+  "weekly.kind.dividendPayment": "Pembayaran dividen",
+  "weekly.kind.split": "Pemecahan saham",
+  "weekly.kind.offerStart": "Penawaran dibuka",
+  "weekly.kind.offerEnd": "Penawaran ditutup",
+  "weekly.kind.settlement": "Setelmen",
+  "weekly.kind.maturity": "Jatuh tempo",
+  "weekly.title": "Pekan ini",
+  "weekly.note": "Snapshot harian tepat berjarak tujuh hari; snapshot yang hilang menandakan data belum tersedia atau belum mutakhir. Agenda mencakup hari ini dan enam tanggal WIB berikutnya, hanya dari data tersimpan.",
+  "weekly.empty": "Belum ada aset watchlist tersinkron.",
+  "weekly.missing": "Belum tersedia / belum mutakhir: {symbols}",
+  "weekly.event": "Agenda",
+  "weekly.noEvents": "Tidak ada agenda tersimpan pada periode ini.",
   "pft.totalPl": "Total laba/rugi (terealisasi + belum terealisasi)",
   "pft.tabs": "Bagian portofolio",
   "pft.summary": "Ringkasan",

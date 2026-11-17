@@ -4603,8 +4603,10 @@ async function generateBrief(date: string): Promise<BriefPair> {
 
   // Watchlist + portfolio from synced data come first in the calendar
   let priority: string[] = [];
+  let weeklyWatchlist: string[] = [];
   if (syncStorageReady(store)) {
     const data = await loadSyncData(store);
+    weeklyWatchlist = liveValues<boolean>(data, 'watchlist').map(x => x.id);
     priority = [...new Set([...liveValues<boolean>(data, 'watchlist').map((x) => x.id), ...liveValues<{ symbol?: string }>(data, 'portfolio').map((x) => x.value.symbol ?? '')])].filter(Boolean);
   }
   for (const sym of priority.slice(0, 30)) {
@@ -4640,9 +4642,34 @@ async function generateBrief(date: string): Promise<BriefPair> {
     forward = null;
   }
 
+  let weekly: BriefInput['weekly'];
+  if (new Date(`${date}T12:00:00+07:00`).getUTCDay() === 1) {
+    const { weeklyDigest } = await import('./src/utils/weeklyDigest.ts');
+    const weekNow = Date.parse(`${date}T07:30:00+07:00`);
+    // The 07:30 brief runs before today's 16:15 snapshot: compare yesterday's snapshot with the one 7 days before it
+    const dayBefore = (n: number) => new Date(Date.parse(`${date}T12:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
+    const latestDate = dayBefore(1);
+    const previousDate = dayBefore(8);
+    const [todaySnap, oldSnap, sbn] = await Promise.all([
+      getPacked(store, `snap:${latestDate}`).then(parseSnapshot).catch(() => null),
+      getPacked(store, `snap:${previousDate}`).then(parseSnapshot).catch(() => null),
+      store.get<import('./src/utils/sbnRetail.ts').SbnSeries[]>('sbn:series').catch(() => null),
+    ]);
+    const weekEvents: import('./src/utils/weeklyDigest.ts').WeeklyEvent[] = [...calendarCache.values()].flatMap(entry => entry.data.map(e => ({ symbol: e.symbol, kind: e.type === 'dividend' ? 'exDividend' : e.type, date: e.date })));
+    for (const series of Array.isArray(sbn) ? sbn : []) {
+      for (const kind of ['offerStart', 'offerEnd', 'settlement', 'maturity'] as const) {
+        if (series[kind]) weekEvents.push({ symbol: series.code, kind, date: series[kind]! });
+      }
+    }
+    weekly = weeklyDigest({ watchlist: weeklyWatchlist,
+      snapToday: todaySnap?.date === latestDate ? todaySnap.assets : {},
+      snapWeekAgo: oldSnap?.date === previousDate ? oldSnap.assets : {}, events: weekEvents, now: weekNow });
+  }
+
   const input: BriefInput = {
     date,
     generatedAt: now,
+    weekly,
     ...quotes(),
     events,
     priority,

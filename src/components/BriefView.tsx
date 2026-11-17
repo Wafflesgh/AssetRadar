@@ -8,7 +8,8 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, Newspaper, RefreshCw } from 'lucide-react';
 import { fetchBriefDates, fetchMorningBrief, type BriefResponse } from '../services/marketDataService.ts';
 import { getAssetByCode } from '../config/assets.ts';
-import { dateLocale, useLang, useT } from '../i18n/index.ts';
+import { dateLocale, useLang, useT, type TranslationKey } from '../i18n/index.ts';
+import { formatPercent } from '../utils/format.ts';
 
 const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
 const muted = { color: 'var(--text-secondary)' };
@@ -89,6 +90,17 @@ export function BriefView({ watchlist, onSelectAsset }: { watchlist: string[]; o
               {t('briefv.made', { time: time.format(brief.generatedAt) })} · {brief.aiPolished ? t('briefv.ai') : t('briefv.rules')}
             </p>
           </div>
+          {brief.weekly && <section className="space-y-2">
+            <h3 className="text-sm font-bold">{t('weekly.title')}</h3>
+            <p className="text-xs" style={muted}>{t('weekly.note')}</p>
+            <ul className="text-sm space-y-1">{brief.weekly.moves.map(m => <li key={m.symbol}>{m.symbol}: {m.chg === null ? t('common.dataUnavailable') : formatPercent(m.chg)}</li>)}</ul>
+            {!brief.weekly.moves.length && <p className="text-sm">{t('weekly.empty')}</p>}
+            <p className="text-sm">{t('weekly.missing', { symbols: brief.weekly.missing.join(', ') || '—' })}</p>
+            <ul className="text-sm space-y-1">{brief.weekly.events.map(e => <li key={`${e.symbol}-${e.kind}-${e.date}`}>
+              {e.symbol} · {e.date} · {t((['earnings', 'exDividend', 'dividendPayment', 'split', 'offerStart', 'offerEnd', 'settlement', 'maturity'].includes(e.kind) ? `weekly.kind.${e.kind}` : 'weekly.event') as TranslationKey)}
+            </li>)}</ul>
+            {!brief.weekly.events.length && <p className="text-sm">{t('weekly.noEvents')}</p>}
+          </section>}
           {brief.sections.map((s) => (
             <section key={s.id} className="space-y-1">
               <h3 className="text-sm font-bold" style={{ color: s.id === 'overview' ? 'var(--accent-radar)' : undefined }}>

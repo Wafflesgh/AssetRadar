@@ -4,6 +4,20 @@
  * Placeholders use {name}.
  */
 export const en = {
+  "weekly.kind.earnings": "Earnings",
+  "weekly.kind.exDividend": "Ex-dividend",
+  "weekly.kind.dividendPayment": "Dividend payment",
+  "weekly.kind.split": "Stock split",
+  "weekly.kind.offerStart": "Offering opens",
+  "weekly.kind.offerEnd": "Offering closes",
+  "weekly.kind.settlement": "Settlement",
+  "weekly.kind.maturity": "Maturity",
+  "weekly.title": "This week",
+  "weekly.note": "Exact daily snapshots seven days apart; missing snapshots indicate unavailable or stale coverage. Events cover today and the next six WIB dates, from cached data only.",
+  "weekly.empty": "No synced watchlist assets.",
+  "weekly.missing": "Unavailable / stale: {symbols}",
+  "weekly.event": "Event",
+  "weekly.noEvents": "No cached events in this period.",
   "pft.totalPl": "Total P/L (realized + unrealized)",
   "pft.tabs": "Portfolio sections",
   "pft.summary": "Summary",

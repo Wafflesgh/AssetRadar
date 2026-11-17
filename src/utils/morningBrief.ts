@@ -8,6 +8,7 @@
  */
 import type { AssetGroup, MarketNewsItem } from '../config/assets.ts';
 import type { CalendarEvent } from './corporateCalendar.ts';
+import type { WeeklyDigest } from './weeklyDigest.ts';
 import { classifyDriver } from '../ai/newsDrivers.ts';
 import { translate, translateOr, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
@@ -30,6 +31,7 @@ export interface BriefQuote {
 }
 
 export interface BriefInput {
+  weekly?: WeeklyDigest;
   date: string;
   generatedAt: number;
   wallStreet: BriefQuote[];
@@ -59,6 +61,7 @@ export interface BriefSection {
 }
 
 export interface MorningBrief {
+  weekly?: WeeklyDigest;
   date: string;
   generatedAt: number;
   headline: string;
@@ -225,6 +228,7 @@ export function buildBrief(input: BriefInput): MorningBrief {
     : tx('brief.title', { date: input.date });
   return {
     date: input.date,
+    ...(input.weekly && new Date(`${input.date}T12:00:00+07:00`).getUTCDay() === 1 ? { weekly: input.weekly } : {}),
     generatedAt: input.generatedAt,
     headline,
     sections,
