@@ -11,7 +11,8 @@
 import { part, type TextPart } from '../i18n/textParts.ts';
 import type { ScreenerRow } from './screener.ts';
 
-export type RotationPeriod = 'd1' | 'w1';
+export type RotationPeriod = 'd1' | 'w1' | 'm1';
+type RotationRow = ScreenerRow & { chg1m?: number | null };
 export type RotationQuadrant = 'leading' | 'improving' | 'weakening' | 'lagging';
 
 /** Live drivers: % change over the period (oil, gold, copper, natural gas, USD/IDR, Nasdaq 100). */
@@ -20,7 +21,7 @@ export type LiveDriver = 'oil' | 'gold' | 'copper' | 'natgas' | 'usdIdr' | 'nasd
 export type MonthlyDriver = 'coal' | 'nickel' | 'palmOil';
 
 export interface SectorDrivers {
-  live: Record<RotationPeriod, Partial<Record<LiveDriver, number | null>>>;
+  live: Record<'d1' | 'w1', Partial<Record<LiveDriver, number | null>>>;
   monthly: Partial<Record<MonthlyDriver, number | null>>;
   /** Latest BI-Rate decision: level and change from the previous decision (percentage points). */
   biRate?: { level: number; change: number; date: string } | null;
@@ -61,6 +62,7 @@ export interface SectorSummary {
   marketCap: number | null;
   d1: SectorPeriodStats;
   w1: SectorPeriodStats;
+  m1: SectorPeriodStats;
   quadrant: RotationQuadrant | null;
 }
 
@@ -133,21 +135,21 @@ export const SECTOR_DRIVERS: Record<string, DriverRef[]> = {
 };
 
 /** Moves smaller than this are "flat" (sector) or not worth mentioning (driver). */
-const FLAT: Record<RotationPeriod, number> = { d1: 0.1, w1: 0.25 };
-const DRIVER_MIN: Record<RotationPeriod, number> = { d1: 0.5, w1: 1 };
+const FLAT: Record<RotationPeriod, number> = { d1: 0.1, w1: 0.25, m1: 0.5 };
+const DRIVER_MIN: Record<RotationPeriod, number> = { d1: 0.5, w1: 1, m1: 2 };
 const MONTHLY_MIN = 2;
 /** BI-Rate decisions older than this are no longer "news". */
 const BI_RATE_FRESH_DAYS = 75;
 
 const round = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
-const chgOf = (r: ScreenerRow, p: RotationPeriod) => (p === 'd1' ? r.chg1d : r.chg1w);
+const chgOf = (r: RotationRow, p: RotationPeriod) => (p === 'd1' ? r.chg1d : p === 'w1' ? r.chg1w : r.chg1m);
 const finite = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
 
 // Watchlist-board stocks (special notation, often after a reverse split) carry stale share counts, so a Rp1→Rp32 jump would swing a whole sector
-const weightOf = (r: ScreenerRow) => (r.board !== 'Watchlist' && finite(r.marketCap) && r.marketCap > 0 ? r.marketCap : 0);
+const weightOf = (r: RotationRow) => (r.board !== 'Watchlist' && finite(r.marketCap) && r.marketCap > 0 ? r.marketCap : 0);
 
 /** Cap-weighted change of a set of rows. */
-function capWeightedChange(rows: ScreenerRow[], p: RotationPeriod): number | null {
+function capWeightedChange(rows: RotationRow[], p: RotationPeriod): number | null {
   let w = 0;
   let s = 0;
   for (const r of rows) {
@@ -160,9 +162,9 @@ function capWeightedChange(rows: ScreenerRow[], p: RotationPeriod): number | nul
   return w > 0 ? s / w : null;
 }
 
-const mover = (r: ScreenerRow, p: RotationPeriod): SectorMover => ({ symbol: r.symbol, code: r.code, name: r.name, chg: round(chgOf(r, p) as number) });
+const mover = (r: RotationRow, p: RotationPeriod): SectorMover => ({ symbol: r.symbol, code: r.code, name: r.name, chg: round(chgOf(r, p) as number) });
 
-function periodStats(rows: ScreenerRow[], p: RotationPeriod, market: number | null): Omit<SectorPeriodStats, 'reason'> & { leader: SectorMover | null } {
+function periodStats(rows: RotationRow[], p: RotationPeriod, market: number | null): Omit<SectorPeriodStats, 'reason'> & { leader: SectorMover | null } {
   const withChg = rows.filter((r) => finite(chgOf(r, p)));
   const up = withChg.filter((r) => (chgOf(r, p) as number) > 0).length;
   const down = withChg.filter((r) => (chgOf(r, p) as number) < 0).length;
@@ -205,8 +207,9 @@ function periodStats(rows: ScreenerRow[], p: RotationPeriod, market: number | nu
 function driverPart(slug: string, p: RotationPeriod, dir: number, drivers: SectorDrivers, today: string): TextPart | null {
   const refs = SECTOR_DRIVERS[slug] ?? [];
   for (const ref of refs) {
+    if (p === 'm1' && (ref.kind === 'live' || ref.kind === 'foreignFlow')) continue;
     if (ref.kind === 'live') {
-      const v = drivers.live[p]?.[ref.id];
+      const v = p === 'm1' ? null : drivers.live[p]?.[ref.id];
       if (!finite(v) || Math.abs(v) < DRIVER_MIN[p]) continue;
       if (Math.sign(v) * ref.effect !== dir) continue;
       return part(p === 'd1' ? 'rotation.reason.driverDay' : 'rotation.reason.driverWeek', { driver: `@rotation.driver.${ref.id}`, chgPct: round(v) });
@@ -244,7 +247,7 @@ export function sectorReason(
   today: string
 ): TextPart[] {
   const perf = s.capWeighted ?? s.equalWeighted;
-  if (perf === null || s.counted === 0) return [part('rotation.reason.noData')];
+  if (perf === null || s.counted === 0) return [part(p === 'm1' ? 'rotation.monthHistory' : 'rotation.reason.noData')];
   if (Math.abs(perf) < FLAT[p]) return [part('rotation.reason.flat', { pct: s.breadth ?? 0 })];
   const dir = Math.sign(perf);
   const out: TextPart[] = [];
@@ -271,9 +274,9 @@ export function quadrant(rel1w: number | null, rel1d: number | null): RotationQu
 }
 
 /** Groups the rows by sector; sectors sorted strongest → weakest by 1W (missing last). */
-export function computeSectorRotation(rows: ScreenerRow[], drivers: SectorDrivers, today: string): SectorRotationResult {
-  const market = { d1: capWeightedChange(rows, 'd1'), w1: capWeightedChange(rows, 'w1') };
-  const bySector = new Map<string, ScreenerRow[]>();
+export function computeSectorRotation(rows: RotationRow[], drivers: SectorDrivers, today: string): SectorRotationResult {
+  const market = { d1: capWeightedChange(rows, 'd1'), w1: capWeightedChange(rows, 'w1'), m1: capWeightedChange(rows, 'm1') };
+  const bySector = new Map<string, RotationRow[]>();
   for (const r of rows) {
     const key = r.sector || 'Other';
     const list = bySector.get(key);
@@ -299,15 +302,19 @@ export function computeSectorRotation(rows: ScreenerRow[], drivers: SectorDriver
       marketCap: mc.length ? mc.reduce((a, r) => a + (r.marketCap as number), 0) : null,
       d1,
       w1,
+      m1: stats('m1'),
       quadrant: quadrant(w1.relative, d1.relative),
     });
   }
   sortSectors(sectors, 'w1');
-  return { sectors, market: { d1: market.d1 === null ? null : round(market.d1), w1: market.w1 === null ? null : round(market.w1) } };
+  return { sectors, market: { d1: market.d1 === null ? null : round(market.d1), w1: market.w1 === null ? null : round(market.w1), m1: market.m1 === null ? null : round(market.m1) } };
 }
 
 /** Performance used for ranking: cap-weighted, else equal-weight. */
-export const sectorPerf = (s: SectorSummary, p: RotationPeriod) => s[p].capWeighted ?? s[p].equalWeighted;
+/** Empty stats for a period a payload does not carry yet (e.g. `m1` from a server deployed before T10). */
+export const NO_STATS: SectorPeriodStats = { capWeighted: null, equalWeighted: null, breadth: null, up: 0, down: 0, counted: 0, gainers: [], losers: [], relative: null, reason: [] };
+export const periodStatsOf = (s: SectorSummary, p: RotationPeriod): SectorPeriodStats => s[p] ?? NO_STATS;
+export const sectorPerf = (s: SectorSummary, p: RotationPeriod) => periodStatsOf(s, p).capWeighted ?? periodStatsOf(s, p).equalWeighted;
 
 /** Sorts in place, strongest first; sectors without data last. */
 export function sortSectors(sectors: SectorSummary[], p: RotationPeriod): SectorSummary[] {

@@ -93,9 +93,36 @@ test('lastChangePct', () => {
   assert.equal(lastChangePct([{ value: 100 }]), null);
 });
 
+test('monthly returns are cap weighted and leave weekly/daily quadrants unchanged', () => {
+  const rows = [{ ...row('AAA', 'Energy', 1, 3, 3e12), chg1m: 10 }, { ...row('BBB', 'Energy', -1, -2, 1e12), chg1m: -2 }];
+  const drivers: SectorDrivers = { live: { d1: { oil: 10 }, w1: { oil: 10 } }, monthly: {} };
+  const result = computeSectorRotation(rows, drivers, '2026-11-17');
+  assert.equal(result.sectors[0].m1.capWeighted, 7);
+  assert.equal(result.sectors[0].m1.equalWeighted, 4);
+  assert.equal(result.market.m1, 7);
+  assert.equal(result.sectors[0].quadrant, computeSectorRotation(rows.map(({ chg1m, ...r }) => r), drivers, '2026-11-17').sectors[0].quadrant);
+  assert.ok(!keys(result.sectors[0].m1.reason).some((key) => key === 'rotation.reason.driverWeek' || key === 'rotation.reason.driverDay'));
+  assert.ok(keys(computeSectorRotation(rows, { ...drivers, monthly: { coal: 3 } }, '2026-11-17').sectors[0].m1.reason).includes('rotation.reason.driverMonth'));
+  assert.equal(computeSectorRotation([row('A', 'Energy', 1, 2)], noDrivers, '2026-11-17').sectors[0].m1.capWeighted, null);
+});
+
+test('monthly drivers allow BI rate but exclude quarterly foreign flow', () => {
+  const rows = [{ ...row('A', 'Financials', 1, 2), chg1m: 3 }];
+  const drivers = { ...noDrivers, foreignStockFlow: 100, biRate: { level: 4.5, change: -0.25, date: '2026-11-01' } };
+  assert.ok(keys(computeSectorRotation(rows, drivers, '2026-11-17').sectors[0].m1.reason).includes('rotation.reason.biCut'));
+  assert.ok(!keys(computeSectorRotation(rows, { ...drivers, biRate: null }, '2026-11-17').sectors[0].m1.reason).includes('rotation.reason.foreignBuy'));
+});
+
 test('Watchlist-board stocks do not weigh on the cap-weighted change', () => {
   const rows = [row('AAA', 'Energy', 0, 2, 1e12), { ...row('ZZZ', 'Energy', 0, 357, 30e12), board: 'Watchlist' }];
   const e = computeSectorRotation(rows, noDrivers, '2026-11-13').sectors[0];
   assert.equal(e.w1.capWeighted, 2);
   assert.equal(e.w1.equalWeighted, 179.5);
+});
+
+test('a payload without m1 (older server) does not crash period lookups', async () => {
+  const { sectorPerf, periodStatsOf } = await import('./sectorRotation.ts');
+  const old = { d1: { capWeighted: 1 }, w1: { capWeighted: 2 } } as unknown as Parameters<typeof sectorPerf>[0];
+  assert.equal(sectorPerf(old, 'm1'), null);
+  assert.equal(periodStatsOf(old, 'm1').counted, 0);
 });

@@ -12,7 +12,7 @@ import { renderParts, type TextPart } from '../i18n/textParts.ts';
 import { fetchSectorRotation, type SectorRotationResponse } from '../services/marketDataService.ts';
 import { formatIdrCompact, formatNumber, formatPercent } from '../utils/format.ts';
 import { buildHashRoute } from '../utils/router.ts';
-import { rotationSummary, sectorPerf, sortSectors, type RotationPeriod, type RotationQuadrant, type SectorMover, type SectorSummary } from '../utils/sectorRotation.ts';
+import { rotationSummary, periodStatsOf, sectorPerf, sortSectors, type RotationPeriod, type RotationQuadrant, type SectorMover, type SectorSummary } from '../utils/sectorRotation.ts';
 
 const card = { backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' };
 const tone = (v: number | null) => (v === null || Math.abs(v) < 0.005 ? 'var(--text-secondary)' : v > 0 ? 'var(--color-up)' : 'var(--color-down)');
@@ -70,7 +70,7 @@ function SectorRow({ s, period, maxAbs }: { s: SectorSummary; period: RotationPe
   const t = useT();
   const reason = useReason();
   const [open, setOpen] = useState(false);
-  const st = s[period];
+  const st = periodStatsOf(s, period);
   const perf = sectorPerf(s, period);
   const width = perf === null || maxAbs <= 0 ? 0 : Math.max(2, (Math.abs(perf) / maxAbs) * 50);
   const name = t(`rotation.sector.${s.slug}` as TranslationKey);
@@ -102,7 +102,7 @@ function SectorRow({ s, period, maxAbs }: { s: SectorSummary; period: RotationPe
           )}
         </div>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {reason(st.reason)}
+          {period === 'm1' && perf === null ? t('rotation.monthHistory') : reason(st.reason)}
         </p>
       </button>
       {open && (
@@ -197,26 +197,27 @@ export function SectorRotationView() {
         </div>
       )}
 
-      {data && hasData && (
+      {data && sectors.length > 0 && (
         <section className="p-5 rounded-xl border space-y-3" style={card} aria-labelledby="rotation-list">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 id="rotation-list" className="text-sm font-bold">
               {t('rotation.ranking')}
             </h3>
             <div className="flex gap-1" role="group" aria-label={t('rotation.period')}>
-              {(['d1', 'w1'] as const).map((p) => (
+              {(['d1', 'w1', 'm1'] as const).map((p) => (
                 <button key={p} type="button" onClick={() => setPeriod(p)} aria-pressed={period === p} className="px-3 py-1 rounded-lg text-xs font-semibold" style={chip(period === p)}>
-                  {t(p === 'd1' ? 'rotation.period.d1' : 'rotation.period.w1')}
+                  {t(`rotation.period.${p}`)}
                 </button>
               ))}
             </div>
           </div>
           <p className="text-sm">
-            {t(period === 'd1' ? 'rotation.summary.d1' : 'rotation.summary.w1', { up: summary.up, down: summary.down })}
+            {period === 'm1' && !hasData ? t('rotation.monthHistory') : t(`rotation.summary.${period}`, { up: summary.up, down: summary.down })}
             {summary.strongest && ` ${t('rotation.summary.strongest', { name: name(summary.strongest), chg: formatPercent(sectorPerf(summary.strongest, period) ?? undefined) })}`}
             {summary.weakest && ` ${t('rotation.summary.weakest', { name: name(summary.weakest), chg: formatPercent(sectorPerf(summary.weakest, period) ?? undefined) })}`}
             {market !== null && ` ${t('rotation.summary.market', { chg: formatPercent(market) })}`}
           </p>
+          {period === 'm1' && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('rotation.monthNote')}</p>}
           <ul>
             {sectors.map((s) => (
               <SectorRow key={s.sector} s={s} period={period} maxAbs={maxAbs} />

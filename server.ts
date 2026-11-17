@@ -3190,7 +3190,10 @@ async function sectorDrivers(): Promise<SectorDrivers> {
 
 async function buildSectorRotation(): Promise<SectorRotationPayload> {
   const drivers = await sectorDrivers();
-  const result = computeSectorRotation(idxScreenerRows(), drivers, wibDate(Date.now()));
+  const { change1m } = await import('./src/utils/idxCloses.ts');
+  const closes = await getPacked<import('./src/utils/idxCloses.ts').IdxCloses>(store, 'idx:closes').catch(() => null);
+  const rows = idxScreenerRows().map((row) => ({ ...row, chg1m: closes ? change1m(closes, row.symbol) : null }));
+  const result = computeSectorRotation(rows, drivers, wibDate(Date.now()));
   return { ...result, asOf: Date.now(), pricesAt: idxSweep.lastRunAt || null, drivers, source: 'Yahoo Finance (IDX prices); Bank Indonesia, World Bank (drivers)' };
 }
 
@@ -4454,6 +4457,8 @@ async function idxTraceStep(until: number): Promise<unknown> {
   if (idxSweep.ticks.size === 0) return 'no prices';
   // shortcut: one day's value traded decides, switch to a 20-day median if stocks near the line flip in and out
   const liquid = (symbol: string) => (idxSweep.ticks.get(symbol)?.valueTraded ?? 0) >= LIQUIDITY_THRESHOLD.idx;
+  const { appendSeries } = await import('./src/utils/idxCloses.ts');
+  let closes = await getPacked<import('./src/utils/idxCloses.ts').IdxCloses>(store, 'idx:closes') ?? { dates: [], closes: {} };
   let stats = rebuild ? emptyIdxStats() : parseIdxStats(rawStats);
   const start = p.next;
   let failed = 0;
@@ -4466,10 +4471,31 @@ async function idxTraceStep(until: number): Promise<unknown> {
         failed++;
         continue;
       }
+      closes = appendSeries(closes, batch[i].symbol, r.all.map((call) => ({ date: call.date, close: call.price })));
       if (liquid(batch[i].symbol)) stats = p.rebuild ? addToIdxStats(stats, r.all, r.all) : addToIdxStats(stats, r.saved, r.scored);
       if (r.all.some((c) => c.date === date)) p.recorded++;
     }
   }
+  const snapshotKeys = (await store.keys('snap:')).filter((key) => closes.dates.includes(key.slice('snap:'.length)));
+  const coreStocks = ASSETS.filter((asset) => asset.group === 'idStock');
+  const corePoints = new Map<string, Array<{ date: string; close: number }>>();
+  for (let i = 0; i < snapshotKeys.length; i += 10) {
+    const snapshots = await Promise.all(snapshotKeys.slice(i, i + 10).map(async (key) => ({
+      date: key.slice('snap:'.length), snapshot: parseSnapshot(await getPacked(store, key)),
+    })));
+    for (const { date: day, snapshot } of snapshots) {
+      if (!snapshot || snapshot.date !== day) continue;
+      for (const asset of coreStocks) {
+        const close = snapshot.assets[asset.symbol]?.p;
+        if (typeof close !== 'number' || !Number.isFinite(close) || close <= 0) continue;
+        const points = corePoints.get(asset.symbol) ?? [];
+        points.push({ date: day, close });
+        corePoints.set(asset.symbol, points);
+      }
+    }
+  }
+  for (const [symbol, points] of corePoints) closes = appendSeries(closes, symbol, points);
+  await setPacked(store, 'idx:closes', closes);
   await store.set(IDXTRACE_STATS, stats);
   await store.set(IDXTRACE_PROGRESS, p);
   traceCache.clear();
