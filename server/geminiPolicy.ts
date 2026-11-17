@@ -6,6 +6,46 @@
  * until it may be used again. No network here; server/gemini.ts does the calls.
  */
 
+import { wibDate } from '../src/utils/sync.ts';
+
+export function geminiDailyLimit(env: Record<string, string | undefined>): number {
+  const raw = env.GEMINI_DAILY_LIMIT?.trim() ?? '';
+  const value = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(value) && value >= 0 ? value : 200;
+}
+
+/** Counts model attempts on the WIB calendar day, including failed attempts. */
+export class DailyBudget {
+  readonly limit: number;
+  private dayOf: (now: number) => string;
+  private day = '';
+  private count = 0;
+
+  constructor(limit: number, dayOf: (now: number) => string = wibDate) {
+    this.limit = Number.isSafeInteger(limit) && limit >= 0 ? limit : 200;
+    this.dayOf = dayOf;
+  }
+
+  used(now: number): number {
+    const day = this.dayOf(now);
+    if (day !== this.day) { this.day = day; this.count = 0; }
+    return this.count;
+  }
+
+  tryUse(now: number): boolean {
+    if (this.used(now) >= this.limit) return false;
+    this.count++;
+    return true;
+  }
+
+  load(day: string, count: number): void {
+    // Invalid persisted counts must not reopen the budget.
+    const saved = Number.isSafeInteger(count) && count >= 0 ? count : this.limit;
+    this.count = this.day === day ? Math.max(this.count, saved) : saved;
+    this.day = day;
+  }
+}
+
 export const DEFAULT_GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
 
 /** The model chain: GEMINI_MODELS="a,b,c" when set, otherwise the default chain. */

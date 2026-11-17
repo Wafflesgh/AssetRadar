@@ -17,7 +17,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Type, ThinkingLevel } from '@google/genai';
-import { geminiGenerate, geminiStatus } from './server/gemini.ts';
+import { geminiGenerate, geminiStatus, setGeminiUsageStore } from './server/gemini.ts';
 import {
   ASSETS,
   ALL_ASSETS,
@@ -4014,6 +4014,7 @@ DATA: ${JSON.stringify(facts)}`;
 // ---- Durable storage, owner login and the daily server jobs -------------------------------------
 
 const store = createStore();
+setGeminiUsageStore(store);
 const ownerAuth = createOwnerAuth();
 const FORWARD_PREFIX = 'forward:';
 /** Model arena: every model's daily prediction per horizon (arena:YYYY-MM, packed). */

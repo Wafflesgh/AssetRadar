@@ -7,7 +7,43 @@
  * models) is exposed for /api/diagnostics — never the key.
  */
 import { GoogleGenAI, type GenerateContentConfig, type GenerateContentResponse } from '@google/genai';
-import { classifyGeminiError, geminiModels, ModelCooldown, quotaRestMs, type GeminiErrorKind } from './geminiPolicy.ts';
+import { classifyGeminiError, DailyBudget, geminiDailyLimit, geminiModels, ModelCooldown, quotaRestMs, type GeminiErrorKind } from './geminiPolicy.ts';
+import type { KvStore } from './store.ts';
+import { wibDate } from '../src/utils/sync.ts';
+
+const budget = new DailyBudget(geminiDailyLimit(process.env));
+let usageStore: KvStore | null = null;
+let loadedDay = '';
+let usageQueue: Promise<unknown> = Promise.resolve();
+
+export function setGeminiUsageStore(store: KvStore): void {
+  usageStore = store;
+  loadedDay = '';
+}
+
+/** Serialize reservations and writes so concurrent attempts cannot overwrite a newer count. */
+function reserveAttempt(): Promise<boolean> {
+  const reservation = usageQueue.then(async () => {
+    if (budget.limit === 0) return false;
+    const store = usageStore;
+    let now = Date.now();
+    let day = wibDate(now);
+    while (store && loadedDay !== day) {
+      let saved: number | null;
+      try { saved = await store.get<number>(`gemini:usage:${day}`); }
+      catch { return false; } // Unknown durable usage: keep the non-AI fallback.
+      budget.load(day, saved ?? 0);
+      loadedDay = day;
+      now = Date.now();
+      day = wibDate(now);
+    }
+    if (!budget.tryUse(now)) return false;
+    if (store) await store.set(`gemini:usage:${day}`, budget.used(now)).catch(() => {});
+    return true;
+  });
+  usageQueue = reservation.catch(() => {});
+  return reservation;
+}
 
 const cooldown = new ModelCooldown();
 const status = {
@@ -55,6 +91,8 @@ export async function geminiGenerate(req: GeminiRequest): Promise<GeminiResult |
   status.calls++;
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
+    if (deadline - Date.now() < 500) break;
+    if (!await reserveAttempt()) return null;
     const left = deadline - Date.now();
     if (left < 500) break;
     const primary = model === geminiModels(process.env)[0];
@@ -99,5 +137,7 @@ export function geminiStatus() {
     resting: cooldown.snapshot(),
     calls: status.calls,
     fallbacks: status.fallbacks,
+    usedToday: budget.used(Date.now()),
+    dailyLimit: budget.limit,
   };
 }

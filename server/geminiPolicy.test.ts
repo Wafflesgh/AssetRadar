@@ -5,7 +5,40 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyGeminiError, DEFAULT_GEMINI_MODELS, geminiModels, ModelCooldown, quotaRestMs } from './geminiPolicy.ts';
+import { classifyGeminiError, DailyBudget, geminiDailyLimit, DEFAULT_GEMINI_MODELS, geminiModels, ModelCooldown, quotaRestMs } from './geminiPolicy.ts';
+
+test('daily budget counts attempts and resets at 17:00 UTC (midnight WIB)', () => {
+  const budget = new DailyBudget(2);
+  const now = Date.parse('2026-11-17T16:59:59Z');
+  assert.equal(budget.tryUse(now), true);
+  assert.equal(budget.tryUse(now), true);
+  assert.equal(budget.tryUse(now), false);
+  assert.equal(budget.used(now), 2);
+  assert.equal(budget.tryUse(now + 1000), true);
+  assert.equal(budget.used(now + 1000), 1);
+});
+
+test('zero disables Gemini and invalid environment limits use 200', () => {
+  const budget = new DailyBudget(0);
+  assert.equal(budget.tryUse(0), false);
+  assert.equal(budget.tryUse(86400_000), false);
+  for (const value of [undefined, '', '-1', '1.5', 'NaN', 'Infinity', '1e3', '9007199254740992']) {
+    assert.equal(geminiDailyLimit({ GEMINI_DAILY_LIMIT: value }), 200);
+  }
+  assert.equal(geminiDailyLimit({ GEMINI_DAILY_LIMIT: '0' }), 0);
+  assert.equal(geminiDailyLimit({ GEMINI_DAILY_LIMIT: ' 12 ' }), 12);
+});
+
+test('loaded daily usage continues without decreasing same-day reservations', () => {
+  const budget = new DailyBudget(2, () => 'test-day');
+  budget.load('test-day', 1);
+  assert.equal(budget.used(0), 1);
+  assert.equal(budget.tryUse(0), true);
+  budget.load('test-day', 0);
+  assert.equal(budget.tryUse(0), false);
+  budget.load('test-day', NaN);
+  assert.equal(budget.tryUse(0), false);
+});
 
 test('model chain: default, or GEMINI_MODELS without junk or duplicates', () => {
   assert.deepEqual(geminiModels({}), DEFAULT_GEMINI_MODELS);
