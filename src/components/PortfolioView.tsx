@@ -10,6 +10,7 @@
 import { t, t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { PortfolioSummary } from './PortfolioSummary.tsx';
+import { PortfolioCosts } from './PortfolioCosts.tsx';
 import { parseHashRoute, PORTFOLIO_TABS, type PortfolioTab } from '../utils/router.ts';
 import { PortfolioConcentration } from './PortfolioConcentration.tsx';
 import { PortfolioJournal } from './PortfolioJournal.tsx';
@@ -524,6 +525,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
         </>
       )}
 
+      <PortfolioCosts txs={txs} />
       </div>
       {section === 'concentration' && <PortfolioConcentration positions={open} />}
       <div hidden={section !== 'journal'}><PortfolioJournal ticks={ticks} evidence={evidence} request={journalRequest} /></div>

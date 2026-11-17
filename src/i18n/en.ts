@@ -3758,6 +3758,22 @@ export const en = {
   "mc.method": "{paths} paths, each built by re-drawing this asset's last {days} daily moves in runs of {block} days, so big days and streaks stay as they really happened. The asset's past trend is taken out first: a past rise or fall says little about the coming year, so the fan is centred on today's price and shows risk, not an expected gain. It assumes the future is as restless as those years, with no news.",
   "mc.short": "Not enough price history for a simulation (about one year of daily prices is needed).",
   "kitchen.mine.note": "Traditional-market prices of the main variety of each staple, so your own shop or brand will differ. The list is saved on this device and synced when sync is on.",
+  "costs.title": "Recorded transaction costs",
+  "costs.year": "Year",
+  "costs.allYears": "All years",
+  "costs.note": "Currencies are kept separate. Zero recorded fees may mean a fee was not entered. Fees as % = recorded fees / traded value × 100; traded value excludes fees.",
+  "costs.excluded": "Data unavailable for {count} transactions across all years; these transactions are excluded from the totals.",
+  "costs.empty": "No recorded transactions yet.",
+  "costs.unavailable": "Data unavailable",
+  "costs.currency": "Amounts in {currency}",
+  "costs.fees": "Recorded fees",
+  "costs.traded": "Traded value",
+  "costs.percent": "Fees (%)",
+  "costs.months": "By month",
+  "costs.years": "By year",
+  "costs.assets": "Top 10 assets by recorded fees",
+  "costs.asset": "Asset",
+  "costs.period": "Period",
 } as const;
 
 export type TranslationKey = keyof typeof en;
