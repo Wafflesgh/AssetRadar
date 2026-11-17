@@ -124,4 +124,5 @@ Setelah setiap perubahan: `npm run lint && npm test && npm run build` harus lulu
 ## Deploy / GitHub
 
 - Repo GitHub (privat): https://github.com/Wafflesgh/AssetRadar , cabang `main`. Identitas commit (konfigurasi lokal repo): Dilan <alfianclassche@gmail.com>. Setelah perubahan lulus lint/test/build: commit lalu `git push`. Bisa diimpor kembali ke Google AI Studio (Build → ⊕ → Import from GitHub) yang menjalankan `server.ts` di Cloud Run.
+- **Kerja bareng Codex (17 Nov 2026)**: Claude = lead (menulis tugas `docs/tasks/YYYY-MM-DD-<nama>.md` dari `_TEMPLATE.md`, review `git diff` + lint/test/build, commit & push), Codex = executor (aturan di `AGENTS.md`: tidak commit/push, hanya file yang diizinkan, mengisi "Notes from Codex"). Bergantian, jangan bersamaan di file yang sama.
 - `bun.lock` lama sengaja dihapus karena `recharts` ditambahkan; `package-lock.json` adalah lockfile yang berlaku.
