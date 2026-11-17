@@ -41,3 +41,10 @@ Every Codex claim below was checked against the code before deciding.
 2. Owner export partly exists (D10).
 3. The deploy gate is simpler inside the Dockerfile than a second CI pipeline (D3).
 4. Gemini earlier than Codex suggested, because the owner wants it and the credit expires (D8).
+
+## Update 2026-11-17 — Gemini parked
+T5 (daily cap) is live and verified (count persists across restarts). Both keys tried (a service-account
+bound Cloud key and an AI Studio key) were rejected with an auth error. Owner decided to park Gemini:
+it only rewrites summaries; all scores are rule-based. Remove the `GEMINI_API_KEY` reference from
+Cloud Run; the code keeps the non-AI text. Retry later by checking `gemini.lastError.reason` in
+`/api/diagnostics` after attaching a key.

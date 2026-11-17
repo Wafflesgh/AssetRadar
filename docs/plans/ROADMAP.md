@@ -26,7 +26,7 @@ terbatas, bukan langganan permanen.
 ## Fase 2 — Fitur baru · ±3 minggu
 | Tugas | Apa | Ukuran |
 |---|---|---|
-| T5 | Gemini dinyalakan dengan batas harian (ringkasan AI, analisis harian) | M |
+| T5 | Batas harian Gemini (selesai). Gemini sendiri **ditunda** 17 Nov: kunci ditolak, manfaatnya kecil | M |
 | T6 | Ekspor/impor semua data Anda (bukan hanya portofolio) | M |
 | T7 | Ringkasan mingguan watchlist (perubahan minggu ini, agenda minggu depan) | M |
 
