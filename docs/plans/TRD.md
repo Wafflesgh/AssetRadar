@@ -143,3 +143,57 @@ Before 21 days exist the UI says "not enough history yet".
 **Requirement:** reorganize `#/portfolio` into tabs: Summary, Positions, Concentration, Journal,
 Income & Risk. Existing components move, not rewritten. Tab kept in the hash (`#/portfolio/journal`)
 via `router.ts` (+ test). 375 px, light/dark, EN + ID.
+
+---
+
+# Addendum 2026-11-18 — Waves 1 and 2 (list: `FEATURES_2026-11-18.md`, queue: `docs/tasks/2026-11-18-QUEUE.md`)
+
+Shared rules: information only, EN + ID, 375 px, light/dark, missing data shown as unavailable (never 0
+or estimated), no new paid source, no Gemini. New alert kinds follow the existing pattern in
+`src/utils/alerts.ts` (`AlertKind`, `evaluateAlert`, labels, `AlertEditor`) and are evaluated both in the
+browser (`alertService.checkLocalAlerts`) and on the server (`checkServerAlerts`, server.ts ~5001).
+
+## F1 (X1) Recorded transaction costs — S
+Pure `src/utils/txCosts.ts` (+ test) over `PortfolioTx[]`: fees per month and per year, per asset, per
+trade currency (never summed across currencies), and fees as % of traded value. UI card in the
+Positions tab. Labels say "recorded fees"; a note explains zero fees may mean not entered. No tax rates
+in code.
+
+## F2 (C1) Since your last visit — S–M
+Device-only (not synced) key `assetradar_last_visit_v1` = `{ at, prices: { symbol: price } }` for
+watchlist + portfolio symbols, saved when the Radar page is left or every 10 min while open. On the
+next visit (gap ≥ 1 h) a dismissible card at the top of Radar shows: each tracked asset's change
+since last visit (current tick vs stored price), headlines tagged to those assets since `at`
+(`useLiveNews`), and alert history entries since `at` (existing history source). Pure logic
+`src/utils/sinceLastVisit.ts` (+ test).
+
+## F3 (C6) SBN offer alert — S
+New `AlertKind` `sbnOffer` (no symbol): fires when a retail SBN series' offer opens (`offerStart` =
+today WIB) and 2 days before `offerEnd`, once per series per event (`seen` keys). Data: `sbn:series`
+on the server, `/api/sbn/retail` in the browser. URL `#/macro`.
+
+## F4 (C4) Journal review reminder — S
+New `AlertKind` `journalReview` (no symbol): fires once per entry when its 7/30/91-day review date is
+reached (WIB), using the synced `journal` collection (server: synced data; browser: `getJournal()`).
+`seen` keys `entryId:w1|m1|m3`. URL `#/portfolio/journal`. Notification text shows asset + days only,
+never the note text.
+
+## F5 (X2) Compare in Rupiah — M
+Extend Compare (`CompareView.tsx`, `compare.ts`) with a "Show in Rupiah" toggle for non-IDR assets:
+convert each daily close with the same day's USD/IDR (or the asset currency pair) from
+`/api/market/daily`; per asset show price return, FX return and combined return
+`(1+a)(1+f)−1`. Missing FX day → that day dropped and counted; never today's rate for past days.
+
+## F6 (X3) Compare company financials — M
+In Compare, when exactly two stocks are selected: a panel with the last 3 annual periods per company
+(revenue growth, net margin, ROE, debt/equity, operating cash flow) from
+`/api/fundamentals/statements?period=annual` via existing `statements.ts` ratios. Banks/financials:
+hide debt/equity and gross margin, show a note. Each period labelled with its fiscal year end. No
+ranking or "better" wording.
+
+## F7 (C3) Unusual move alert — M
+New `AlertKind` `unusualMove` (symbol + sigma threshold, default 3, min 2): fires when |today's change|
+≥ k × σ, σ = stdev of the asset's daily % changes over the last 60 sessions (exclude today). Server:
+σ from `dailyOhlcFor` (cached), computed only for symbols with this alert, cached per day. Browser:
+same via `/api/market/daily`. Pure `src/utils/unusualMove.ts` (+ test). Re-arms after the move falls
+under the threshold (same as `dailyMove`).
