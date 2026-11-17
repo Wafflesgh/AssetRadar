@@ -440,6 +440,12 @@ export interface SyncAdapter {
 
 const syncAdapters: Partial<Record<SyncCollection, SyncAdapter>> = {};
 
+/** Exposes an adapter's operations without allowing callers to replace its registration. */
+export function getSyncAdapter(col: SyncCollection): Readonly<SyncAdapter> | undefined {
+  const adapter = syncAdapters[col];
+  return adapter ? Object.freeze({ ...adapter }) : undefined;
+}
+
 /** Registers how a collection is read and written (collections outside this file register themselves). */
 export function registerSyncAdapter(col: SyncCollection, adapter: SyncAdapter): void {
   syncAdapters[col] = adapter;

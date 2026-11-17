@@ -10,6 +10,7 @@ import { TIMEFRAME_OPTIONS, TimeframeInterval } from '../config/assets.ts';
 import { ThemePreference } from '../utils/storage.ts';
 import { InstallAppCard } from './InstallApp.tsx';
 import { SyncCard } from './SyncCard.tsx';
+import { DataExportCard } from './DataExportCard.tsx';
 import { DiagnosticsCard } from './DiagnosticsCard.tsx';
 import { FreshnessCard } from './FreshnessCard.tsx';
 
@@ -62,6 +63,7 @@ export function SettingsView({
       <InstallAppCard />
 
       <SyncCard />
+      <DataExportCard />
       <DiagnosticsCard />
       <FreshnessCard />
       {/* Language and number format */}
