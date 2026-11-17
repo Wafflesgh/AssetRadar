@@ -90,8 +90,16 @@ class SupabaseStore implements KvStore {
 
   async keys(prefix: string): Promise<string[]> {
     const pattern = `${prefix.replace(/[*%_\\]/g, '')}*`;
-    const res = await this.call(`${this.base}?key=like.${encodeURIComponent(pattern)}&select=key&order=key.asc`, { headers: this.headers() });
-    return ((await res.json()) as Array<{ key: string }>).map((r) => r.key);
+    const pageSize = 1000;
+    const keys: string[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const res = await this.call(`${this.base}?key=like.${encodeURIComponent(pattern)}&select=key&order=key.asc`, {
+        headers: this.headers({ Range: `${offset}-${offset + pageSize - 1}` }),
+      });
+      const rows = (await res.json()) as Array<{ key: string }>;
+      keys.push(...rows.map((r) => r.key));
+      if (rows.length < pageSize) return keys;
+    }
   }
 
   async remove(key: string): Promise<void> {
