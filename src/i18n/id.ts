@@ -314,7 +314,7 @@ export const id: Record<TranslationKey, string> = {
   "intel.scaleBull": "Bullish (58–100)",
   "intel.rescored": "↻ Dihitung ulang karena berita terbaru {ago}",
   "intel.drivers": "Pendorong Utama:",
-  "intel.note": "Indikator sentimen dihitung dari momentum harga 24 jam dan nada judul berita pasar terbaru. Bukan rekomendasi beli/jual.",
+  "intel.note": "Skor sentimen menggabungkan indikator teknikal dan pola grafik, momentum, valuasi, fundamental (khusus saham), serta peristiwa dalam berita terbaru. Bukan rekomendasi beli/jual.",
   "intel.newsKicker": "Berita Pasar Terkait",
   "intel.original": "bahasa asli",
   "intel.live": "Live",

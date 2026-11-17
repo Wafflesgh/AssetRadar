@@ -313,7 +313,7 @@ export const en = {
   "intel.scaleBull": "Bullish (58–100)",
   "intel.rescored": "↻ Re-scored on breaking news {ago}",
   "intel.drivers": "Key Drivers:",
-  "intel.note": "The sentiment indicator is computed from 24-hour price momentum and the tone of the latest market headlines. Not a buy/sell recommendation.",
+  "intel.note": "The sentiment score combines technical indicators and chart patterns, momentum, valuation, fundamentals (stocks only) and recent news events. Not a buy/sell recommendation.",
   "intel.newsKicker": "Related Market News",
   "intel.original": "original language",
   "intel.live": "Live",
