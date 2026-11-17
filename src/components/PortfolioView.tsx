@@ -9,6 +9,7 @@
  */
 import { t, t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
+import { PortfolioConcentration } from './PortfolioConcentration.tsx';
 import { assetName } from '../i18n/assetNames.ts';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Trash2, Upload, Wallet, X } from 'lucide-react';
@@ -445,6 +446,8 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
               )}
             </div>
           </section>
+
+          <PortfolioConcentration positions={open} />
 
           <section className="rounded-xl border overflow-x-auto" style={card} aria-labelledby="tx-heading">
             <h2 id="tx-heading" className="text-base font-bold px-4 pt-4">

@@ -1,6 +1,6 @@
 # Task: T8 — Portfolio concentration
 
-**Status:** open
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-17 · **Plan:** `docs/plans/TRD.md` § T8, `PLAN_MyPortfolio.md`
 
 ## Goal
@@ -44,4 +44,15 @@ one holding → hhi 1, concentrated; two equal → 0.5; ten equal → 0.1 divers
 
 ## Notes from Codex
 
+- Added `src/utils/concentration.ts` and its tests; added `PortfolioConcentration.tsx`; PortfolioView changes are only its import and rendering immediately below the existing allocation block. Added only `conc.*` keys in EN/ID. No stored data, valuation logic, endpoint or dependency changed.
+- Uses the page's `{ asset, v }` valued open positions and marketValueIdr. Missing/nonfinite/negative values are excluded and counted as unpriced; closed positions and zero-value positions do not contribute. Duplicate assets aggregate before weights/HHI are calculated. Each dimension returns sorted items, HHI, effective count, level and largest item; empty dimensions return null metrics.
+- IDX sector comes from idxStocks code/sector; US sector comes from sp500 yahooTicker/gicsSector, not sub-industry. Other assets use their configured group. All current dataset sector labels have EN/ID translations. Country follows an explicit exchange mapping, crypto is global; multi-country EURONEXT, FX/futures and unmapped exchanges remain unclassified. Currency follows asset.currency, even when the transaction/valuation unit differs; UI explains the distinction. Asset classes reuse assetClassOf.
+- Card provides five wrapping buttons, top eight bars plus others, a dimension-specific largest-share sentence, HHI/effective count, plain-language thresholds and informational disclaimer. Unclassified weights remain in the denominator. The level describes only the selected dimension, not total portfolio risk.
+- PASS: lint; all 388 tests; build; i18n --fail (0 untranslated); diff whitespace check with CRLF accounted for. Tests cover single/two/ten holdings, the 0.25 boundary, unknown sectors, GICS/IDX mapping, crypto country, unpriced/closed/empty positions and duplicate aggregation. Existing build >500 kB warning remains.
+- No production or browser visual checks were run. Layout uses wrapping controls/labels, theme tokens and 44px buttons, but 375px/light/dark appearance still needs visual review. The Portfolio page bundle now includes the S&P classification data (build: about 65.4 kB / 18.5 kB gzip). No commit.
+
 ## Review (Claude)
+PASS (2026-11-17), no changes needed. PortfolioView diff = import + one render line. Re-ran: lint ok,
+388/0 tests, build, i18n 0. Browser with a temporary 4-holding test portfolio (restored after):
+asset and sector views correct (IDX-IC Financials, GICS Information Technology, Crypto); 375 px no
+horizontal scroll. Light mode not viewed.
