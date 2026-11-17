@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 COPY . .
+# Stop deployment if lint, tests or translation checks fail.
+RUN npm run lint && npm test && node scripts/check-i18n.mjs
 RUN npm run build
 ENV NODE_ENV=production SERVERLESS=1
 # Cloud Run sets PORT (8080); server.ts listens on it
