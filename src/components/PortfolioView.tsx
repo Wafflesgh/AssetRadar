@@ -10,6 +10,7 @@
 import { t, t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { Rich } from '../i18n/Rich.tsx';
 import { PortfolioConcentration } from './PortfolioConcentration.tsx';
+import { PortfolioJournal } from './PortfolioJournal.tsx';
 import { assetName } from '../i18n/assetNames.ts';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Trash2, Upload, Wallet, X } from 'lucide-react';
@@ -112,6 +113,7 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
   // Another device changed the portfolio (sync)
   useEffect(() => onSyncApplied(['portfolio'], () => setTxs(getPortfolioTxs<PortfolioTx>())), []);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [journalRequest, setJournalRequest] = useState<{ symbol: string; txId: string } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<Record<string, { score: number; label: string; f?: string }>>({});
@@ -486,6 +488,9 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
                       <td className="px-3 py-2 text-right font-mono-num hidden sm:table-cell">{money(t.price, unit?.currency ?? 'IDR')}</td>
                       <td className="px-3 py-2 text-right font-mono-num hidden md:table-cell">{t.fee ? money(t.fee, unit?.currency ?? 'IDR') : '—'}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <button type="button" onClick={() => setJournalRequest({ symbol: t.symbol, txId: t.id })} className="block min-h-11 px-2 text-xs">
+                          {tr('journal.add')}
+                        </button>
                         <button type="button" aria-label={tr('pf.editLabel')} onClick={() => startEdit(t)} className="p-1">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -501,6 +506,8 @@ export function PortfolioView({ ticks, onSelectAsset }: PortfolioViewProps) {
           </section>
         </>
       )}
+
+      <PortfolioJournal ticks={ticks} evidence={evidence} request={journalRequest} />
 
       {goldBasis && (
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>

@@ -12,6 +12,7 @@ import { translate, type AppLang, type TParams, type TranslationKey } from '../i
 export const SYNC_COLLECTIONS = [
   'watchlist',
   'portfolio',
+  'journal',
   'forwardLog',
   'riskResult',
   'settings',
@@ -28,6 +29,7 @@ export type SyncCollection = (typeof SYNC_COLLECTIONS)[number];
 export const COLLECTION_LABELS: Record<SyncCollection, string> = {
   watchlist: 'Watchlist',
   portfolio: 'Portfolio transactions',
+  journal: 'Decision journal',
   forwardLog: 'AI forward-test log',
   riskResult: 'Risk profile',
   settings: 'Settings',

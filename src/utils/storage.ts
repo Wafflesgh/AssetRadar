@@ -8,6 +8,7 @@
  */
 import { DEFAULT_TIMEFRAME, isValidTimeframe, type TimeframeInterval, type PriceTick } from '../config/assets.ts';
 import { diffCollection, type SyncCollection, type SyncItems } from './sync.ts';
+import { parseJournal, type JournalEntry } from './journal.ts';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -27,6 +28,7 @@ const STORAGE_KEYS = {
   INSTALL_BANNER_DISMISSED: 'assetradar_install_banner_dismissed',
   RECENT_SEARCHES: 'assetradar_recent_searches',
   PORTFOLIO: 'assetradar_portfolio_v1',
+  JOURNAL: 'assetradar_journal_v1',
   PAPER: 'assetradar_paper_v1',
   DCA_PREFS: 'assetradar_dca_prefs_v1',
   FORWARD_LOG: 'assetradar_ai_forward_log_v1',
@@ -208,6 +210,17 @@ export function getPortfolioTxs<T extends { id: string; symbol: string }>(): T[]
 export function savePortfolioTxs(txs: unknown[]): boolean {
   tracked('portfolio', () => safeSet(STORAGE_KEYS.PORTFOLIO, JSON.stringify(txs)));
   return safeGet(STORAGE_KEYS.PORTFOLIO) !== null;
+}
+
+export function getJournal(): JournalEntry[] {
+  return parseJournal(readJson(STORAGE_KEYS.JOURNAL));
+}
+
+/** Verify the exact saved value so a quota failure cannot look like a successful edit. */
+export function saveJournal(entries: JournalEntry[]): boolean {
+  const json = JSON.stringify(parseJournal(entries));
+  tracked('journal', () => safeSet(STORAGE_KEYS.JOURNAL, json));
+  return safeGet(STORAGE_KEYS.JOURNAL) === json;
 }
 
 /** AI Advisor forward-test log (raw JSON; validated by parseForwardLog in ai/forwardTest.ts). */
@@ -556,6 +569,7 @@ registerSyncAdapter('watchlist', {
 });
 
 registerSyncAdapter('portfolio', listAdapter(STORAGE_KEYS.PORTFOLIO));
+registerSyncAdapter('journal', listAdapter(STORAGE_KEYS.JOURNAL));
 
 interface RawSnapshot {
   date: string;
