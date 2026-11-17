@@ -7,7 +7,7 @@
  * models) is exposed for /api/diagnostics — never the key.
  */
 import { GoogleGenAI, type GenerateContentConfig, type GenerateContentResponse } from '@google/genai';
-import { classifyGeminiError, DailyBudget, geminiDailyLimit, geminiModels, ModelCooldown, quotaRestMs, type GeminiErrorKind } from './geminiPolicy.ts';
+import { classifyGeminiError, geminiErrorReason, DailyBudget, geminiDailyLimit, geminiModels, ModelCooldown, quotaRestMs, type GeminiErrorKind } from './geminiPolicy.ts';
 import type { KvStore } from './store.ts';
 import { wibDate } from '../src/utils/sync.ts';
 
@@ -49,7 +49,7 @@ const cooldown = new ModelCooldown();
 const status = {
   lastModel: null as string | null,
   lastSuccessAt: null as number | null,
-  lastError: null as { kind: GeminiErrorKind; model: string; at: number } | null,
+  lastError: null as { kind: GeminiErrorKind; model: string; at: number; reason: string | null } | null,
   calls: 0,
   fallbacks: 0,
 };
@@ -115,11 +115,11 @@ export async function geminiGenerate(req: GeminiRequest): Promise<GeminiResult |
       return { text, model, response };
     } catch (err) {
       const kind = classifyGeminiError(err);
-      status.lastError = { kind, model, at: Date.now() };
+      status.lastError = { kind, model, at: Date.now(), reason: geminiErrorReason(err) };
       if (kind === 'quota') cooldown.rest(model, quotaRestMs(err));
       else if (kind === 'overloaded') cooldown.rest(model, 30_000);
       else if (kind === 'notFound') cooldown.rest(model, 6 * 3600_000);
-      console.warn(`[Gemini${req.tag ? ` ${req.tag}` : ''}] ${model}: ${kind}${i + 1 < models.length ? ', trying the next model' : ''}`);
+      console.warn(`[Gemini${req.tag ? ` ${req.tag}` : ''}] ${model}: ${kind}${status.lastError.reason ? ` (${status.lastError.reason})` : ''}${i + 1 < models.length ? ', trying the next model' : ''}`);
       if (kind === 'auth') break; // a bad key fails on every model
     }
   }

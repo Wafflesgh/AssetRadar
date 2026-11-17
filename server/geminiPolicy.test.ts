@@ -75,3 +75,9 @@ test('cooldown skips resting models and frees them later', () => {
   assert.deepEqual(c.order(models, 5000), []); // all resting → caller uses its non-AI text
   assert.deepEqual(c.snapshot(5000).map((x) => x.model).sort(), ['a', 'b', 'c']);
 });
+
+test('geminiErrorReason returns only the reason code', async () => {
+  const { geminiErrorReason } = await import('./geminiPolicy.ts');
+  assert.equal(geminiErrorReason(new Error('[403] API key not valid. reason: API_KEY_INVALID secret-ish text')), 'API_KEY_INVALID');
+  assert.equal(geminiErrorReason(new Error('something else')), null);
+});

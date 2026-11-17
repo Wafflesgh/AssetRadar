@@ -70,6 +70,12 @@ function statusOf(err: unknown): number | null {
 }
 
 /** What went wrong, so the caller knows whether trying the next model makes sense. */
+/** Google's reason code only (e.g. API_KEY_INVALID, SERVICE_DISABLED) — never message text, which could echo input. */
+export function geminiErrorReason(err: unknown): string | null {
+  const text = String((err as { message?: unknown })?.message ?? err ?? '');
+  return text.match(/(API_KEY_[A-Z_]+|SERVICE_DISABLED|ACCESS_TOKEN_TYPE_UNSUPPORTED|PERMISSION_DENIED|UNAUTHENTICATED|CONSUMER_INVALID|BILLING_DISABLED)/)?.[1] ?? null;
+}
+
 export function classifyGeminiError(err: unknown): GeminiErrorKind {
   const text = String((err as { message?: unknown })?.message ?? err ?? '');
   const status = statusOf(err);
