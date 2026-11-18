@@ -10,7 +10,7 @@ completed sessions.
 
 ## Allowed files
 - New `src/utils/unusualMove.ts` + new test
-- `src/utils/alerts.ts` + its test; `src/services/alertService.ts`; `src/components/AlertEditor.tsx`
+- `src/utils/alerts.ts` + its test; `src/services/alertService.ts`; `src/components/AlertEditor.tsx`; `src/components/AlertsView.tsx` (the `describe()` switch needs a case for every kind)
 - `server.ts`: **only** inside `checkServerAlerts`: σ for symbols that have this alert, from the existing
   daily history function (`dailyOhlcFor`, cached), cached per WIB day in memory
 - `src/i18n/en.ts`, `src/i18n/id.ts` (new keys only)

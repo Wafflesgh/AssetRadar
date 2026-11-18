@@ -245,6 +245,9 @@ function refreshCalendars(symbols: string[]): void {
 }
 
 /** Called on every price update; evaluates at most every 5 s. Skipped when the server pushes alerts. */
+let sbnData: import('../utils/sbnRetail.ts').SbnSeries[] = [];
+let sbnFetchedAt = 0;
+let sbnLoading = false;
 export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
   const now = Date.now();
   if (now - lastCheck < 5000 || serverMode) return;
@@ -255,6 +258,11 @@ export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
   if (holdings.length) alerts.push({ id: HOLDINGS_CALENDAR_ID, kind: 'calendar', repeat: true, cooldownMin: 60, active: true, createdAt: 0 });
   if (alerts.length === 0) return;
 
+  if (alerts.some(a => a.kind === 'sbnOffer') && !sbnLoading && now - sbnFetchedAt > 3600_000) {
+    sbnLoading = true;
+    import('./marketDataService.ts').then(m => m.fetchSbnRetail()).then(data => { sbnData = [...data.current, ...data.earlier]; })
+      .catch(() => { sbnData = []; }).finally(() => { sbnFetchedAt = Date.now(); sbnLoading = false; });
+  }
   const wantsNews = alerts.some((a) => a.kind === 'news' || a.kind === 'geo');
   if (wantsNews && !newsUnsub) newsUnsub = newsStore.subscribe(() => {});
   if (!wantsNews && newsUnsub) {
@@ -277,6 +285,7 @@ export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
     const events = alert.kind === 'calendar' ? (alert.symbol ? [alert.symbol] : holdings).flatMap((s) => calendarCache.get(s)?.events ?? []) : [];
     const { fire, state } = evaluateAlert(alert, states[alert.id] ?? {}, {
       now,
+      sbnSeries: sbnData,
       price: usable ? tick.price : undefined,
       changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
       events: alert.kind === 'calendar' ? calendarEventsTomorrow(events, null, now) : undefined,

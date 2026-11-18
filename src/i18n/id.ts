@@ -3775,4 +3775,14 @@ export const id: Record<TranslationKey, string> = {
   "costs.assets": "10 aset dengan biaya tercatat terbesar",
   "costs.asset": "Aset",
   "costs.period": "Periode",
+  "since.title": "Sejak {time}",
+  "since.dismiss": "Tutup",
+  "since.unavailable": "Data tidak tersedia",
+  "since.news": "Berita terkait",
+  "since.alerts": "Notifikasi terbaru",
+  "alerts.kind.sbnOffer": "Penawaran SBN ritel",
+  "alerts.sbn.open": "{code}: penawaran dibuka. Kupon {coupon}. Berakhir {date}, {time}.",
+  "alerts.sbn.closing": "{code}: penawaran berakhir 2 hari lagi. Kupon {coupon}. Berakhir {date}, {time}.",
+  "alerts.sbn.unavailable": "Tidak tersedia",
+
 };

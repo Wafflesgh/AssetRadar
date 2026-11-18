@@ -168,3 +168,19 @@ test('notification and validation texts follow the chosen language', () => {
   assert.match(r.fire?.body ?? '', /^Sekarang /);
   assert.deepEqual(validateAlert({ kind: 'priceAbove', symbol: 'BTC/IDR', value: 0 }, 'id'), ['Isi harga di atas 0.']);
 });
+
+
+test('SBN offers fire once per series/event and ignore missing dates', () => {
+  const alert = base({ kind: 'sbnOffer', symbol: undefined, repeat: true });
+  assert.deepEqual(validateAlert(alert), []);
+  const series = { code: 'ORI001', offerStart: '2026-10-20', offerEnd: '2026-10-25', closeTime: '10.00 WIB', couponPct: 6 } as import('./sbnRetail.ts').SbnSeries;
+  const first = evaluateAlert(alert, {}, { now: T0, sbnSeries: [series] });
+  assert.equal(first.fire?.url, '#/macro');
+  assert.deepEqual(first.state.seen, ['ORI001:open']);
+  assert.equal(evaluateAlert(alert, first.state, { now: T0, sbnSeries: [series] }).fire, null);
+  const closing = evaluateAlert(alert, first.state, { now: T0 + 3 * 86400_000, sbnSeries: [series] });
+  assert.ok(closing.fire);
+  assert.deepEqual(closing.state.seen, ['ORI001:open', 'ORI001:closing']);
+  assert.equal(evaluateAlert(alert, {}, { now: T0, sbnSeries: [{ ...series, offerStart: null }] }).fire, null);
+  assert.equal(evaluateAlert(alert, {}, { now: T0 + 6 * 86400_000, sbnSeries: [series] }).fire, null);
+});

@@ -49,7 +49,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
     e.preventDefault();
     const draft: Partial<UserAlert> = {
       kind,
-      symbol: kind === 'geo' ? undefined : symbol,
+      symbol: kind === 'geo' || kind === 'sbnOffer' ? undefined : symbol,
       value: isPrice || kind === 'dailyMove' ? numeric : undefined,
     };
     const errs = validateAlert(draft, lang);
@@ -63,7 +63,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
       kind,
       symbol: draft.symbol,
       value: draft.value,
-      repeat,
+      repeat: kind === 'sbnOffer' ? true : repeat,
       cooldownMin: Math.max(60, cooldownMin),
       active: true,
       createdAt: editing?.createdAt ?? Date.now(),
@@ -90,7 +90,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
             ))}
           </select>
         </label>
-        {kind !== 'geo' && (
+        {kind !== 'geo' && kind !== 'sbnOffer' && (
           <div className="space-y-1">
             <span className="text-xs font-semibold block" style={{ color: 'var(--text-secondary)' }}>
               {t('alerts.ed.asset')}
@@ -148,7 +148,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-4">
+      {kind !== 'sbnOffer' && <div className="flex flex-wrap items-center gap-4">
         <label className="inline-flex items-center gap-2 text-xs font-semibold">
           <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} /> {t('alerts.ed.repeat')}
         </label>
@@ -163,7 +163,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
             </select>
           </label>
         )}
-      </div>
+      </div>}
 
       <label className="space-y-1 block">
         <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>

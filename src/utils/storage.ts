@@ -9,6 +9,7 @@
 import { DEFAULT_TIMEFRAME, isValidTimeframe, type TimeframeInterval, type PriceTick } from '../config/assets.ts';
 import { diffCollection, type SyncCollection, type SyncItems } from './sync.ts';
 import { parseJournal, type JournalEntry } from './journal.ts';
+import { parseLastVisit, type LastVisit } from './sinceLastVisit.ts';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -47,6 +48,13 @@ const STORAGE_KEYS = {
   GOLD_PRICES: 'assetradar_gold_prices_v1',
   STRATEGIES: 'assetradar_strategies_v1',
 } as const;
+
+export function getLastVisit(): LastVisit | null {
+  try { return parseLastVisit(JSON.parse(safeGet('assetradar_last_visit_v1') ?? 'null')); } catch { return null; }
+}
+export function saveLastVisit(visit: LastVisit): void {
+  safeSet('assetradar_last_visit_v1', JSON.stringify(visit));
+}
 
 function safeGet(key: string): string | null {
   try {

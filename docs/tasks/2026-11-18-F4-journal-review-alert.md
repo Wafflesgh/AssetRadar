@@ -8,7 +8,7 @@ New alert kind `journalReview` (no symbol): remind the owner when a journal note
 91-day review (same days as `reviewChanges` in `src/utils/journal.ts`).
 
 ## Allowed files
-- `src/utils/alerts.ts` + its test; `src/services/alertService.ts`; `src/components/AlertEditor.tsx`
+- `src/utils/alerts.ts` + its test; `src/services/alertService.ts`; `src/components/AlertEditor.tsx`; `src/components/AlertsView.tsx` (the `describe()` switch needs a case for every kind)
 - `src/utils/journal.ts`: only an exported helper `dueReviews(entries, now)` + its test
 - `server.ts`: **only** inside `checkServerAlerts`: read the synced `journal` collection from the sync data it
   already loads, only when an alert of this kind exists

@@ -49,7 +49,8 @@ function describe(a: UserAlert, lang: AppLang): string {
     case 'news':
       return tr('alerts.v.descNews', { name });
     case 'geo':
-      return alertKindLabel('geo', lang);
+    case 'sbnOffer':
+      return alertKindLabel(a.kind, lang);
     case 'stapleMove': {
       const def = STAPLES.find((s) => s.id === a.symbol);
       return tr('alerts.v.descStaple', { name: def ? tr(`kitchen.item.${def.key}` as TranslationKey) : name, value: a.value ?? '' });

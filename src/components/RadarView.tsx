@@ -7,6 +7,7 @@
  */
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { LineChart } from 'lucide-react';
+import { SinceLastVisit } from './SinceLastVisit.tsx';
 import { useT } from '../i18n/index.ts';
 import { assetName, assetShortName, groupSubtitle, groupTitle } from '../i18n/assetNames.ts';
 import { ASSETS, ASSET_GROUPS, AssetConfig, AssetGroup, PriceTick, getAssetBySymbol } from '../config/assets.ts';
@@ -78,6 +79,7 @@ export function RadarView({ ticks, onSelectAsset, onRetrySymbol, watchlist, onTo
 
   return (
     <div className="space-y-8">
+      <SinceLastVisit ticks={ticks} />
       <NewsTape className="rounded-xl border" />
       <InstallAppBanner />
 

@@ -3774,6 +3774,15 @@ export const en = {
   "costs.assets": "Top 10 assets by recorded fees",
   "costs.asset": "Asset",
   "costs.period": "Period",
+  "since.title": "Since {time}",
+  "since.dismiss": "Dismiss",
+  "since.unavailable": "Data unavailable",
+  "since.news": "Related headlines",
+  "since.alerts": "Recent alerts",
+  "alerts.kind.sbnOffer": "Retail SBN offering",
+  "alerts.sbn.open": "{code}: offering open. Coupon {coupon}. Ends {date}, {time}.",
+  "alerts.sbn.closing": "{code}: offering closes in 2 days. Coupon {coupon}. Ends {date}, {time}.",
+  "alerts.sbn.unavailable": "Unavailable",
 } as const;
 
 export type TranslationKey = keyof typeof en;

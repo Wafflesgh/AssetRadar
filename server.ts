@@ -5008,6 +5008,7 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
   const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
   const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
   const lang = await pushLang(store).catch(() => 'en' as const);
+  const sbnSeries = list.some(a => a.kind === 'sbnOffer') ? await store.get<import('./src/utils/sbnRetail.ts').SbnSeries[]>('sbn:series').catch(() => null) : null;
   const stapleWeek = list.some((a) => a.kind === 'stapleMove') ? await stapleWeekChanges(store).catch(() => ({}) as Record<string, number>) : {};
   for (const alert of list) {
     if (alert.kind === 'stapleMove') {
@@ -5030,6 +5031,7 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
     const usable = tick && tick.status !== 'error' && Number.isFinite(tick.price);
     const { fire, state } = evaluateAlert(alert, serverAlerts.states[alert.id] ?? {}, {
       now,
+      sbnSeries: sbnSeries ?? [],
       price: usable ? tick.price : undefined,
       changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
       events: alert.symbol ? events.filter((e) => e.symbol === alert.symbol) : events,

@@ -6,11 +6,12 @@
  * (WIB), a notification throttle and the alert history. Used by the browser (local mode) and the
  * server (web push). Alerts are reminders the user sets, not buy/sell signals.
  */
+import type { SbnSeries } from './sbnRetail.ts';
 import type { CalendarEvent } from './corporateCalendar.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
 import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
-export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo' | 'stapleMove';
+export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo' | 'stapleMove' | 'sbnOffer';
 
 /** English labels (also the list of valid kinds); the UI uses alertKindLabel() for the chosen language. */
 export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
@@ -21,6 +22,7 @@ export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   news: 'New headline',
   geo: 'Geopolitical alert (high)',
   stapleMove: 'Staple food weekly move',
+  sbnOffer: 'Retail SBN offering',
 };
 
 export function alertKindLabel(kind: AlertKind, lang: AppLang = 'en'): string {
@@ -62,6 +64,7 @@ export interface AlertContext {
   changePct24h?: number;
   /** Corporate events of the alert's stock (or of the watched stocks for holdings alerts). */
   events?: CalendarEvent[];
+  sbnSeries?: SbnSeries[];
   news?: MarketNewsItem[];
   /** Asset code used as the news tag (e.g. "BBCA"). */
   code?: string;
@@ -87,7 +90,7 @@ export function validateAlert(a: Partial<UserAlert>, lang: AppLang = 'en'): stri
   const errors: string[] = [];
   const e = (key: string) => errors.push(translate(lang, key as TranslationKey));
   if (!a.kind || !(a.kind in ALERT_KIND_LABELS)) e('alerts.err.kind');
-  if (a.kind !== 'geo' && !a.symbol) e('alerts.err.asset');
+  if (a.kind !== 'geo' && a.kind !== 'sbnOffer' && !a.symbol) e('alerts.err.asset');
   if ((a.kind === 'priceAbove' || a.kind === 'priceBelow') && !(typeof a.value === 'number' && a.value > 0)) e('alerts.err.price');
   if ((a.kind === 'dailyMove' || a.kind === 'stapleMove') && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) e('alerts.err.move');
   return errors;
@@ -164,6 +167,30 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
           body:
             tx(staple ? 'alerts.fire.stapleBody' : 'alerts.fire.moveBody', { value: alert.value }) + (ctx.price !== undefined ? ` ${tx('alerts.fire.price', { price: fmt(ctx.price) })}` : ''),
         };
+      }
+      break;
+    }
+    case 'sbnOffer': {
+      const today = new Date(ctx.now + 7 * 3600_000).toISOString().slice(0, 10);
+      const seen = new Set(state.seen ?? []);
+      const messages: string[] = [];
+      for (const s of ctx.sbnSeries ?? []) {
+        if (!s.offerStart || !s.offerEnd || s.offerStart > s.offerEnd || today < s.offerStart || today > s.offerEnd) continue;
+        const end = Date.parse(`${s.offerEnd}T00:00:00Z`);
+        if (!Number.isFinite(end)) continue;
+        const closing = new Date(end - 2 * 86400_000).toISOString().slice(0, 10) === today;
+        const events = [...(!seen.has(`${s.code}:open`) ? ['open'] : []), ...(closing && !seen.has(`${s.code}:closing`) ? ['closing'] : [])];
+        for (const event of events) {
+          seen.add(`${s.code}:${event}`);
+          messages.push(tx(event === 'open' ? 'alerts.sbn.open' : 'alerts.sbn.closing', {
+            code: s.code, coupon: s.couponPct === null ? tx('alerts.sbn.unavailable') : `${s.couponPct}%`,
+            date: s.offerEnd, time: s.closeTime ?? tx('alerts.sbn.unavailable'),
+          }));
+        }
+      }
+      if (messages.length) {
+        next.seen = [...seen].slice(-50);
+        fire = { title: tx('alerts.kind.sbnOffer'), body: messages.join(' · '), url: '#/macro' };
       }
       break;
     }

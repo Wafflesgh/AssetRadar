@@ -1,6 +1,6 @@
 # Task: F2 — "Since your last visit" card on Radar
 
-**Status:** open
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § F2
 
 ## Goal
@@ -38,4 +38,16 @@ gap < 1 h → hidden; changes computed and sorted; missing price → null not 0;
 
 ## Notes from Codex
 
+- Added `sinceLastVisit.ts`, its tests, and `SinceLastVisit.tsx`; mounted at the top of Radar.
+  Snapshot is device-only through `getLastVisit`/`saveLastVisit` in storage.ts, every ten minutes,
+  on hidden, and on leaving Radar. The opening baseline stays fixed while viewing the card.
+  Invalid/offline snapshot quotes are excluded; missing changes remain unavailable. Uses existing
+  news and local/server alert-history sources; dismiss lasts for the mounted visit.
+- Added only `since.*` EN/ID keys. No synced key, new source or server changes.
+- PASS: lint, 429 tests, build, check-i18n --fail (0). Existing >500 kB bundle warning remains.
+- Not checked: browser interaction, responsive/light/dark rendering, live news or server history.
+  No commit or production changes. Existing untracked owner files untouched.
+
 ## Review (Claude)
+PASS (2026-11-18). Browser: with a 5-hour-old visit and a test watchlist (restored after) the card showed
+"Since 5 hours ago", BBCA +10.00% (5,000 → 5,500), BTC, and tagged headlines. Device-only key, not synced.
