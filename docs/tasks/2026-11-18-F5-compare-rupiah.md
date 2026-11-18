@@ -1,6 +1,6 @@
 # Task: F5 — Compare: returns in Rupiah and the exchange-rate effect
 
-**Status:** open
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § F5
 
 ## Goal
@@ -32,4 +32,14 @@ combined = (1+a)(1+f)−1; missing rate day dropped and counted; IDR asset unaff
 
 ## Notes from Codex
 
+- Added exact-date conversion and compounded return helpers/tests in compare.ts/compare.test.ts.
+  CompareView now offers Show in Rupiah, resolves pairs from ASSETS, fetches once per distinct
+  currency per load/retry, shows skipped rate dates and separate price/FX/combined returns.
+  Rupiah chart uses shared dates only, without forward-filling missing rates. USX cents normalize
+  to USD; IDR needs no rate. Toggle off retains the existing chart behavior. Added EN/ID keys.
+- PASS: lint, 433 tests, build, check-i18n --fail (0). Existing >500 kB warning remains.
+- Not checked: browser toggling/layout or live history/FX coverage. No new data sources,
+  server changes or commits.
+
 ## Review (Claude)
+PASS (2026-11-18). Browser AAPL vs BBCA 1Y: price +31.58%, FX +5.12%, combined +38.32% = (1.3158×1.0512)−1; 27 USD dates without an IDR rate skipped and shown.

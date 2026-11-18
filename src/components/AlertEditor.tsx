@@ -49,8 +49,8 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
     e.preventDefault();
     const draft: Partial<UserAlert> = {
       kind,
-      symbol: kind === 'geo' || kind === 'sbnOffer' ? undefined : symbol,
-      value: isPrice || kind === 'dailyMove' ? numeric : undefined,
+      symbol: kind === 'geo' || (kind === 'sbnOffer' || kind === 'journalReview') ? undefined : symbol,
+      value: isPrice || kind === 'dailyMove' || kind === 'unusualMove' ? (kind === 'unusualMove' && value === '' ? 3 : numeric) : undefined,
     };
     const errs = validateAlert(draft, lang);
     if (kind === 'calendar' && !calendarOk) errs.push(t('alerts.ed.stocksOnlyErr'));
@@ -63,7 +63,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
       kind,
       symbol: draft.symbol,
       value: draft.value,
-      repeat: kind === 'sbnOffer' ? true : repeat,
+      repeat: (kind === 'sbnOffer' || kind === 'journalReview') ? true : repeat,
       cooldownMin: Math.max(60, cooldownMin),
       active: true,
       createdAt: editing?.createdAt ?? Date.now(),
@@ -82,7 +82,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
           <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
             {t('alerts.ed.type')}
           </span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as AlertKind)} className="w-full px-3 py-2 rounded-lg border" style={inputStyle}>
+          <select value={kind} onChange={(e) => { setKind(e.target.value as AlertKind); if (e.target.value === 'unusualMove') setValue('3'); }} className="w-full px-3 py-2 rounded-lg border" style={inputStyle}>
             {(Object.keys(ALERT_KIND_LABELS) as AlertKind[]).filter((k) => k !== 'stapleMove' || kind === k).map((k) => (
               <option key={k} value={k}>
                 {alertKindLabel(k, lang)}
@@ -90,7 +90,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
             ))}
           </select>
         </label>
-        {kind !== 'geo' && kind !== 'sbnOffer' && (
+        {kind !== 'geo' && kind !== 'sbnOffer' && kind !== 'journalReview' && (
           <div className="space-y-1">
             <span className="text-xs font-semibold block" style={{ color: 'var(--text-secondary)' }}>
               {t('alerts.ed.asset')}
@@ -107,18 +107,18 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
         )}
       </div>
 
-      {(isPrice || kind === 'dailyMove') && (
+      {(isPrice || kind === 'dailyMove' || kind === 'unusualMove') && (
         <label className="space-y-1 block">
           <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
             {isPrice
               ? t('alerts.ed.level') + (selected ? ` (${selected.currency === 'IDR' ? 'Rp' : selected.currency})` : '')
-              : t('alerts.ed.move')}
+              : kind === 'unusualMove' ? t('alerts.unusual.threshold') : t('alerts.ed.move')}
           </span>
           <input
             inputMode="decimal"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder={isPrice ? (live !== undefined ? String(live) : t('alerts.ed.egPrice')) : t('alerts.ed.egMove')}
+            placeholder={isPrice ? (live !== undefined ? String(live) : t('alerts.ed.egPrice')) : kind === 'unusualMove' ? '3' : t('alerts.ed.egMove')}
             className="w-full px-3 py-2 rounded-lg border font-mono-num"
             style={inputStyle}
           />
@@ -148,7 +148,7 @@ export function AlertEditor({ asset, editing, ticks, onDone }: AlertEditorProps)
         </p>
       )}
 
-      {kind !== 'sbnOffer' && <div className="flex flex-wrap items-center gap-4">
+      {kind !== 'sbnOffer' && kind !== 'journalReview' && <div className="flex flex-wrap items-center gap-4">
         <label className="inline-flex items-center gap-2 text-xs font-semibold">
           <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} /> {t('alerts.ed.repeat')}
         </label>

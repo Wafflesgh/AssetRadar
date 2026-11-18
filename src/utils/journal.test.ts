@@ -102,3 +102,15 @@ test('journal storage and sync round trip, edit, deletion and refused writes', (
     else Reflect.deleteProperty(globalThis, 'window');
   }
 });
+
+
+test('review reminders use WIB dates and a three-day catch-up window', async () => {
+  const { dueReviews } = await import('./journal.ts');
+  assert.deepEqual(dueReviews([entry], entry.createdAt + 30 * 86400_000), [{ entryId: entry.id, symbol: entry.symbol, period: 'm1' }]);
+  assert.equal(dueReviews([entry], entry.createdAt + 100 * 86400_000).length, 0);
+  assert.equal(dueReviews([entry], entry.createdAt + 33 * 86400_000).length, 1);
+  assert.equal(dueReviews([entry], entry.createdAt + 34 * 86400_000).length, 0);
+  const midnight = Date.parse('2026-01-07T17:00:00Z');
+  assert.equal(dueReviews([entry], midnight).length, 1);
+  assert.equal(dueReviews([entry], midnight - 1).length, 0);
+});

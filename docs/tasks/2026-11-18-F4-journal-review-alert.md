@@ -1,6 +1,6 @@
 # Task: F4 — Journal review reminder
 
-**Status:** open (after F3; same files)
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § F4
 
 ## Goal
@@ -33,4 +33,15 @@ note created 30 days ago → m1 due; 100-day-old w1 not due (outside 3 days); al
 
 ## Notes from Codex
 
+- Added dueReviews and tests in journal.ts/journal.test.ts: WIB dates, 7/30/91 days,
+  inclusive three-day catch-up window. Added journalReview evaluation/validation and tests
+  in alerts.ts/alerts.test.ts; keeps 200 seen keys and only sends asset code and period.
+- Wired getJournal in alertService.ts, symbol-free repeating editor in AlertEditor.tsx,
+  description in AlertsView.tsx, and new EN/ID keys. Server changes are confined to
+  checkServerAlerts: conditionally loads synced journal via loadSyncData/liveValues/parseJournal.
+- PASS: lint, 432 tests, build, check-i18n --fail (0). Existing >500 kB warning remains.
+- Not checked: browser UI, live synced journal, or real push delivery. No note text is included
+  in notifications or logs. No commit or production changes.
+
 ## Review (Claude)
+PASS with one fix by Claude (2026-11-18): the server re-read the whole synced data blob on every ~15 s alert check and an error there would abort all alerts; now cached 10 min with .catch. Checks: lint ok, 437/0 tests, build, i18n 0.

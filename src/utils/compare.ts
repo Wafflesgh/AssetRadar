@@ -116,3 +116,25 @@ export function periodReturns(points: NormalizedPoint[]): Record<string, number>
   if (!end) return {};
   return Object.fromEntries(Object.entries(end.values).map(([s, v]) => [s, v - 100]));
 }
+
+
+/** Converts only exact-date matches; missing historical rates never become today's rate. */
+export function rupiahSeries(bars: DatedClose[], currency: string, rates: DatedClose[]) {
+  const fx = new Map(rates.filter(b => Number.isFinite(b.close) && b.close > 0).map(b => [b.date, b.close]));
+  let skipped = 0;
+  const converted = bars.filter(b => Number.isFinite(b.close) && b.close > 0).flatMap(b => {
+    const rate = currency === 'IDR' ? 1 : fx.get(b.date);
+    if (rate === undefined) { skipped++; return []; }
+    const price = b.close / (currency === 'USX' ? 100 : 1);
+    return [{ date: b.date, close: price * rate, price, rate }];
+  }).sort((a, b) => a.date.localeCompare(b.date));
+  return { bars: converted, skipped };
+}
+
+export function rupiahReturns(bars: ReturnType<typeof rupiahSeries>['bars']) {
+  if (bars.length < 2) return null;
+  const first = bars[0], last = bars[bars.length - 1];
+  const price = last.price / first.price - 1;
+  const fx = last.rate / first.rate - 1;
+  return { price: price * 100, fx: fx * 100, combined: ((1 + price) * (1 + fx) - 1) * 100 };
+}

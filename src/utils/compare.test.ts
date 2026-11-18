@@ -77,3 +77,23 @@ test('normalization: a close just before the start seeds the base; missing serie
   assert.equal(pts[0].values.A, 100);
   assert.deepEqual(normalizeSeries([{ symbol: 'A', bars: a }, { symbol: 'B', bars: [] }], '2026-01-01'), []);
 });
+
+
+test('Rupiah returns compound price and FX; gaps are dropped and IDR is unchanged', async () => {
+  const { rupiahSeries, rupiahReturns } = await import('./compare.ts');
+  const bars = [{ date: '2026-01-01', close: 100 }, { date: '2026-01-02', close: 105 }, { date: '2026-01-03', close: 110 }];
+  const rates = [{ date: '2026-01-01', close: 15000 }, { date: '2026-01-03', close: 18000 }];
+  const result = rupiahSeries(bars, 'USD', rates);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.bars.length, 2);
+  const returns = rupiahReturns(result.bars)!;
+  assert.ok(Math.abs(returns.combined - 32) < 1e-9);
+  assert.ok(Math.abs(returns.price - 10) < 1e-9);
+  assert.ok(Math.abs(returns.fx - 20) < 1e-9);
+  const idr = rupiahSeries(bars, 'IDR', []);
+  assert.equal(idr.skipped, 0);
+  assert.deepEqual(idr.bars.map(b => b.close), [100, 105, 110]);
+  assert.equal(rupiahReturns(idr.bars)!.fx, 0);
+  assert.equal(rupiahReturns(rupiahSeries(bars, 'USD', []).bars), null);
+  assert.equal(rupiahSeries(bars, 'USX', rates).bars[0].close, 15000);
+});

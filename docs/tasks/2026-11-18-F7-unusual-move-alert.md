@@ -1,6 +1,6 @@
 # Task: F7 — Alert: unusual move for this asset
 
-**Status:** open (after F3 and F4; same files)
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § F7
 
 ## Goal
@@ -34,4 +34,20 @@ completed sessions.
 
 ## Notes from Codex
 
+- Added unusualMove.ts and tests: sample standard deviation of daily percentage returns from
+  up to 61 closes (60 returns); fewer than 30 closes unavailable. Shared completedSigma excludes
+  today's WIB bar. Flat/invalid sigma cannot fire an alert.
+- Added unusualMove kind, 2–6 validation, threshold/re-arm logic and tests in alerts.ts and
+  alerts.test.ts. AlertEditor defaults the sigma input to 3; AlertsView describes the new kind.
+  New EN/ID text reports the actual session count and includes information-only wording.
+- alertService loads only requested symbols via existing daily history, once per WIB day with
+  in-flight deduplication. Server edits stay inside checkServerAlerts, using dailyOhlcFor and
+  a per-WIB-day in-memory cache. Failed/missing history is unavailable until the next day.
+- PASS: lint, 437 tests, build, check-i18n --fail (0); diff whitespace check passed.
+  Existing >500 kB bundle warning remains.
+- Not checked: browser editor/layout, real historical feeds or live push delivery. No new
+  sources, dependencies, production writes or commits. F4/F5/F6 each completed their own checks
+  and Notes before this task began; existing untracked owner files were left untouched.
+
 ## Review (Claude)
+PASS (2026-11-18). Server sigma cached per WIB day, only for symbols with this alert. Not tested: live push.

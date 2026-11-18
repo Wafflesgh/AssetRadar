@@ -5008,6 +5008,26 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
   const calSymbols = [...new Set(list.filter((a) => a.kind === 'calendar').flatMap((a) => (a.symbol ? [a.symbol] : serverAlerts.holdings)))];
   const events = calSymbols.length ? await alertCalendar(calSymbols) : [];
   const lang = await pushLang(store).catch(() => 'en' as const);
+  const sigmaOwner = checkServerAlerts as typeof checkServerAlerts & { sigma?: { day: string; values: Map<string, { sigma: number | null; sessions: number }> } };
+  const day = wibDate(now);
+  if (sigmaOwner.sigma?.day !== day) sigmaOwner.sigma = { day, values: new Map() };
+  const sigmas = sigmaOwner.sigma.values;
+  for (const symbol of new Set(list.filter(a => a.kind === 'unusualMove').map(a => a.symbol).filter((s): s is string => Boolean(s)))) {
+    if (sigmas.has(symbol)) continue;
+    const asset = getAssetBySymbol(symbol);
+    if (!asset) continue;
+    const { completedSigma } = await import('./src/utils/unusualMove.ts');
+    const bars = await dailyOhlcFor(asset).catch(() => []);
+    sigmas.set(symbol, completedSigma(bars, now));
+  }
+  // The check runs every ~15 s; reviews are day-level, so the synced journal is re-read at most every 10 min
+  const journalOwner = checkServerAlerts as typeof checkServerAlerts & { journal?: { at: number; entries: import('./src/utils/journal.ts').JournalEntry[] } };
+  if (list.some(a => a.kind === 'journalReview') && !(journalOwner.journal && now - journalOwner.journal.at < 600_000)) {
+    const { parseJournal } = await import('./src/utils/journal.ts');
+    const entries = await loadSyncData(store).then((data) => parseJournal(liveValues(data, 'journal').map(x => x.value))).catch(() => null);
+    if (entries) journalOwner.journal = { at: now, entries };
+  }
+  const journal = journalOwner.journal?.entries ?? [];
   const sbnSeries = list.some(a => a.kind === 'sbnOffer') ? await store.get<import('./src/utils/sbnRetail.ts').SbnSeries[]>('sbn:series').catch(() => null) : null;
   const stapleWeek = list.some((a) => a.kind === 'stapleMove') ? await stapleWeekChanges(store).catch(() => ({}) as Record<string, number>) : {};
   for (const alert of list) {
@@ -5032,6 +5052,8 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
     const { fire, state } = evaluateAlert(alert, serverAlerts.states[alert.id] ?? {}, {
       now,
       sbnSeries: sbnSeries ?? [],
+      unusual: alert.symbol ? sigmas.get(alert.symbol) : undefined,
+      journal,
       price: usable ? tick.price : undefined,
       changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
       events: alert.symbol ? events.filter((e) => e.symbol === alert.symbol) : events,

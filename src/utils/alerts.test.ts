@@ -184,3 +184,32 @@ test('SBN offers fire once per series/event and ignore missing dates', () => {
   assert.equal(evaluateAlert(alert, {}, { now: T0, sbnSeries: [{ ...series, offerStart: null }] }).fire, null);
   assert.equal(evaluateAlert(alert, {}, { now: T0 + 6 * 86400_000, sbnSeries: [series] }).fire, null);
 });
+
+
+test('journal reminders deduplicate and never expose note text', () => {
+  const alert = base({ kind: 'journalReview', symbol: undefined, repeat: true });
+  assert.deepEqual(validateAlert(alert), []);
+  const journal = [{ id: 'n1', symbol: 'BBCA.JK', createdAt: T0 - 30 * 86400_000, note: 'PRIVATE NOTE' }] as import('./journal.ts').JournalEntry[];
+  const first = evaluateAlert(alert, {}, { now: T0, journal });
+  assert.equal(first.fire?.url, '#/portfolio/journal');
+  assert.equal(first.fire?.body, 'BBCA: 1 month');
+  assert.deepEqual(first.state.seen, ['n1:m1']);
+  assert.equal(evaluateAlert(alert, first.state, { now: T0, journal }).fire, null);
+});
+
+
+test('unusual move fires at sigma threshold and rearms only below it', () => {
+  const alert = base({ kind: 'unusualMove', value: 3, repeat: true });
+  assert.equal(validateAlert({ ...alert, value: 1 }).length, 1);
+  assert.equal(validateAlert({ ...alert, value: 7 }).length, 1);
+  const ctx = { now: T0, changePct24h: -6, unusual: { sigma: 2, sessions: 60 } };
+  assert.equal(evaluateAlert(alert, {}, { ...ctx, unusual: { sigma: null, sessions: 20 } }).fire, null);
+  const first = evaluateAlert(alert, {}, ctx);
+  assert.ok(first.fire);
+  assert.equal(first.state.armed, false);
+  assert.equal(evaluateAlert(alert, first.state, { ...ctx, now: T0 + 61 * MIN }).fire, null);
+  const rearmed = evaluateAlert(alert, first.state, { ...ctx, now: T0 + 62 * MIN, changePct24h: 5 });
+  assert.equal(rearmed.state.armed, true);
+  assert.ok(evaluateAlert(alert, rearmed.state, { ...ctx, now: T0 + 63 * MIN }).fire);
+  assert.equal(evaluateAlert(alert, {}, { ...ctx, unusual: { sigma: 0, sessions: 60 } }).fire, null);
+});

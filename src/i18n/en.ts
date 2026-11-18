@@ -3783,6 +3783,26 @@ export const en = {
   "alerts.sbn.open": "{code}: offering open. Coupon {coupon}. Ends {date}, {time}.",
   "alerts.sbn.closing": "{code}: offering closes in 2 days. Coupon {coupon}. Ends {date}, {time}.",
   "alerts.sbn.unavailable": "Unavailable",
+  "alerts.kind.journalReview": "Journal review reminder",
+  "alerts.review.w1": "1 week",
+  "alerts.review.m1": "1 month",
+  "alerts.review.m3": "3 months",
+
+  "cmp.idr.toggle": "Show in Rupiah",
+  "cmp.idr.note": "Exact-date historical rates only. Chart and returns use dates shared by all selected series; missing data is unavailable.",
+  "cmp.idr.returns": "Price: {price} · FX: {fx} · Combined: {combined}",
+  "cmp.idr.skipped": "{n} days skipped without a rate",
+
+  "cmp.trends.title": "Three annual periods",
+  "cmp.trends.note": "Each company keeps its reporting currency and fiscal year end. Different reporting periods may not be directly comparable.",
+  "cmp.trends.financial": "Debt/equity and gross margin are omitted for financial-sector companies.",
+
+  "alerts.kind.unusualMove": "Unusual daily move",
+  "alerts.unusual.invalid": "Sigma threshold must be between 2 and 6.",
+  "alerts.unusual.body": "{name} moved {pct}% today, about {multiple}× its usual daily move ({sessions} completed sessions). Information only.",
+  "alerts.unusual.description": "{name}: unusual move of at least {value}× sigma",
+  "alerts.unusual.threshold": "Sigma threshold (2–6; default 3)",
+
 } as const;
 
 export type TranslationKey = keyof typeof en;

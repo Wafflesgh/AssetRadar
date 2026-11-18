@@ -3785,4 +3785,24 @@ export const id: Record<TranslationKey, string> = {
   "alerts.sbn.closing": "{code}: penawaran berakhir 2 hari lagi. Kupon {coupon}. Berakhir {date}, {time}.",
   "alerts.sbn.unavailable": "Tidak tersedia",
 
+  "alerts.kind.journalReview": "Pengingat tinjauan jurnal",
+  "alerts.review.w1": "1 minggu",
+  "alerts.review.m1": "1 bulan",
+  "alerts.review.m3": "3 bulan",
+
+  "cmp.idr.toggle": "Tampilkan dalam Rupiah",
+  "cmp.idr.note": "Hanya kurs historis pada tanggal yang sama. Grafik dan perubahan memakai tanggal bersama seluruh seri terpilih; data yang tidak ada ditampilkan tidak tersedia.",
+  "cmp.idr.returns": "Harga: {price} · Kurs: {fx} · Gabungan: {combined}",
+  "cmp.idr.skipped": "{n} hari dilewati karena kurs tidak tersedia",
+
+  "cmp.trends.title": "Tiga periode tahunan",
+  "cmp.trends.note": "Setiap perusahaan memakai mata uang laporan dan akhir tahun fiskalnya sendiri. Periode laporan berbeda belum tentu dapat dibandingkan langsung.",
+  "cmp.trends.financial": "Rasio utang/ekuitas dan margin kotor tidak ditampilkan untuk perusahaan sektor keuangan.",
+
+  "alerts.kind.unusualMove": "Pergerakan harian tidak biasa",
+  "alerts.unusual.invalid": "Ambang sigma harus antara 2 dan 6.",
+  "alerts.unusual.body": "{name} bergerak {pct}% hari ini, sekitar {multiple}× pergerakan harian biasanya ({sessions} sesi selesai). Hanya informasi.",
+  "alerts.unusual.description": "{name}: pergerakan tidak biasa minimal {value}× sigma",
+  "alerts.unusual.threshold": "Ambang sigma (2–6; bawaan 3)",
+
 };

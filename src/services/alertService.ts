@@ -27,6 +27,7 @@ import { formatAssetPrice } from '../utils/format.ts';
 import { getLang, t } from '../i18n/index.ts';
 import {
   getAlertHistoryRaw,
+  getJournal,
   getAlertSettingsRaw,
   getAlertStates,
   getAlertsRaw,
@@ -245,6 +246,8 @@ function refreshCalendars(symbols: string[]): void {
 }
 
 /** Called on every price update; evaluates at most every 5 s. Skipped when the server pushes alerts. */
+const unusualCache = new Map<string, { day: string; data: { sigma: number | null; sessions: number } }>();
+const unusualLoading = new Set<string>();
 let sbnData: import('../utils/sbnRetail.ts').SbnSeries[] = [];
 let sbnFetchedAt = 0;
 let sbnLoading = false;
@@ -262,6 +265,16 @@ export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
     sbnLoading = true;
     import('./marketDataService.ts').then(m => m.fetchSbnRetail()).then(data => { sbnData = [...data.current, ...data.earlier]; })
       .catch(() => { sbnData = []; }).finally(() => { sbnFetchedAt = Date.now(); sbnLoading = false; });
+  }
+  const day = new Date(now + 7 * 3600_000).toISOString().slice(0, 10);
+  for (const symbol of new Set(alerts.filter(a => a.kind === 'unusualMove').map(a => a.symbol).filter((s): s is string => Boolean(s)))) {
+    if (unusualCache.get(symbol)?.day === day || unusualLoading.has(symbol)) continue;
+    unusualLoading.add(symbol);
+    Promise.all([import('./marketDataService.ts'), import('../utils/unusualMove.ts')]).then(async ([m, u]) => {
+      const history = await m.fetchDailyHistory(symbol);
+      unusualCache.set(symbol, { day, data: u.completedSigma(history.bars, now) });
+    }).catch(() => { unusualCache.set(symbol, { day, data: { sigma: null, sessions: 0 } }); })
+      .finally(() => unusualLoading.delete(symbol));
   }
   const wantsNews = alerts.some((a) => a.kind === 'news' || a.kind === 'geo');
   if (wantsNews && !newsUnsub) newsUnsub = newsStore.subscribe(() => {});
@@ -286,6 +299,8 @@ export function checkLocalAlerts(ticks: Record<string, PriceTick>): void {
     const { fire, state } = evaluateAlert(alert, states[alert.id] ?? {}, {
       now,
       sbnSeries: sbnData,
+      unusual: alert.symbol && unusualCache.get(alert.symbol)?.day === day ? unusualCache.get(alert.symbol)?.data : undefined,
+      journal: alert.kind === 'journalReview' ? getJournal() : undefined,
       price: usable ? tick.price : undefined,
       changePct24h: usable && Number.isFinite(tick.changePct24h) ? tick.changePct24h : undefined,
       events: alert.kind === 'calendar' ? calendarEventsTomorrow(events, null, now) : undefined,

@@ -8,13 +8,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GitCompare, RefreshCw, X } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getAssetBySymbol, type PriceTick } from '../config/assets.ts';
+import { ASSETS, getAssetBySymbol, type PriceTick } from '../config/assets.ts';
 import { fetchDailyHistory, fetchFinancialStatements, type DailyHistory, type FinancialStatements } from '../services/marketDataService.ts';
-import { COMPARE_PERIODS, MAX_COMPARE, normalizeSeries, periodReturns, periodStart, type ComparePeriod } from '../utils/compare.ts';
+import { COMPARE_PERIODS, MAX_COMPARE, rupiahSeries, rupiahReturns, normalizeSeries, periodReturns, periodStart, type ComparePeriod } from '../utils/compare.ts';
 import { formatTickPrice, getNumberLocale } from '../utils/format.ts';
 import { t as tr, useT, type TranslationKey } from '../i18n/index.ts';
 import { assetShortName } from '../i18n/assetNames.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
+import { compareFinancials, financialSector } from '../utils/compareFinancials.ts';
 import { AssetSearch } from './AssetSearch.tsx';
 
 export const SERIES_COLORS = ['#38BDF8', '#F59E0B', '#A78BFA', '#34D399'];
@@ -47,6 +48,8 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
     const a = getAssetBySymbol(sym);
     return a ? assetShortName(a) : sym;
   };
+  const [rupiah, setRupiah] = useState(false);
+  const [fxHistory, setFxHistory] = useState<Record<string, Loaded<DailyHistory>>>({});
   const [period, setPeriod] = useState<ComparePeriod>('1Y');
   const [statementPeriod, setStatementPeriod] = useState<'annual' | 'quarterly'>('annual');
   const [history, setHistory] = useState<Record<string, Loaded<DailyHistory>>>({});
@@ -72,10 +75,10 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
 
   useEffect(() => {
     let alive = true;
-    for (const a of stocks) {
-      const key = `${a.symbol}|${statementPeriod}`;
+    for (const a of stocks) for (const requestedPeriod of new Set(stocks.length === 2 ? [statementPeriod, 'annual' as const] : [statementPeriod])) {
+      const key = `${a.symbol}|${requestedPeriod}`;
       setStatements((st) => (st[key]?.state === 'ready' ? st : { ...st, [key]: { state: 'loading' } }));
-      fetchFinancialStatements(a.symbol, statementPeriod)
+      fetchFinancialStatements(a.symbol, requestedPeriod)
         .then((data) => alive && setStatements((st) => ({ ...st, [key]: { state: 'ready', data } })))
         .catch(() => alive && setStatements((st) => ({ ...st, [key]: { state: 'error' } })));
     }
@@ -84,14 +87,39 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
     };
   }, [stocks.map((a) => a.symbol).join(','), statementPeriod, retry]);
 
+  const pairs = [...new Set(assets.filter(a => a.currency !== 'IDR').map(a =>
+    ASSETS.find(p => p.group === 'forex' && p.symbol === `${a.currency === 'USX' ? 'USD' : a.currency}/IDR`)?.symbol
+  ).filter((s): s is string => Boolean(s)))];
+  useEffect(() => {
+    if (!rupiah) return;
+    let alive = true;
+    for (const pair of pairs) {
+      setFxHistory(h => ({ ...h, [pair]: { state: 'loading' } }));
+      fetchDailyHistory(pair).then(data => { if (alive) setFxHistory(h => ({ ...h, [pair]: { state: 'ready', data } })); })
+        .catch(() => { if (alive) setFxHistory(h => ({ ...h, [pair]: { state: 'error' } })); });
+    }
+    return () => { alive = false; };
+  }, [rupiah, pairs.join(','), retry]);
   const ready = symbols.filter((s) => history[s]?.state === 'ready');
   const failed = symbols.filter((s) => history[s]?.state === 'error');
+  const converted = (rupiah ? ready : []).map(symbol => {
+    const data = (history[symbol] as { data: DailyHistory }).data;
+    const currency = getAssetBySymbol(symbol)!.currency;
+    const pair = ASSETS.find(p => p.group === 'forex' && p.symbol === `${currency === 'USX' ? 'USD' : currency}/IDR`);
+    const rate = pair ? fxHistory[pair.symbol] : undefined;
+    const start = periodStart(period, data.bars.at(-1)?.date ?? '1970-01-01');
+    return { symbol, ...rupiahSeries(data.bars.filter(b => b.date >= start), currency, rate?.state === 'ready' ? rate.data.bars : []) };
+  });
+  const dateSets = converted.map(s => new Set(s.bars.map(b => b.date)));
+  const commonDates = new Set(converted[0]?.bars.filter(b => dateSets.every(dates => dates.has(b.date))).map(b => b.date));
+  const aligned = converted.map(s => ({ ...s, bars: s.bars.filter(b => commonDates.has(b.date)) }));
   const chart = useMemo(() => {
+    if (rupiah) return normalizeSeries(aligned, '0000-01-01');
     const series = ready.map((s) => ({ symbol: s, bars: (history[s] as { data: DailyHistory }).data.bars }));
     if (series.length < 1) return [];
     const lastDate = series.map((x) => x.bars[x.bars.length - 1]?.date ?? '').sort().at(-1) ?? '';
     return normalizeSeries(series, periodStart(period, lastDate));
-  }, [ready.join(','), period, history]);
+  }, [ready.join(','), period, history, rupiah, fxHistory]);
   const returns = periodReturns(chart);
   const chartData = chart.map((p) => ({ date: p.date, ...p.values }));
 
@@ -154,6 +182,21 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
               ))}
             </div>
           </div>
+          <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={rupiah} onChange={e => setRupiah(e.target.checked)} />{t('cmp.idr.toggle')}</label>
+          {rupiah && <div className="space-y-2 text-sm">
+            <p style={muted}>{t('cmp.idr.note')}</p>
+            {pairs.some(p => fxHistory[p]?.state === 'loading') && <p>{t('common.loading')}</p>}
+            <button type="button" onClick={() => setRetry(n => n + 1)} className="min-h-11 underline">{t('common.tryAgain')}</button>
+            {assets.map(a => {
+              const data = aligned.find(s => s.symbol === a.symbol);
+              const r = data ? rupiahReturns(data.bars) : null;
+              return <div key={a.symbol} className="border-t py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                <strong>{assetShortName(a)}</strong>
+                <p>{t('cmp.idr.returns', { price: r ? signed(r.price) : t('common.dataUnavailable'), fx: r ? signed(r.fx) : t('common.dataUnavailable'), combined: r ? signed(r.combined) : t('common.dataUnavailable') })}</p>
+                {data && <p>{t('cmp.idr.skipped', { n: data.skipped })}</p>}
+              </div>;
+            })}
+          </div>}
           {failed.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span style={{ color: 'var(--color-down)' }}>{t('cmp.unavailableFor', { names: failed.map(nameOf).join(', ') })}</span>
@@ -185,7 +228,7 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
           )}
           <p className="text-[11px]" style={muted}>
             {t('cmp.closes')}
-            {ready.length ? ` (${[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')})` : ''}. {t('cmp.closesNote')}
+            {ready.length ? ` (${[...new Set(ready.map((s) => (history[s] as { data: DailyHistory }).data.source))].join(', ')})` : ''}. {rupiah ? t('cmp.idr.note') : t('cmp.closesNote')}
           </p>
         </section>
       )}
@@ -225,6 +268,30 @@ export function CompareView({ symbols, ticks, onChange, onSelectAsset }: Compare
           </table>
         </section>
       )}
+
+      {stocks.length === 2 && <section className="rounded-xl border p-4 space-y-3" style={card}>
+        <h2 className="font-bold">{t('cmp.trends.title')}</h2>
+        <p className="text-sm" style={muted}>{t('cmp.trends.note')}</p>
+        <div className="grid gap-4 lg:grid-cols-2">{stocks.map(a => {
+          const loaded = statements[`${a.symbol}|annual`];
+          const data = loaded?.state === 'ready' ? loaded.data : null;
+          const trend = data ? compareFinancials(data.rows, data.fiscalYearEndMonth, financialSector(a.symbol)) : null;
+          return <div key={a.symbol} className="min-w-0 space-y-2">
+            <h3 className="font-semibold">{assetShortName(a)} {data?.currency}</h3>
+            {!trend ? <p>{loaded?.state === 'error' ? t('common.dataUnavailable') : t('common.loading')}</p> : <>
+              {trend.financial && <p className="text-sm" style={muted}>{t('cmp.trends.financial')}</p>}
+              <div className="overflow-x-auto"><table className="w-full text-xs">
+                <thead><tr><th className="p-2 text-left">{t('stmt.item')}</th>{trend.periods.map(p => <th key={p.end} className="p-2 text-right">{p.end}</th>)}</tr></thead>
+                <tbody>{trend.metrics.map(metric => <tr key={metric} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <th className="p-2 text-left font-normal">{t((metric === 'operatingCashFlow' ? 'item.operatingCashFlow' : `ratio.${metric}`) as TranslationKey)}</th>
+                  {trend.periods.map(p => { const v = p.values[metric]; return <td key={p.end} className="p-2 text-right font-mono-num">{v === null ? '—' : metric === 'operatingCashFlow' ? compact(v) : metric === 'der' ? times(v) : pctOf(v, metric === 'revenueYoY' ? 1 : 100)}</td>; })}
+                </tr>)}</tbody>
+              </table></div>
+              {trend.periods.length === 0 && <p>{t('common.dataUnavailable')}</p>}
+            </>}
+          </div>;
+        })}</div>
+      </section>}
 
       {stocks.length > 0 && (
         <section className="p-3 md:p-4 rounded-xl border space-y-3" style={card} aria-labelledby="cmp-fund">

@@ -42,6 +42,8 @@ function describe(a: UserAlert, lang: AppLang): string {
     case 'priceAbove':
     case 'priceBelow':
       return `${name}: ${alertKindLabel(a.kind, lang).toLowerCase()} ${asset && a.value !== undefined ? formatAssetPrice(a.value, asset, { native: true }) : a.value}`;
+    case 'unusualMove':
+      return tr('alerts.unusual.description', { name, value: a.value ?? 3 });
     case 'dailyMove':
       return tr('alerts.v.descMove', { name, value: a.value ?? '' });
     case 'calendar':
@@ -49,6 +51,8 @@ function describe(a: UserAlert, lang: AppLang): string {
     case 'news':
       return tr('alerts.v.descNews', { name });
     case 'geo':
+    case 'journalReview':
+      return alertKindLabel('journalReview', lang);
     case 'sbnOffer':
       return alertKindLabel(a.kind, lang);
     case 'stapleMove': {

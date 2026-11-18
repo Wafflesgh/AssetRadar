@@ -37,6 +37,15 @@ export function parseJournal(raw: unknown): JournalEntry[] {
   return Array.isArray(raw) ? raw.filter(validateEntry) : [];
 }
 
+/** Reviews due on the current WIB date or up to three calendar days earlier. */
+export function dueReviews(entries: JournalEntry[], now: number): { entryId: string; symbol: string; period: 'w1' | 'm1' | 'm3' }[] {
+  const today = Date.parse(wibDate(now));
+  return entries.flatMap(entry => (['w1', 'm1', 'm3'] as const).flatMap((period, i) => {
+    const date = Date.parse(wibDate(entry.createdAt + [7, 30, 91][i] * 86400_000));
+    return date <= today && today - date <= 3 * 86400_000 ? [{ entryId: entry.id, symbol: entry.symbol, period }] : [];
+  }));
+}
+
 export function sortEntries(entries: JournalEntry[]): JournalEntry[] {
   return [...entries].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
 }

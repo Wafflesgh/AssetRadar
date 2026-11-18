@@ -6,12 +6,14 @@
  * (WIB), a notification throttle and the alert history. Used by the browser (local mode) and the
  * server (web push). Alerts are reminders the user sets, not buy/sell signals.
  */
+import { dueReviews, type JournalEntry } from './journal.ts';
+import { getAssetBySymbol } from '../config/assets.ts';
 import type { SbnSeries } from './sbnRetail.ts';
 import type { CalendarEvent } from './corporateCalendar.ts';
 import type { MarketNewsItem } from '../config/assets.ts';
 import { translate, type AppLang, type TParams, type TranslationKey } from '../i18n/core.ts';
 
-export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo' | 'stapleMove' | 'sbnOffer';
+export type AlertKind = 'priceAbove' | 'priceBelow' | 'dailyMove' | 'calendar' | 'news' | 'geo' | 'stapleMove' | 'sbnOffer' | 'journalReview' | 'unusualMove';
 
 /** English labels (also the list of valid kinds); the UI uses alertKindLabel() for the chosen language. */
 export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
@@ -23,6 +25,8 @@ export const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   geo: 'Geopolitical alert (high)',
   stapleMove: 'Staple food weekly move',
   sbnOffer: 'Retail SBN offering',
+  journalReview: 'Journal review reminder',
+  unusualMove: 'Unusual daily move',
 };
 
 export function alertKindLabel(kind: AlertKind, lang: AppLang = 'en'): string {
@@ -65,6 +69,8 @@ export interface AlertContext {
   /** Corporate events of the alert's stock (or of the watched stocks for holdings alerts). */
   events?: CalendarEvent[];
   sbnSeries?: SbnSeries[];
+  journal?: JournalEntry[];
+  unusual?: { sigma: number | null; sessions: number };
   news?: MarketNewsItem[];
   /** Asset code used as the news tag (e.g. "BBCA"). */
   code?: string;
@@ -90,7 +96,8 @@ export function validateAlert(a: Partial<UserAlert>, lang: AppLang = 'en'): stri
   const errors: string[] = [];
   const e = (key: string) => errors.push(translate(lang, key as TranslationKey));
   if (!a.kind || !(a.kind in ALERT_KIND_LABELS)) e('alerts.err.kind');
-  if (a.kind !== 'geo' && a.kind !== 'sbnOffer' && !a.symbol) e('alerts.err.asset');
+  if (a.kind === 'unusualMove' && !(typeof a.value === 'number' && a.value >= 2 && a.value <= 6)) e('alerts.unusual.invalid');
+  if (a.kind !== 'geo' && a.kind !== 'sbnOffer' && a.kind !== 'journalReview' && !a.symbol) e('alerts.err.asset');
   if ((a.kind === 'priceAbove' || a.kind === 'priceBelow') && !(typeof a.value === 'number' && a.value > 0)) e('alerts.err.price');
   if ((a.kind === 'dailyMove' || a.kind === 'stapleMove') && !(typeof a.value === 'number' && a.value > 0 && a.value <= 100)) e('alerts.err.move');
   return errors;
@@ -152,6 +159,20 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
       }
       break;
     }
+    case 'unusualMove': {
+      const sigma = ctx.unusual?.sigma;
+      const change = ctx.changePct24h;
+      const threshold = alert.value ?? 3;
+      if (sigma === null || sigma === undefined || !Number.isFinite(sigma) || sigma <= 0 || change === undefined || !Number.isFinite(change) || threshold < 2 || threshold > 6) break;
+      if (Math.abs(change) < threshold * sigma) next.armed = true;
+      else if (state.armed !== false && cooledDown(alert, state, ctx.now)) {
+        next.armed = false;
+        fire = { title: tx('alerts.kind.unusualMove'), body: tx('alerts.unusual.body', {
+          name, pct: change.toFixed(1), multiple: (Math.abs(change) / sigma).toFixed(1), sessions: ctx.unusual!.sessions,
+        }) };
+      }
+      break;
+    }
     case 'dailyMove':
     case 'stapleMove': {
       const staple = alert.kind === 'stapleMove';
@@ -167,6 +188,17 @@ export function evaluateAlert(alert: UserAlert, state: AlertState, ctx: AlertCon
           body:
             tx(staple ? 'alerts.fire.stapleBody' : 'alerts.fire.moveBody', { value: alert.value }) + (ctx.price !== undefined ? ` ${tx('alerts.fire.price', { price: fmt(ctx.price) })}` : ''),
         };
+      }
+      break;
+    }
+    case 'journalReview': {
+      const seen = new Set(state.seen ?? []);
+      const due = dueReviews(ctx.journal ?? [], ctx.now).filter(r => !seen.has(`${r.entryId}:${r.period}`));
+      if (due.length) {
+        for (const r of due) seen.add(`${r.entryId}:${r.period}`);
+        next.seen = [...seen].slice(-200);
+        fire = { title: tx('alerts.kind.journalReview'), url: '#/portfolio/journal',
+          body: due.map(r => `${getAssetBySymbol(r.symbol)?.code ?? r.symbol}: ${tx(`alerts.review.${r.period}`)}`).join(' · ') };
       }
       break;
     }
