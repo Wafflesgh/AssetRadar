@@ -141,3 +141,43 @@ test('drawdown episodes are disjoint, ranked by depth and preserve open recovery
   assert.deepEqual(drawdownEpisodes([]), []);
   assert.equal(drawdownEpisodes(make([...Array(60).fill(100), 80, 100, 70, 100, 60, 100, 50])).length, 3);
 });
+
+
+test('ex-dividend prices compare drop and payout with exact session offsets', async () => {
+  const { exDividendPrices } = await import('./dividendYield.ts');
+  const bars = Array.from({ length: 23 }, (_, i) => ({ date: new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0, 10), close: i === 0 ? 100 : i === 6 ? 101 : 95 }));
+  const events = [ev('2026-01-02', 'dividend', 4)];
+  const row = exDividendPrices('X.JK', events, bars, '2026-02-01')[0];
+  assert.equal(row.cumClose, 100);
+  assert.equal(row.exClose, 95);
+  assert.equal(row.drop, 5);
+  assert.equal(row.amount, 4);
+  assert.equal(row.plus5Close, 101);
+  assert.equal(row.recovered, true);
+  const noRecovery = bars.map((b, i) => ({ ...b, close: i === 0 ? 100 : 95 }));
+  assert.equal(exDividendPrices('X.JK', events, noRecovery.slice(0, 21), '2026-02-01')[0].recovered, null);
+  assert.equal(exDividendPrices('X.JK', events, noRecovery.slice(0, 22), '2026-02-01')[0].recovered, false);
+  const short = exDividendPrices('X.JK', events, bars.slice(0, 4), '2026-02-01')[0];
+  assert.equal(short.plus5Close, null);
+  assert.equal(short.recovered, null);
+  assert.equal(exDividendPrices('X.JK', events, bars.slice(0, 7), '2026-02-01')[0].recovered, true);
+});
+
+test('ex-dividend on a closed day uses next bar, skips missing surrounds and keeps eight newest', async () => {
+  const { exDividendPrices } = await import('./dividendYield.ts');
+  const bars = [{ date: '2026-01-02', close: 100 }, { date: '2026-01-05', close: 96 }];
+  const event = ev('2026-01-04', 'dividend', 3);
+  const row = exDividendPrices('X.JK', [event], bars, '2026-01-05')[0];
+  assert.equal(row.exDate, '2026-01-05');
+  assert.equal(row.cumDate, '2026-01-02');
+  assert.deepEqual(exDividendPrices('X.JK', [event], [], '2026-01-05'), []);
+  assert.deepEqual(exDividendPrices('X.JK', [event], bars.slice(1), '2026-01-05'), []);
+  assert.deepEqual(exDividendPrices('X.JK', [event], bars.slice(0, 1), '2026-01-05'), []);
+  assert.deepEqual(exDividendPrices('X.JK', [{ ...event, amount: undefined }, { ...event, type: 'earnings' }, { ...event, date: '2027-01-01' }], bars, '2026-01-05'), []);
+  const manyBars = Array.from({ length: 12 }, (_, i) => ({ date: `2026-01-${String(i + 1).padStart(2, '0')}`, close: 100 }));
+  const manyEvents = manyBars.slice(1).map(b => ev(b.date, 'dividend', 1));
+  const rows = exDividendPrices('X.JK', manyEvents, manyBars, '2026-02-01');
+  assert.equal(rows.length, 8);
+  assert.equal(rows[0].date, '2026-01-12');
+  assert.equal(rows[7].date, '2026-01-05');
+});

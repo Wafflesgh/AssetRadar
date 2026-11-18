@@ -1,6 +1,6 @@
 # Task: G4 — Stock Story: price around ex-dividend dates
 
-**Status:** todo
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § G4
 
 ## Goal
@@ -37,4 +37,21 @@ data; recovered true/false/null; a dividend without bars is skipped.
 
 ## Notes from Codex
 
+- Added exDividendPrices in dividendYield.ts without changing existing outputs. Uses the last
+  eight published dividend events for the selected symbol, newest first, and existing daily bars.
+  Returns prior close, first close on/after ex-date, fifth following session close, price drop,
+  dividend amount, and recovery within the next 20 sessions. Missing surrounding bars skip an
+  event; missing +5 remains null. Recovery is true once observed, otherwise null before the
+  20-session window completes and false after it completes.
+- StockStoryView renders a panel only when usable events remain, with dates and amounts in the
+  stock's quote currency. New EN/ID keys explain unadjusted prices, historical-only context,
+  negative drops, and incomplete recovery windows. No extra request or combined-return claim.
+- Extended the existing dividend tests in newFeatures.test.ts: drop/payout, exact session
+  offsets, non-trading ex-date, missing data, recovery true/false/null, and newest-eight limit.
+- PASS: npm run lint; npm test (443 passed); npm run build; check-i18n --fail (0).
+  Existing >500 kB bundle warning remains. Diff whitespace and allowed-file scope checked.
+- Not checked: browser appearance, live dividend/price matching, or upstream split adjustments.
+  No server, production, dependency or commit changes; existing untracked owner files untouched.
+
 ## Review (Claude)
+PASS (2026-11-18). Event 'dividend' date = ex-date (corporateCalendar byExDate). Browser BBRI: 8 dividends, e.g. 21 Apr 2026 Rp209 dividend vs Rp170 drop, not back within 20 sessions.

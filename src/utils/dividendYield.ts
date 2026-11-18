@@ -7,6 +7,25 @@
 import type { CalendarEvent } from './corporateCalendar.ts';
 import { addDays } from './corporateCalendar.ts';
 
+/** Price-only context for recent published dividends; never adds the dividend to a return. */
+export function exDividendPrices(symbol: string, events: CalendarEvent[], input: { date: string; close: number }[], today: string) {
+  const bars = [...input].filter(b => b.date <= today && Number.isFinite(b.close) && b.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return events.filter(e => e.symbol === symbol && e.type === 'dividend' && e.date <= today
+    && typeof e.amount === 'number' && Number.isFinite(e.amount) && e.amount > 0)
+    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8).flatMap(e => {
+      const index = bars.findIndex(b => b.date >= e.date);
+      if (index <= 0) return [];
+      const cum = bars[index - 1];
+      const ex = bars[index];
+      const after = bars.slice(index + 1, index + 21);
+      const recovered = after.some(b => b.close >= cum.close) ? true : after.length < 20 ? null : false;
+      return [{ date: e.date, amount: e.amount!, cumDate: cum.date, cumClose: cum.close,
+        exDate: ex.date, exClose: ex.close, plus5Close: bars[index + 5]?.close ?? null,
+        drop: cum.close - ex.close, recovered }];
+    });
+}
+
 export interface DividendSummary {
   symbol: string;
   /** Dividends per share with an ex-date in the last 365 days. */

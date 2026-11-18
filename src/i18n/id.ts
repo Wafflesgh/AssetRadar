@@ -3816,4 +3816,17 @@ export const id: Record<TranslationKey, string> = {
   "detail.volume.quiet": "lebih sepi dari biasanya",
   "detail.volume.usual": "sekitar biasanya",
 
+  "story.ex.title": "Harga sekitar tanggal ex-dividen",
+  "story.ex.note": "Harga tidak disesuaikan untuk dividen. Hanya riwayat: perubahan harga tidak membuktikan dividen sebagai penyebabnya. Penurunan = penutupan sebelumnya dikurangi penutupan sesi ex; nilai negatif berarti harga naik.",
+  "story.ex.date": "Tanggal ex-dividen: {date}",
+  "story.ex.dividend": "Dividen per lembar",
+  "story.ex.drop": "Penurunan harga per lembar",
+  "story.ex.cum": "Penutupan sebelumnya ({date})",
+  "story.ex.close": "Penutupan sesi ex ({date})",
+  "story.ex.plus5": "Penutupan 5 sesi kemudian",
+  "story.ex.recovery": "Kembali ke penutupan sebelumnya dalam 20 sesi",
+  "story.ex.yes": "Ya",
+  "story.ex.no": "Tidak",
+  "story.ex.pending": "Belum teramati; tersedia kurang dari 20 sesi",
+
 };

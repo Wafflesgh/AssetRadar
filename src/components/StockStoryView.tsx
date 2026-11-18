@@ -18,7 +18,7 @@ import {
   type FinancialStatements,
 } from '../services/marketDataService.ts';
 import { drawdownEpisodes, priceFacts, ratioYears, sentimentFacts, STORY_HORIZONS, type StoryHorizon } from '../utils/stockStory.ts';
-import { dividendYieldPct, summarizeDividends } from '../utils/dividendYield.ts';
+import { exDividendPrices, dividendYieldPct, summarizeDividends } from '../utils/dividendYield.ts';
 import type { CalendarEvent } from '../utils/corporateCalendar.ts';
 import { STORY_GROUPS } from '../utils/router.ts';
 import { useTrackedSymbols } from '../hooks/useTrackedSymbols.ts';
@@ -77,6 +77,8 @@ export function StockStoryView({ symbol, ticks, onPick, onSelectAsset }: StockSt
   const sentiment = useMemo(() => (trace.status === 'ready' ? sentimentFacts(trace.data.rows) : null), [trace]);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
   const dividends = useMemo(() => (events.status === 'ready' && story ? summarizeDividends(story.symbol, events.data, today) : null), [events, story, today]);
+  const exPrices = useMemo(() => story && bars.status === 'ready' && events.status === 'ready'
+    ? exDividendPrices(story.symbol, events.data, bars.data, today) : [], [story, bars, events, today]);
   const ratios = useMemo(() => (statements.status === 'ready' ? ratioYears(statements.data.rows) : []), [statements]);
   const tick = story ? ticks[story.symbol] : undefined;
   const livePrice = tick && !tick.fromSnapshot ? tick.price : price?.last;
@@ -278,6 +280,21 @@ export function StockStoryView({ symbol, ticks, onPick, onSelectAsset }: StockSt
                 </p>
               )}
             </Panel>
+
+            {exPrices.length > 0 && <Panel title={t('story.ex.title')} state="ready" onRetry={() => setRetry(n => n + 1)}>
+              <p className="text-sm mb-3" style={muted}>{t('story.ex.note')}</p>
+              <div className="space-y-3">{exPrices.map(row => <section key={row.date} className="rounded-lg border p-3 space-y-2 text-sm" style={{ borderColor: 'var(--border-subtle)' }}>
+                <h3 className="font-semibold">{t('story.ex.date', { date: fmtDate(row.date) })}</h3>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div><dt style={muted}>{t('story.ex.dividend')}</dt><dd className="font-mono-num">{formatPrice(row.amount, story.currency)}</dd></div>
+                  <div><dt style={muted}>{t('story.ex.drop')}</dt><dd className="font-mono-num">{formatPrice(row.drop, story.currency)}</dd></div>
+                  <div><dt style={muted}>{t('story.ex.cum', { date: fmtDate(row.cumDate) })}</dt><dd className="font-mono-num">{formatPrice(row.cumClose, story.currency)}</dd></div>
+                  <div><dt style={muted}>{t('story.ex.close', { date: fmtDate(row.exDate) })}</dt><dd className="font-mono-num">{formatPrice(row.exClose, story.currency)}</dd></div>
+                  <div><dt style={muted}>{t('story.ex.plus5')}</dt><dd className="font-mono-num">{row.plus5Close === null ? t('common.dataUnavailable') : formatPrice(row.plus5Close, story.currency)}</dd></div>
+                  <div><dt style={muted}>{t('story.ex.recovery')}</dt><dd>{t(row.recovered === true ? 'story.ex.yes' : row.recovered === false ? 'story.ex.no' : 'story.ex.pending')}</dd></div>
+                </dl>
+              </section>)}</div>
+            </Panel>}
 
             {/* Fundamentals */}
             <Panel title={t('story.ratiosTitle')} state={statements.status} onRetry={() => setRetry((n) => n + 1)}>

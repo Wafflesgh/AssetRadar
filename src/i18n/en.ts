@@ -3814,6 +3814,19 @@ export const en = {
   "detail.volume.quiet": "quieter than usual",
   "detail.volume.usual": "about usual",
 
+  "story.ex.title": "Price around ex-dividend dates",
+  "story.ex.note": "Prices are not adjusted for dividends. History only: a price change does not prove the dividend caused it. Drop = preceding close minus ex-session close; a negative drop means the price rose.",
+  "story.ex.date": "Ex-dividend date: {date}",
+  "story.ex.dividend": "Dividend per share",
+  "story.ex.drop": "Price drop per share",
+  "story.ex.cum": "Preceding close ({date})",
+  "story.ex.close": "Ex-session close ({date})",
+  "story.ex.plus5": "Close 5 sessions later",
+  "story.ex.recovery": "Back to preceding close within 20 sessions",
+  "story.ex.yes": "Yes",
+  "story.ex.no": "No",
+  "story.ex.pending": "Not yet observed; fewer than 20 sessions available",
+
 } as const;
 
 export type TranslationKey = keyof typeof en;
