@@ -197,3 +197,24 @@ New `AlertKind` `unusualMove` (symbol + sigma threshold, default 3, min 2): fire
 σ from `dailyOhlcFor` (cached), computed only for symbols with this alert, cached per day. Browser:
 same via `/api/market/daily`. Pure `src/utils/unusualMove.ts` (+ test). Re-arms after the move falls
 under the threshold (same as `dailyMove`).
+
+---
+# Addendum — Wave 3a (18 Nov 2026): G1–G3
+Same shared rules as F1–F7. All three are browser-only: no server.ts change, no new data source.
+
+## G1 (X4) Stock Story: deepest drawdowns and recovery time — S–M
+Pure function in `src/utils/stockStory.ts` (+ test): from daily closes, the 3 deepest non-overlapping
+peak→trough episodes. Each gives depth %, peak date, trough date, sessions to trough and sessions from
+trough back to the old peak, or "not recovered yet". Shown in `StockStoryView` under the existing
+drawdown sentence. Episodes under 10% are skipped.
+
+## G2 (X5) IDX stock: volume vs the last 20 sessions — S–M
+On an IDX stock's detail page, a small line: today's volume vs the median of the last 20 completed
+sessions (ratio, e.g. "2.4× usual"), from `/api/market/daily` (`OhlcCandle.volume`). Today's
+unfinished bar is excluded from the median. Volume in shares; show lots (÷100) as well. Fewer than 10
+sessions with volume → hidden. Pure `src/utils/volumeContext.ts` (+ test). Neutral wording only
+("busier / quieter than usual"), never a buy/sell hint.
+
+## G3 Cost card in its own currency — XS
+`PortfolioCosts.tsx` shows amounts with `formatPrice(value, currency)` from `format.ts` (Rp for IDR,
+$ for USD) instead of a bare number. Percentages unchanged.
