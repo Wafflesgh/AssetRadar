@@ -218,3 +218,10 @@ sessions with volume → hidden. Pure `src/utils/volumeContext.ts` (+ test). Neu
 ## G3 Cost card in its own currency — XS
 `PortfolioCosts.tsx` shows amounts with `formatPrice(value, currency)` from `format.ts` (Rp for IDR,
 $ for USD) instead of a bare number. Percentages unchanged.
+
+## G4 (X6) Price around ex-dividend dates — S–M
+In Stock Story, a panel for the last up to 8 past dividends (calendar events with `amount`): close on
+the last session before the ex-date (cum), close on the ex-date, and close 5 sessions later; price drop
+on ex-date vs dividend per share (e.g. "fell Rp95 vs Rp100 dividend"), and whether the cum close was
+reached again within 20 sessions. Uses bars and events StockStoryView already loads. Closes are
+split-adjusted, not dividend-adjusted. Pure function in `src/utils/dividendYield.ts` (+ test).
