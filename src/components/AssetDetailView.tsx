@@ -27,6 +27,10 @@ import {
   formatDecimal,
 } from '../utils/format.ts';
 import { formatRelativeTime } from '../utils/marketHours.ts';
+import { volumeContext } from '../utils/volumeContext.ts';
+import { fetchDailyHistory } from '../services/marketDataService.ts';
+import { useSymbolSource } from '../hooks/useSymbolSource.ts';
+import { useNow } from '../hooks/useLiveNews.ts';
 import { PriceChart } from './PriceChart.tsx';
 import { LiveIndication } from './LiveIndication.tsx';
 import { CryptoQuoteToggle } from './CryptoQuoteToggle.tsx';
@@ -250,6 +254,7 @@ export function AssetDetailView({
           </div>
         </div>
 
+        {(asset.group === 'idStock' || asset.id.startsWith('idx-')) && <VolumeContextLine key={asset.symbol} symbol={asset.symbol} />}
         {/* Live Price Metrics Row */}
         <div
           className="pt-4 border-t grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
@@ -535,4 +540,17 @@ export function AssetDetailView({
       {alertOpen && <AlertDialog asset={asset} ticks={{ ...ticks, ...(tick ? { [asset.symbol]: tick } : {}) }} onClose={() => setAlertOpen(false)} />}
     </div>
   );
+}
+
+
+function VolumeContextLine({ symbol }: { symbol: string }) {
+  const t = useT();
+  const now = useNow(60_000);
+  const history = useSymbolSource(symbol, fetchDailyHistory, Math.floor(now / 1800_000));
+  const context = history.status === 'ready' ? volumeContext(history.data.bars, now) : null;
+  if (!context) return null;
+  return <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('detail.volume.line', {
+    band: t(`detail.volume.${context.band}`), ratio: formatDecimal(context.ratio, 2),
+    lots: formatDecimal(context.lots, 2), shares: formatDecimal(context.shares, 0), sessions: context.sessions,
+  })}</p>;
 }

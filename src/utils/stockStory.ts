@@ -12,6 +12,29 @@ export interface StoryBar {
   close: number;
 }
 
+/** Completed peak-to-recovery episodes plus the current open episode; observed sessions only. */
+export function drawdownEpisodes(input: StoryBar[]) {
+  const bars = [...input].filter(b => Number.isFinite(b.close) && b.close > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const episodes: { depthPct: number; peakDate: string; troughDate: string; recoveryDate: string | null; toTrough: number; toRecovery: number | null }[] = [];
+  if (bars.length < 60) return episodes;
+  let peak = 0;
+  let trough = 0;
+  const record = (recovery: number | null) => {
+    const depthPct = (bars[peak].close - bars[trough].close) / bars[peak].close * 100;
+    if (depthPct >= 10) episodes.push({ depthPct, peakDate: bars[peak].date, troughDate: bars[trough].date,
+      recoveryDate: recovery === null ? null : bars[recovery].date, toTrough: trough - peak,
+      toRecovery: recovery === null ? null : recovery - trough });
+  };
+  for (let i = 1; i < bars.length; i++) {
+    if (bars[i].close >= bars[peak].close) {
+      if (trough > peak) record(i);
+      peak = trough = i;
+    } else if (bars[i].close < bars[trough].close) trough = i;
+  }
+  if (trough > peak) record(null);
+  return episodes.sort((a, b) => b.depthPct - a.depthPct || a.peakDate.localeCompare(b.peakDate)).slice(0, 3);
+}
+
 export interface PriceFacts {
   last: number;
   lastDate: string;

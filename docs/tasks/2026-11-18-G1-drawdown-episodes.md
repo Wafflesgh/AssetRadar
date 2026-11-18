@@ -1,6 +1,6 @@
 # Task: G1 — Stock Story: deepest drawdowns and recovery time
 
-**Status:** todo
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § G1
 
 ## Goal
@@ -32,4 +32,15 @@ Known series with 2 recovered drops + 1 open drop; drops under 10% skipped; orde
 
 ## Notes from Codex
 
+- Added drawdownEpisodes in stockStory.ts without changing priceFacts. Uses non-overlapping
+  peak/recovery episodes, reports observed-session counts, retains an open episode with null
+  recovery, and returns up to three declines >=10% only when at least 60 usable closes exist.
+- StockStoryView renders the history panel from already loaded bars; added EN/ID labels and
+  historical-only caveat. Extended the existing Stock Story tests in newFeatures.test.ts
+  (the repository has no separate stockStory.test.ts).
+- PASS: lint, 438 tests, build, check-i18n --fail (0). Existing >500 kB warning remains.
+- Not checked: browser appearance or live history quality/split adjustments. No extra data
+  request, forecast, production change or commit.
+
 ## Review (Claude)
+PASS (2026-11-18). Browser BBCA: 3 episodes, open one marked not recovered; no forecast wording.

@@ -3803,6 +3803,17 @@ export const en = {
   "alerts.unusual.description": "{name}: unusual move of at least {value}× sigma",
   "alerts.unusual.threshold": "Sigma threshold (2–6; default 3)",
 
+  "story.dd.title": "Deepest declines and recovery",
+  "story.dd.note": "Up to three separate declines of at least 10% in available price history. Counts use observed trading sessions. Past recoveries do not predict future recovery.",
+  "story.dd.fall": "Peak {peak} → trough {trough}: {sessions} sessions.",
+  "story.dd.recovered": "Recovered the old peak on {date}, {sessions} sessions after the trough.",
+  "story.dd.open": "Not recovered within available history (through {date}).",
+
+  "detail.volume.line": "Volume so far today: {band} ({ratio}× the median of {sessions} completed sessions), {lots} lots / {shares} shares.",
+  "detail.volume.busy": "busier than usual",
+  "detail.volume.quiet": "quieter than usual",
+  "detail.volume.usual": "about usual",
+
 } as const;
 
 export type TranslationKey = keyof typeof en;

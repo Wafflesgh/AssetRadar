@@ -123,3 +123,21 @@ test('story: price facts, sentiment changes and annual ratios', () => {
   ]);
   assert.deepEqual(ratios.map((r) => r.year), ['2025', '2024']);
 });
+
+
+test('drawdown episodes are disjoint, ranked by depth and preserve open recovery', async () => {
+  const { drawdownEpisodes } = await import('./stockStory.ts');
+  const make = (prices: number[]) => prices.map((close, i) => ({ date: new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0, 10), close }));
+  const bars = make([...Array(51).fill(100), 80, 90, 100, 120, 84, 120, 130, 65, 70]);
+  const episodes = drawdownEpisodes(bars);
+  assert.deepEqual(episodes.map(e => e.depthPct), [50, 30, 20]);
+  assert.deepEqual(episodes.map(e => e.toRecovery), [null, 1, 2]);
+  assert.deepEqual(episodes.map(e => e.toTrough), [1, 1, 1]);
+  assert.equal(episodes[2].peakDate, bars[50].date);
+  assert.equal(episodes[2].recoveryDate, bars[53].date);
+  assert.deepEqual(drawdownEpisodes(make([...Array(59).fill(100), 91])), []);
+  assert.equal(drawdownEpisodes(make([...Array(59).fill(100), 90])).length, 1);
+  assert.deepEqual(drawdownEpisodes(bars.slice(0, 59)), []);
+  assert.deepEqual(drawdownEpisodes([]), []);
+  assert.equal(drawdownEpisodes(make([...Array(60).fill(100), 80, 100, 70, 100, 60, 100, 50])).length, 3);
+});

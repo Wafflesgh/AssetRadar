@@ -1,6 +1,6 @@
 # Task: G2 — IDX stock: volume vs the last 20 sessions
 
-**Status:** todo
+**Status:** done
 **Written by:** Claude · **Date:** 2026-11-18 · **Plan:** `docs/plans/TRD.md` § G2
 
 ## Goal
@@ -31,4 +31,19 @@ Median of a known series; today excluded; under 10 sessions → null; lot conver
 
 ## Notes from Codex
 
+- Added volumeContext.ts and tests: median of available non-negative volumes within the last
+  20 completed WIB sessions, excluding today's bar; requires at least 10 observations and
+  today's volume. Reports ratio, shares, lots and the three wording bands. Zero/missing median
+  hides the line instead of dividing by zero; a reported zero current volume remains valid.
+- AssetDetailView shows one line only for IDX stocks. Uses fetchDailyHistory/useSymbolSource,
+  refreshes on the existing 30-minute cache cadence, and hides failed/insufficient data.
+  A keyed child prevents another stock's old volume from flashing after selection changes.
+  Added EN/ID keys; text says volume so far today and states the actual baseline session count.
+- PASS: lint, 441 tests, build, check-i18n --fail (0), diff whitespace check.
+  Existing >500 kB bundle warning remains.
+- Not checked: browser appearance or live volume during market hours; freshness is limited by
+  the existing daily-history cache/source. No server, new source, production change or commit.
+  G3 and G1 completed checks and Notes before this task; existing untracked owner files untouched.
+
 ## Review (Claude)
+PASS (2026-11-18). Browser BBCA during market hours: 0.48x of 20-session median, quieter than usual, lots + shares.

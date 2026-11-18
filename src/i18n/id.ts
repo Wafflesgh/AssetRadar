@@ -3805,4 +3805,15 @@ export const id: Record<TranslationKey, string> = {
   "alerts.unusual.description": "{name}: pergerakan tidak biasa minimal {value}× sigma",
   "alerts.unusual.threshold": "Ambang sigma (2–6; bawaan 3)",
 
+  "story.dd.title": "Penurunan terdalam dan pemulihan",
+  "story.dd.note": "Maksimal tiga penurunan terpisah minimal 10% dalam riwayat harga yang tersedia. Hitungan memakai sesi perdagangan yang tercatat. Pemulihan masa lalu tidak memprediksi pemulihan berikutnya.",
+  "story.dd.fall": "Puncak {peak} → titik terendah {trough}: {sessions} sesi.",
+  "story.dd.recovered": "Kembali ke puncak lama pada {date}, {sessions} sesi setelah titik terendah.",
+  "story.dd.open": "Belum pulih dalam riwayat yang tersedia (hingga {date}).",
+
+  "detail.volume.line": "Volume hari ini sejauh ini: {band} ({ratio}× median {sessions} sesi selesai), {lots} lot / {shares} lembar.",
+  "detail.volume.busy": "lebih ramai dari biasanya",
+  "detail.volume.quiet": "lebih sepi dari biasanya",
+  "detail.volume.usual": "sekitar biasanya",
+
 };

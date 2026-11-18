@@ -5,7 +5,7 @@ import { assetName } from '../i18n/assetNames.ts';
 import { getAssetBySymbol } from '../config/assets.ts';
 import type { PortfolioTx } from '../utils/portfolio.ts';
 import { txCosts, type CostRow } from '../utils/txCosts.ts';
-import { formatNumber } from '../utils/format.ts';
+import { formatNumber, formatPrice } from '../utils/format.ts';
 
 export function PortfolioCosts({ txs }: { txs: PortfolioTx[] }) {
   const t = useT();
@@ -17,7 +17,8 @@ export function PortfolioCosts({ txs }: { txs: PortfolioTx[] }) {
     [txs, selectedYear, all]);
   const unavailable = t('costs.unavailable');
   const number = (value: number | null) => value !== null && Number.isFinite(value) ? formatNumber(value, 2) : unavailable;
-  const table = (title: string, rows: CostRow[], assets = false) => (
+  const money = (value: number | null, currency: string) => value !== null && Number.isFinite(value) ? formatPrice(value, currency) : unavailable;
+  const table = (title: string, rows: CostRow[], currency: string, assets = false) => (
     <div className="min-w-0">
       <h4 className="font-semibold mb-2">{title}</h4>
       <div className="overflow-x-auto">
@@ -32,7 +33,7 @@ export function PortfolioCosts({ txs }: { txs: PortfolioTx[] }) {
             const asset = assets ? getAssetBySymbol(row.key) : undefined;
             return <tr key={row.key} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
               <th scope="row" className="py-2 pr-2 text-left font-normal">{asset ? assetName(asset) : row.key}</th>
-              <td className="py-2 px-2 text-right font-mono-num">{number(row.fees)}</td>
+              <td className="py-2 px-2 text-right font-mono-num">{money(row.fees, currency)}</td>
               <td className="py-2 pl-2 text-right font-mono-num">{number(row.feePct)}</td>
             </tr>;
           })}</tbody>
@@ -61,14 +62,14 @@ export function PortfolioCosts({ txs }: { txs: PortfolioTx[] }) {
         <div key={c.currency} className="space-y-4 border-t pt-4" style={{ borderColor: 'var(--border-subtle)' }}>
           <h3 className="font-bold">{t('costs.currency', { currency: c.currency })}</h3>
           <dl className="grid gap-3 sm:grid-cols-3 text-sm">
-            <div><dt>{t('costs.fees')}</dt><dd className="font-mono-num font-semibold">{number(c.fees)}</dd></div>
-            <div><dt>{t('costs.traded')}</dt><dd className="font-mono-num">{number(c.tradedValue)}</dd></div>
+            <div><dt>{t('costs.fees')}</dt><dd className="font-mono-num font-semibold">{money(c.fees, c.currency)}</dd></div>
+            <div><dt>{t('costs.traded')}</dt><dd className="font-mono-num">{money(c.tradedValue, c.currency)}</dd></div>
             <div><dt>{t('costs.percent')}</dt><dd className="font-mono-num">{number(c.feePct)}</dd></div>
           </dl>
           <div className="grid gap-5 lg:grid-cols-3">
-            {table(t('costs.months'), c.months)}
-            {table(t('costs.years'), c.years)}
-            {table(t('costs.assets'), c.assets, true)}
+            {table(t('costs.months'), c.months, c.currency)}
+            {table(t('costs.years'), c.years, c.currency)}
+            {table(t('costs.assets'), c.assets, c.currency, true)}
           </div>
         </div>
       ))}

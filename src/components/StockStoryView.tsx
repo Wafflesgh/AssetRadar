@@ -17,7 +17,7 @@ import {
   type AssetTracePayload,
   type FinancialStatements,
 } from '../services/marketDataService.ts';
-import { priceFacts, ratioYears, sentimentFacts, STORY_HORIZONS, type StoryHorizon } from '../utils/stockStory.ts';
+import { drawdownEpisodes, priceFacts, ratioYears, sentimentFacts, STORY_HORIZONS, type StoryHorizon } from '../utils/stockStory.ts';
 import { dividendYieldPct, summarizeDividends } from '../utils/dividendYield.ts';
 import type { CalendarEvent } from '../utils/corporateCalendar.ts';
 import { STORY_GROUPS } from '../utils/router.ts';
@@ -72,6 +72,7 @@ export function StockStoryView({ symbol, ticks, onPick, onSelectAsset }: StockSt
   const events = useSymbolSource(story?.symbol, loadEvents, retry);
   const statements = useSymbolSource(story?.symbol, loadRatios, retry);
 
+  const episodes = useMemo(() => bars.status === 'ready' ? drawdownEpisodes(bars.data) : [], [bars]);
   const price = useMemo(() => (bars.status === 'ready' ? priceFacts(bars.data) : null), [bars]);
   const sentiment = useMemo(() => (trace.status === 'ready' ? sentimentFacts(trace.data.rows) : null), [trace]);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
@@ -197,6 +198,15 @@ export function StockStoryView({ symbol, ticks, onPick, onSelectAsset }: StockSt
                 </p>
               )}
             </Panel>
+
+            {episodes.length > 0 && <Panel title={t('story.dd.title')} state={bars.status} onRetry={() => setRetry(n => n + 1)}>
+              <p className="text-sm mb-3" style={muted}>{t('story.dd.note')}</p>
+              <ol className="space-y-3">{episodes.map(e => <li key={e.peakDate} className="rounded-lg border p-3 space-y-1 text-sm" style={{ borderColor: 'var(--border-subtle)' }}>
+                <strong className="font-mono-num">{formatPercent(-e.depthPct)}</strong>
+                <p>{t('story.dd.fall', { peak: fmtDate(e.peakDate), trough: fmtDate(e.troughDate), sessions: e.toTrough })}</p>
+                <p>{e.toRecovery === null ? t('story.dd.open', { date: price ? fmtDate(price.lastDate) : '' }) : t('story.dd.recovered', { date: fmtDate(e.recoveryDate!), sessions: e.toRecovery })}</p>
+              </li>)}</ol>
+            </Panel>}
 
             {/* Sentiment over time */}
             <Panel title={t('story.sentimentTitle')} state={trace.status} onRetry={() => setRetry((n) => n + 1)}>
