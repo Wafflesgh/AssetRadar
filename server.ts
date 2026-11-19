@@ -5078,8 +5078,9 @@ async function checkServerAlerts(ticks: Record<string, PriceTick>): Promise<void
 
 // ---- Cron tick (serverless): alerts, daily jobs and the long scans in deadline-bound steps ----------
 
-/** Work time of one tick (hourly). A ceiling: once the scans have caught up a tick ends early. Cloud Run timeout and Scheduler deadline are 10 min. */
-const TICK_BUDGET_MS = 300_000;
+/** Work time of one tick (hourly). A ceiling: once the scans have caught up a tick ends early. Cloud Run timeout and Scheduler deadline are 10 min.
+ * 120 s since 19 Nov 2026: the scan backlog kept 300 s ticks busy and reached the Rp50.000 spend cap in 18 days. */
+const TICK_BUDGET_MS = 120_000;
 const crossPersist: CrossPersist = { get: (k) => getPacked(store, k), set: (k, v) => setPacked(store, k, v) };
 const tickState = { running: null as Promise<Record<string, unknown>> | null };
 
