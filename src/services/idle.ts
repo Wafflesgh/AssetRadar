@@ -1,6 +1,6 @@
 /**
  * idle.ts — Tells when nobody has used the page for 30 minutes (no mouse, touch, scroll or key).
- * The live streams then step back to short polling: on Cloud Run an open stream keeps the server
+ * The live streams then step back to polling every 5 min: on Cloud Run an open stream keeps the server
  * running and billed, so a tab left visible overnight would otherwise cost all night.
  */
 export const IDLE_AFTER_MS = 30 * 60_000;

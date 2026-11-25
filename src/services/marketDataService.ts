@@ -35,6 +35,10 @@ import { loadTickSnapshot, saveTickSnapshot } from '../utils/storage.ts';
 import { convertXauUsdToIdrPerGram } from '../utils/format.ts';
 import { isStreamStalled, reconnectDelayMs } from '../utils/priceStream.ts';
 import { getLang, langParam } from '../i18n/index.ts';
+import { ownerHeaders } from './syncService.ts';
+
+/** Fallback polling pace per feed while the page is idle. */
+const IDLE_POLL_MS = 5 * 60_000;
 
 export type ConnectionState = 'live' | 'reconnecting' | 'delayed' | 'offline';
 /** How non-crypto prices arrive: pushed by the server stream, or REST polling as the fallback. */
@@ -119,6 +123,8 @@ export class MarketDataManager {
   private indodaxPollTimer: ReturnType<typeof setInterval> | null = null;
   private yahooPollTimer: ReturnType<typeof setInterval> | null = null;
   private goldPollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Last fallback poll per feed while the page is idle (see `idleSkip`). */
+  private idlePolledAt: Record<string, number> = {};
   private quotesPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastTrackedKey = '';
   private isDestroyed = false;
@@ -633,18 +639,27 @@ export class MarketDataManager {
     // 2–4 run only while the price stream is down (it pushes the same prices):
     // 2. Yahoo Finance polling every 10 seconds (stocks, indices, commodities, currencies)
     this.yahooPollTimer = setInterval(() => {
-      if (!this.streaming) this.pollYahoo();
+      if (!this.streaming && !this.idleSkip('yahoo')) this.pollYahoo();
     }, 10_000);
 
     // 3. On-demand quotes for tracked IDX universe stocks every 10 seconds
     this.quotesPollTimer = setInterval(() => {
-      if (!this.streaming && trackedUniverseSymbols().length > 0) this.pollTrackedQuotes();
+      if (!this.streaming && trackedUniverseSymbols().length > 0 && !this.idleSkip('quotes')) this.pollTrackedQuotes();
     }, 10_000);
 
     // 4. Spot gold polling every 30 seconds (server caches gold-api.com for 30 s)
     this.goldPollTimer = setInterval(() => {
-      if (!this.streaming) this.pollGold();
+      if (!this.streaming && !this.idleSkip('gold')) this.pollGold();
     }, 30_000);
+  }
+
+  /** Idle page: poll each server feed only every 5 min, so a tab left open overnight lets Cloud Run sleep. */
+  private idleSkip(feed: string): boolean {
+    if (!isIdle()) return false;
+    const now = Date.now();
+    if (now - (this.idlePolledAt[feed] ?? 0) < IDLE_POLL_MS) return true;
+    this.idlePolledAt[feed] = now;
+    return false;
   }
 
   /** Called when the tracked symbol set changes: fetch new symbols right away. */
@@ -1007,7 +1022,7 @@ export interface BriefResponse {
 
 /** Today's morning brief (from 07:30 WIB; before that yesterday's), or a saved one by date. */
 export async function fetchMorningBrief(date?: string): Promise<BriefResponse> {
-  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}&lang=${getLang()}` : `/api/brief?lang=${getLang()}`);
+  const res = await fetch(date ? `/api/brief?date=${encodeURIComponent(date)}&lang=${getLang()}` : `/api/brief?lang=${getLang()}`, { headers: ownerHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }

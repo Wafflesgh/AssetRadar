@@ -1,0 +1,2184 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AssetRadar — Konsep Desain Baru ("Morning Ledger" Mockup)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ==========================================================================
+       AssetRadar "Morning Ledger" — Self-Contained Static Design Mockup
+       Light ("Kertas Pagi") & Dark ("Malam Tenang") Design Tokens
+       ========================================================================== */
+    :root,
+    [data-theme="light"] {
+      --bg-canvas: #F6F4EE;
+      --bg-card: #FFFFFF;
+      --bg-subtle: #EFECE4;
+      --bg-elevated: #FAF8F4;
+      --border-subtle: #E2DDD2;
+      --border-strong: #C8C1B2;
+      --text-primary: #15191E;
+      --text-secondary: #4E5863;
+      --text-muted: #68737F;
+      --accent: #0F6A5B;
+      --accent-hover: #0B5347;
+      --accent-soft: #E3F3EF;
+      --on-accent: #FFFFFF;
+      --up: #15803D;
+      --up-soft: #DCFCE7;
+      --down: #B91C1C;
+      --down-soft: #FEE2E2;
+      --warn: #B45309;
+      --warn-soft: #FEF3C7;
+      --warn-border: #F59E0B;
+      --info: #3730A3;
+      --info-soft: #E0E7FF;
+      --shadow-sm: 0 1px 2px rgba(21, 25, 30, 0.04);
+      --shadow-phone: 0 24px 60px rgba(15, 23, 42, 0.18);
+      --radius-card: 14px;
+      --radius-sm: 8px;
+      --radius-pill: 999px;
+      --font-serif: 'Newsreader', Georgia, serif;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg-canvas: #0C1116;
+      --bg-card: #141C24;
+      --bg-subtle: #1B2631;
+      --bg-elevated: #18222C;
+      --border-subtle: #263442;
+      --border-strong: #384B5E;
+      --text-primary: #EFF3F6;
+      --text-secondary: #9AA8B6;
+      --text-muted: #7F8E9E;
+      --accent: #2DD4BF;
+      --accent-hover: #5EEAD4;
+      --accent-soft: #113232;
+      --on-accent: #06201D;
+      --up: #34D399;
+      --up-soft: #0F2E22;
+      --down: #F87171;
+      --down-soft: #36171B;
+      --warn: #FBBF24;
+      --warn-soft: #332711;
+      --warn-border: #D97706;
+      --info: #A5B4FC;
+      --info-soft: #1E2246;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+      --shadow-phone: 0 28px 70px rgba(0, 0, 0, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      line-height: 1.5;
+      overflow-x: clip;
+      transition: background-color 160ms ease, color 160ms ease;
+    }
+
+    button, input, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .serif {
+      font-family: var(--font-serif);
+    }
+
+    /* ==========================================================================
+       Prototype Control Strip (Top of Mockup Only — lets owner test modes)
+       ========================================================================== */
+    .proto-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #131A22;
+      color: #F1F5F9;
+      border-bottom: 1px solid #2A3644;
+      padding: 8px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .proto-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #332711;
+      color: #FCD34D;
+      border: 1px solid #B45309;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .proto-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .proto-group {
+      display: inline-flex;
+      background: #1E2936;
+      padding: 3px;
+      border-radius: 9px;
+      border: 1px solid #2E3D4F;
+      gap: 2px;
+    }
+
+    .proto-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #CBD5E1;
+      min-height: 30px;
+      transition: background 120ms ease, color 120ms ease;
+    }
+
+    .proto-btn:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .proto-btn[aria-pressed="true"] {
+      background: #14B8A6;
+      color: #042F2E;
+    }
+
+    /* ==========================================================================
+       Phone 375px Preview Frame Mode vs Full Responsive Mode
+       ========================================================================== */
+    .stage-wrap {
+      min-height: calc(100vh - 49px);
+      transition: padding 200ms ease;
+    }
+
+    body[data-viewport="phone"] {
+      background: #1D242C;
+    }
+
+    body[data-viewport="phone"] .stage-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 24px 12px 48px;
+    }
+
+    body[data-viewport="phone"] .app-shell {
+      width: 375px;
+      max-width: 375px;
+      min-height: 780px;
+      background: var(--bg-canvas);
+      border-radius: 34px;
+      border: 8px solid #0B0F14;
+      box-shadow: var(--shadow-phone);
+      overflow: hidden;
+      position: relative;
+      display: block;
+    }
+
+    /* App Shell — Desktop Layout */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      min-height: calc(100vh - 49px);
+      background: var(--bg-canvas);
+    }
+
+    /* Sidebar (Desktop) */
+    .sidebar {
+      background: var(--bg-card);
+      border-right: 1px solid var(--border-subtle);
+      padding: 20px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: sticky;
+      top: 49px;
+      height: calc(100vh - 49px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 4px 8px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--on-accent);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .nav-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 16px 10px 6px;
+    }
+
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      min-height: 44px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: left;
+      transition: background 120ms ease, color 120ms ease;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+    }
+
+    .nav-item[aria-current="page"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .nav-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .nav-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+
+    .sidebar-foot {
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .freshness-box {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--bg-subtle);
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--up);
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    /* Main Column */
+    .main-col {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    /* Sticky Top Utility Header */
+    .topbar {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 10px 28px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 8px 12px;
+      width: 100%;
+      max-width: 360px;
+      min-height: 42px;
+    }
+
+    .search-box input {
+      border: none;
+      background: transparent;
+      width: 100%;
+      font-size: 16px; /* >=16px prevents iOS zoom */
+      outline: none;
+    }
+
+    .kbd-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .pill-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      min-height: 40px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+
+    .pill-btn:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-subtle);
+    }
+
+    .pill-btn.terminal-trigger[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--on-accent);
+      border-color: var(--accent);
+    }
+
+    /* Main Workspace Container */
+    .workspace {
+      width: 100%;
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 24px 28px 40px;
+      flex: 1;
+    }
+
+    /* Disclaimer Banner (Always Present & Calm) */
+    .edu-strip {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      background: var(--info-soft);
+      color: var(--info);
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+
+    .sample-tag {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    /* Page Header */
+    .page-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .page-title {
+      font-family: var(--font-serif);
+      font-size: 30px;
+      font-weight: 600;
+      line-height: 1.18;
+      letter-spacing: -0.015em;
+    }
+
+    .page-sub {
+      font-size: 14.5px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      max-width: 68ch;
+    }
+
+    /* Grid Helpers */
+    .grid-12 {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-8  { grid-column: span 8; }
+    .col-7  { grid-column: span 7; }
+    .col-6  { grid-column: span 6; }
+    .col-5  { grid-column: span 5; }
+    .col-4  { grid-column: span 4; }
+    .col-3  { grid-column: span 3; }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 15.5px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Badges for Up / Down / Warn */
+    .delta {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      white-space: nowrap;
+    }
+
+    .delta.up {
+      background: var(--up-soft);
+      color: var(--up);
+    }
+
+    .delta.down {
+      background: var(--down-soft);
+      color: var(--down);
+    }
+
+    .delta.flat {
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+
+    /* Segmented Tabs / Filter Chips */
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip {
+      padding: 7px 13px;
+      min-height: 38px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: all 120ms ease;
+    }
+
+    .chip:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .chip[aria-pressed="true"],
+    .chip[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    /* Morning Brief Hero Card */
+    .brief-card {
+      background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-elevated) 100%);
+      border-left: 4px solid var(--accent);
+    }
+
+    .brief-lead {
+      font-family: var(--font-serif);
+      font-size: 19px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+
+    .brief-points {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .brief-stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .brief-stat-val {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Unavailable + Retry State (Core Rule!) */
+    .unavailable-card {
+      background: var(--warn-soft);
+      border: 1px dashed var(--warn-border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .unavailable-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--warn);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .unavailable-desc {
+      font-size: 13px;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+
+    .retry-btn {
+      padding: 8px 14px;
+      min-height: 40px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--warn-border);
+      color: var(--warn);
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .retry-btn:hover {
+      background: var(--bg-elevated);
+    }
+
+    /* Responsive Asset List (Table on Desktop, Clean 2-Line Rows on 375px Phone) */
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .asset-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 2.2fr) 1fr 110px 1.3fr 110px;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      transition: background 120ms ease;
+    }
+
+    .asset-row:hover {
+      background: var(--bg-subtle);
+    }
+
+    .asset-row.header-row {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      padding: 9px 8px;
+    }
+
+    .asset-row.header-row:hover {
+      background: transparent;
+    }
+
+    .ticker-badge {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .asset-name {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: block;
+    }
+
+    .group-tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      display: inline-block;
+    }
+
+    .price-cell {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 14.5px;
+      font-weight: 600;
+    }
+
+    /* Heatmap Preview Grid */
+    .heatmap-grid {
+      display: grid;
+      grid-template-columns: 2fr 1.4fr 1.2fr 1fr;
+      grid-auto-rows: 96px;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .heat-tile {
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid var(--border-subtle);
+      text-align: left;
+    }
+
+    .heat-tile.up-strong { background: var(--up-soft); color: var(--up); }
+    .heat-tile.down-mild { background: var(--down-soft); color: var(--down); }
+    .heat-tile.neutral   { background: var(--bg-subtle); color: var(--text-primary); }
+
+    /* Neutral 5-Step Sentiment Scale */
+    .sentiment-meter {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin: 10px 0 6px;
+    }
+
+    .meter-seg {
+      height: 10px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      position: relative;
+    }
+
+    .meter-seg.active-bear { background: var(--down); }
+    .meter-seg.active-neutral { background: var(--text-muted); }
+    .meter-seg.active-bull { background: var(--accent); }
+
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+    }
+
+    /* Chart Frame & TradingView Attribution */
+    .chart-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px;
+    }
+
+    .tv-attrib {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .tv-link {
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    /* Kitchen Staple Card */
+    .staple-why {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--bg-subtle);
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .season-bar {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 3px;
+      margin-top: 8px;
+    }
+
+    .season-cell {
+      height: 16px;
+      border-radius: 3px;
+      background: var(--bg-subtle);
+    }
+
+    .season-cell.normal { background: var(--accent-soft); }
+    .season-cell.peak   { background: var(--warn-border); }
+
+    /* Concentration Stacked Bar */
+    .conc-bar {
+      display: flex;
+      height: 14px;
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+      gap: 2px;
+      margin: 12px 0 8px;
+    }
+
+    /* Terminal Mode Compact Dark View */
+    .terminal-panel {
+      background: #090D12;
+      color: #E2E8F0;
+      border: 1px solid #1E293B;
+      border-radius: 10px;
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+    }
+
+    .term-cmd {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      color: #FBBF24;
+    }
+
+    /* Mandatory Footer */
+    .app-footer {
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      padding: 16px 28px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    /* Mobile Bottom Navigation (Hidden on Wide Desktop, Shown on <=820px OR Phone Preview) */
+    .bottom-nav {
+      display: none;
+    }
+
+    .more-sheet-backdrop {
+      display: none;
+    }
+
+    /* View Visibility */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ==========================================================================
+       Mobile / 375px Layout Rules (Applies to Real Phones & 375px Preview Toggle)
+       ========================================================================== */
+    @media (max-width: 860px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        display: none;
+      }
+      .topbar {
+        padding: 10px 14px;
+      }
+      .kbd-hint,
+      .hide-mobile {
+        display: none !important;
+      }
+      .workspace {
+        padding: 16px 14px 92px;
+      }
+      .page-title {
+        font-size: 23px;
+      }
+      .col-8, .col-7, .col-6, .col-5, .col-4, .col-3 {
+        grid-column: span 12;
+      }
+      .brief-points {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .asset-row.header-row {
+        display: none;
+      }
+      .asset-row {
+        grid-template-columns: 1fr auto;
+        gap: 6px 10px;
+        padding: 12px 4px;
+      }
+      .asset-row .cell-group,
+      .asset-row .cell-spark {
+        display: none;
+      }
+      .heatmap-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .app-footer {
+        padding: 14px 14px 90px;
+      }
+      .bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 60;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border-subtle);
+        padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+      }
+    }
+
+    /* Same Mobile Rules When "HP 375px" Frame Toggle Is Active on Desktop */
+    body[data-viewport="phone"] .sidebar { display: none; }
+    body[data-viewport="phone"] .topbar { padding: 10px 14px; }
+    body[data-viewport="phone"] .kbd-hint,
+    body[data-viewport="phone"] .hide-mobile { display: none !important; }
+    body[data-viewport="phone"] .workspace { padding: 14px 14px 90px; }
+    body[data-viewport="phone"] .page-title { font-size: 22px; }
+    body[data-viewport="phone"] .col-8,
+    body[data-viewport="phone"] .col-7,
+    body[data-viewport="phone"] .col-6,
+    body[data-viewport="phone"] .col-5,
+    body[data-viewport="phone"] .col-4,
+    body[data-viewport="phone"] .col-3 { grid-column: span 12; }
+    body[data-viewport="phone"] .brief-points { grid-template-columns: 1fr; gap: 8px; }
+    body[data-viewport="phone"] .asset-row.header-row { display: none; }
+    body[data-viewport="phone"] .asset-row {
+      grid-template-columns: 1fr auto;
+      gap: 6px 10px;
+      padding: 12px 4px;
+    }
+    body[data-viewport="phone"] .asset-row .cell-group,
+    body[data-viewport="phone"] .asset-row .cell-spark { display: none; }
+    body[data-viewport="phone"] .heatmap-grid { grid-template-columns: 1fr 1fr; }
+    body[data-viewport="phone"] .app-footer { padding: 14px 14px 86px; }
+    body[data-viewport="phone"] .bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      position: sticky;
+      bottom: 0;
+      z-index: 50;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-subtle);
+      padding: 6px 4px 10px;
+    }
+
+    .bnav-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 48px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .bnav-btn[aria-current="page"] {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    /* Mobile "More" Bottom Sheet */
+    .more-sheet-backdrop.open {
+      display: flex;
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(12, 17, 22, 0.55);
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .more-sheet {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-subtle);
+      border-radius: 20px 20px 0 0;
+      padding: 18px 16px 28px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body data-viewport="desktop">
+
+  <!-- ========================================================================
+       PROTOTYPE BAR (Mockup Switcher for Owner Review)
+       ======================================================================== -->
+  <div class="proto-bar" role="region" aria-label="Mockup controls">
+    <div class="proto-badge">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span data-i18n="proto.badge">MOCKUP DESAIN BARU · SEMUA ANGKA ADALAH CONTOH (SAMPLE)</span>
+    </div>
+
+    <div class="proto-controls">
+      <div class="proto-group" role="group" aria-label="Pilih halaman contoh">
+        <button type="button" class="proto-btn" data-go="radar" aria-pressed="true">1. Radar</button>
+        <button type="button" class="proto-btn" data-go="detail" aria-pressed="false">2. Detail Aset</button>
+        <button type="button" class="proto-btn" data-go="kitchen" aria-pressed="false">3. Radar Dapur</button>
+        <button type="button" class="proto-btn" data-go="portfolio" aria-pressed="false">4. Portofolio</button>
+        <button type="button" class="proto-btn" data-go="terminal" aria-pressed="false">5. Terminal</button>
+      </div>
+
+      <div class="proto-group" role="group" aria-label="Ukuran layar">
+        <button type="button" class="proto-btn" id="vpDesktop" aria-pressed="true">PC 1440px</button>
+        <button type="button" class="proto-btn" id="vpPhone" aria-pressed="false">HP 375px</button>
+      </div>
+
+      <div class="proto-group" role="group" aria-label="Tema dan Bahasa">
+        <button type="button" class="proto-btn" id="btnTheme" aria-pressed="false">☀ Terang / ☾ Gelap</button>
+        <button type="button" class="proto-btn" id="btnLang" aria-pressed="true">ID / EN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       APPLICATION SHELL
+       ======================================================================== -->
+  <div class="stage-wrap">
+    <div class="app-shell">
+
+      <!-- DESKTOP SIDEBAR (4 Human Questions instead of 27 scattered links) -->
+      <aside class="sidebar" aria-label="Menu utama">
+        <div>
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="4" />
+                <line x1="12" y1="12" x2="18.5" y2="5.5" />
+              </svg>
+            </div>
+            <div>
+              <div class="brand-title">AssetRadar</div>
+              <div class="brand-sub" data-i18n="brand.sub">Koran Pagi &amp; Catatan Pasar</div>
+            </div>
+          </div>
+
+          <div class="nav-section-label" data-i18n="nav.heading"> Ruang Utama </div>
+          <nav class="nav-list" aria-label="Halaman utama">
+            <button type="button" class="nav-item" data-nav="radar" aria-current="page">
+              <span class="nav-item-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                <span data-i18n="nav.radar">Hari Ini &amp; Radar</span>
+              </span>
+              <span class="nav-count">163</span>
+            </button>
+
+            <button type="button" class="nav-item" data-nav="detail">
+              <span class="nav-item-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+                <span data-i18n="nav.explore">Pasar &amp; Riset Aset</span>
+              </span>
+              <span class="nav-count">BEI+</span>
+            </button>
+
+            <button type="button" class="nav-item" data-nav="kitchen">
+              <span class="nav-item-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                <span data-i18n="nav.kitchen">Dapur &amp; Ekonomi</span>
+              </span>
+              <span class="nav-count">21</span>
+            </button>
+
+            <button type="button" class="nav-item" data-nav="portfolio">
+              <span class="nav-item-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01"/></svg>
+                <span data-i18n="nav.mine">Milikku &amp; Jurnal</span>
+              </span>
+              <span class="nav-count">4</span>
+            </button>
+          </nav>
+
+          <div class="nav-section-label" data-i18n="nav.toolsHeading"> Mode Fokus </div>
+          <nav class="nav-list" aria-label="Mode fokus">
+            <button type="button" class="nav-item" data-nav="terminal">
+              <span class="nav-item-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Terminal Mode</span>
+              </span>
+              <span class="nav-count">&gt;_</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="sidebar-foot">
+          <div class="freshness-box">
+            <div><span class="status-dot" aria-hidden="true"></span><strong data-i18n="fresh.ok">Kesegaran Data: Aman</strong></div>
+            <div style="color: var(--text-secondary); margin-top: 3px;" data-i18n="fresh.sub">Harga streaming · Dapur 2j lalu · Sinkron aktif</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN COLUMN -->
+      <div class="main-col">
+
+        <!-- TOP UTILITY BAR -->
+        <header class="topbar">
+          <label class="search-box" aria-label="Cari saham, crypto, emas, atau bahan dapur">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted); flex-shrink: 0;" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="search" data-i18n-placeholder="search.placeholder" placeholder="Cari BBCA, BTC, Emas, Cabai..." />
+            <span class="kbd-hint">Ctrl K</span>
+          </label>
+
+          <div class="topbar-actions">
+            <button type="button" class="pill-btn hide-mobile" id="appLangBtn" aria-label="Ganti bahasa">
+              <span class="mono" id="langLabel">ID</span>
+            </button>
+            <button type="button" class="pill-btn" id="appThemeBtn" aria-label="Ganti tema terang atau gelap">
+              <span id="themeIcon" aria-hidden="true">☾</span>
+              <span class="hide-mobile" data-i18n="top.theme">Tema</span>
+            </button>
+            <button type="button" class="pill-btn terminal-trigger hide-mobile" data-nav="terminal" aria-pressed="false">
+              <span class="mono">&gt;_</span>
+              <span>Terminal</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- WORKSPACE -->
+        <main class="workspace">
+
+          <!-- MANDATORY VISIBLE EDUCATION RIBBON -->
+          <div class="edu-strip" role="note">
+            <span data-i18n="edu.banner">Informasi &amp; edukasi saja — bukan saran beli/jual dan bukan janji keuntungan. Semua angka di halaman contoh ini bertanda (sample).</span>
+            <span class="mono" style="flex-shrink: 0;">WIB (UTC+7)</span>
+          </div>
+
+          <!-- ================================================================
+               SCREEN 1: HOME / RADAR ("HARI INI & RADAR")
+               ================================================================ -->
+          <section class="screen active" id="screen-radar" aria-labelledby="title-radar">
+            <div class="page-head">
+              <div>
+                <div class="eyebrow" data-i18n="radar.eyebrow">Rabu Pagi · Ringkasan Pasar &amp; Pantauan</div>
+                <h1 class="page-title" id="title-radar" data-i18n="radar.title">Hari Ini di Radar Anda</h1>
+                <p class="page-sub" data-i18n="radar.sub">Pantau gerak pasar utama, aset simpanan Anda, dan berita penting tanpa kebisingan.</p>
+              </div>
+              <div class="chip-row" role="group" aria-label="Tampilan radar">
+                <button type="button" class="chip" id="viewTableBtn" aria-pressed="true" data-i18n="radar.viewTable">Daftar Rapi</button>
+                <button type="button" class="chip" id="viewHeatBtn" aria-pressed="false" data-i18n="radar.viewHeat">Peta Panas</button>
+              </div>
+            </div>
+
+            <div class="grid-12">
+              <!-- Morning Brief Card -->
+              <div class="card brief-card col-8">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="brief.title">Ringkasan Pagi · 07:35 WIB</span>
+                  <span class="group-tag" data-i18n="brief.calm">Geopolitik: Tenang</span>
+                </div>
+                <p class="brief-lead" data-i18n="brief.lead">
+                  IHSG dibuka menguat tipis mengikuti perbankan besar, sementara emas dunia bertahan tinggi dan kurs Rupiah stabil di kisaran Rp15.840 per dolar AS.
+                </p>
+                <div class="brief-points">
+                  <div>
+                    <div class="brief-stat-label">IHSG (JCI)</div>
+                    <div class="brief-stat-val">7.312,40 <span class="sample-tag">sample</span> <span class="delta up">+0,64% ▲</span></div>
+                  </div>
+                  <div>
+                    <div class="brief-stat-label">USD / IDR</div>
+                    <div class="brief-stat-val">Rp15.845 <span class="sample-tag">sample</span> <span class="delta down">−0,18% ▼</span></div>
+                  </div>
+                  <div>
+                    <div class="brief-stat-label" data-i18n="brief.sbnLabel">SBN Ritel Aktif</div>
+                    <div class="brief-stat-val">ST013 · 6,40% <span class="sample-tag">sample</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Since Last Visit + Watchlist Summary -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="visit.title">Sejak Kunjungan Terakhir</span>
+                  <span class="card-meta" data-i18n="visit.ago">6 jam lalu</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>BBCA.JK</strong> <span style="color: var(--text-secondary);">Bank Central Asia</span></span>
+                    <span class="delta up">+1,50% ▲</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>BTC</strong> <span style="color: var(--text-secondary);">Bitcoin (USD)</span></span>
+                    <span class="delta up">+2,35% ▲</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>XAU/USD</strong> <span style="color: var(--text-secondary);">Emas Spot</span></span>
+                    <span class="delta down">−0,40% ▼</span>
+                  </div>
+                  <div style="padding-top: 8px; border-top: 1px solid var(--border-subtle); font-size: 12.5px; color: var(--text-secondary);" data-i18n="visit.alertNote">
+                    1 pengingat tercapai: masa penawaran ST013 ditutup 2 hari lagi.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Honest Data Unavailable + Retry Example (Required Rule!) -->
+              <div class="col-12">
+                <div class="unavailable-card" role="status" aria-live="polite">
+                  <div>
+                    <div class="unavailable-title">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      <span data-i18n="unavail.title">Sebagian sumber belum merespons: Kurs CNY/IDR</span>
+                    </div>
+                    <p class="unavailable-desc" id="retryStatusText" data-i18n="unavail.desc">
+                      Data tidak tersedia saat ini (bukan Rp0). Terakhir berhasil diperbarui pukul 06:45 WIB — klik Coba lagi untuk memuat ulang.
+                    </p>
+                  </div>
+                  <button type="button" class="retry-btn" id="btnRetryDemo">
+                    <span aria-hidden="true">↻</span>
+                    <span data-i18n="common.retry">Coba lagi</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Market Radar List / Heatmap Card -->
+              <div class="card col-8">
+                <div class="card-head" style="flex-wrap: wrap;">
+                  <div>
+                    <span class="card-title" data-i18n="radar.marketTitle">Pantauan Pasar Utama</span>
+                    <span class="card-meta" style="margin-left: 8px;" data-i18n="radar.clickHint">Klik baris untuk membuka grafik &amp; cerita aset</span>
+                  </div>
+                  <div class="chip-row" role="group" aria-label="Filter grup aset">
+                    <button type="button" class="chip" aria-pressed="true" data-i18n="filter.all">Semua</button>
+                    <button type="button" class="chip" aria-pressed="false" data-i18n="filter.idx">Saham BEI</button>
+                    <button type="button" class="chip" aria-pressed="false">Crypto</button>
+                    <button type="button" class="chip" aria-pressed="false" data-i18n="filter.gold">Emas &amp; Kurs</button>
+                  </div>
+                </div>
+
+                <!-- Table View -->
+                <div id="radarTableWrap" class="asset-list" role="list">
+                  <div class="asset-row header-row" aria-hidden="true">
+                    <span data-i18n="col.asset">Aset</span>
+                    <span class="cell-group" data-i18n="col.group">Kelompok</span>
+                    <span class="cell-spark" data-i18n="col.trend"> Tren 7H </span>
+                    <span style="text-align: right;" data-i18n="col.price">Harga (Sample)</span>
+                    <span style="text-align: right;" data-i18n="col.change">24 Jam</span>
+                  </div>
+
+                  <button type="button" class="asset-row" data-open-detail="BBCA">
+                    <div>
+                      <span class="ticker-badge">BBCA.JK ★</span>
+                      <span class="asset-name">Bank Central Asia Tbk</span>
+                    </div>
+                    <div class="cell-group"><span class="group-tag">Saham BEI</span></div>
+                    <div class="cell-spark" aria-hidden="true">
+                      <svg width="92" height="26" viewBox="0 0 92 26" fill="none"><polyline points="2,20 18,18 34,19 50,14 68,11 90,6" stroke="var(--up)" stroke-width="2" fill="none"/></svg>
+                    </div>
+                    <div class="price-cell">Rp10.125 <span class="sample-tag">sample</span></div>
+                    <div style="text-align: right;"><span class="delta up">+1,50% ▲</span></div>
+                  </button>
+
+                  <button type="button" class="asset-row" data-open-detail="BBRI">
+                    <div>
+                      <span class="ticker-badge">BBRI.JK ★</span>
+                      <span class="asset-name">Bank Rakyat Indonesia Tbk</span>
+                    </div>
+                    <div class="cell-group"><span class="group-tag">Saham BEI</span></div>
+                    <div class="cell-spark" aria-hidden="true">
+                      <svg width="92" height="26" viewBox="0 0 92 26" fill="none"><polyline points="2,9 20,11 38,14 54,13 72,18 90,19" stroke="var(--down)" stroke-width="2" fill="none"/></svg>
+                    </div>
+                    <div class="price-cell">Rp4.680 <span class="sample-tag">sample</span></div>
+                    <div style="text-align: right;"><span class="delta down">−0,85% ▼</span></div>
+                  </button>
+
+                  <button type="button" class="asset-row" data-open-detail="BTC">
+                    <div>
+                      <span class="ticker-badge">BTC / USD ★</span>
+                      <span class="asset-name">Bitcoin · Spot Publik</span>
+                    </div>
+                    <div class="cell-group"><span class="group-tag">Crypto</span></div>
+                    <div class="cell-spark" aria-hidden="true">
+                      <svg width="92" height="26" viewBox="0 0 92 26" fill="none"><polyline points="2,22 18,16 36,17 52,10 70,9 90,4" stroke="var(--up)" stroke-width="2" fill="none"/></svg>
+                    </div>
+                    <div class="price-cell">US$91.420 <span class="sample-tag">sample</span></div>
+                    <div style="text-align: right;"><span class="delta up">+2,35% ▲</span></div>
+                  </button>
+
+                  <button type="button" class="asset-row" data-open-detail="XAU">
+                    <div>
+                      <span class="ticker-badge">XAU / USD</span>
+                      <span class="asset-name">Emas Spot Dunia</span>
+                    </div>
+                    <div class="cell-group"><span class="group-tag">Komoditas</span></div>
+                    <div class="cell-spark" aria-hidden="true">
+                      <svg width="92" height="26" viewBox="0 0 92 26" fill="none"><polyline points="2,13 22,12 40,14 58,15 74,14 90,16" stroke="var(--down)" stroke-width="2" fill="none"/></svg>
+                    </div>
+                    <div class="price-cell">US$2.658 <span class="sample-tag">sample</span></div>
+                    <div style="text-align: right;"><span class="delta down">−0,40% ▼</span></div>
+                  </button>
+
+                  <button type="button" class="asset-row" data-open-detail="NVDA">
+                    <div>
+                      <span class="ticker-badge">NVDA</span>
+                      <span class="asset-name">NVIDIA Corp (AS)</span>
+                    </div>
+                    <div class="cell-group"><span class="group-tag">Saham AS</span></div>
+                    <div class="cell-spark" aria-hidden="true">
+                      <svg width="92" height="26" viewBox="0 0 92 26" fill="none"><polyline points="2,19 20,17 38,12 56,14 74,8 90,7" stroke="var(--up)" stroke-width="2" fill="none"/></svg>
+                    </div>
+                    <div class="price-cell">US$138,60 <span class="sample-tag">sample</span></div>
+                    <div style="text-align: right;"><span class="delta up">+1,12% ▲</span></div>
+                  </button>
+                </div>
+
+                <!-- Heatmap View (Toggled by Peta Panas button) -->
+                <div id="radarHeatWrap" class="heatmap-grid" style="display: none;">
+                  <button type="button" class="heat-tile up-strong" data-open-detail="BTC">
+                    <span class="mono"><strong>BTC</strong> · Crypto</span>
+                    <span class="mono">+2,35% ▲ (sample)</span>
+                  </button>
+                  <button type="button" class="heat-tile up-strong" data-open-detail="BBCA">
+                    <span class="mono"><strong>BBCA.JK</strong> · Perbankan</span>
+                    <span class="mono">+1,50% ▲ (sample)</span>
+                  </button>
+                  <button type="button" class="heat-tile up-strong" data-open-detail="NVDA">
+                    <span class="mono"><strong>NVDA</strong> · Teknologi AS</span>
+                    <span class="mono">+1,12% ▲ (sample)</span>
+                  </button>
+                  <button type="button" class="heat-tile down-mild" data-open-detail="BBRI">
+                    <span class="mono"><strong>BBRI.JK</strong> · Perbankan</span>
+                    <span class="mono">−0,85% ▼ (sample)</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Live News & Bridge to Kitchen -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="news.title">Berita Pasar (Bahasa Asli)</span>
+                  <span class="card-meta">Live</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+                  <div style="padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+                    <span class="group-tag mono">BBCA · MACRO</span>
+                    <p style="font-weight: 600; margin-top: 5px;">Kredit perbankan tumbuh stabil pada kuartal berjalan seiring likuiditas terjaga</p>
+                    <span class="card-meta">CNBC Indonesia · 18 mnt lalu</span>
+                  </div>
+                  <div style="padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+                    <span class="group-tag mono">MACRO · USD</span>
+                    <p style="font-weight: 600; margin-top: 5px;">Treasury yields hold steady ahead of upcoming Federal Reserve minutes</p>
+                    <span class="card-meta">FXStreet · 42 mnt lalu</span>
+                  </div>
+                  <div>
+                    <span class="group-tag mono">DAPUR</span>
+                    <p style="font-weight: 600; margin-top: 5px;">Pasokan cabai rawit di pasar induk mulai dipengaruhi curah hujan sentra produksi</p>
+                    <button type="button" class="tv-link" style="margin-top: 4px; font-size: 12.5px;" data-nav="kitchen" data-i18n="news.openKitchen">Lihat di Radar Dapur →</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================
+               SCREEN 2: STORY-FIRST ASSET DETAIL ("DETAIL ASET & GRAFIK")
+               ================================================================ -->
+          <section class="screen" id="screen-detail" aria-labelledby="title-detail">
+            <div style="margin-bottom: 12px;">
+              <button type="button" class="pill-btn" data-nav="radar" data-i18n="detail.back">← Kembali ke Radar</button>
+            </div>
+
+            <div class="page-head">
+              <div>
+                <div class="eyebrow">Saham BEI · Sektor Keuangan · BBCA.JK</div>
+                <h1 class="page-title" id="title-detail">Bank Central Asia Tbk</h1>
+                <p class="page-sub" data-i18n="detail.storyLead">Bergerak tenang di paruh atas rentang 52 minggu; volume hari ini 1,2× rata-rata 20 hari bursa (sedikit lebih ramai dari biasanya).</p>
+              </div>
+              <div style="text-align: right;">
+                <div class="mono" style="font-size: 28px; font-weight: 600;">
+                  Rp10.125 <span class="sample-tag">sample</span>
+                </div>
+                <div style="margin-top: 4px;">
+                  <span class="delta up">+Rp150 (+1,50%) ▲</span>
+                  <span class="card-meta" style="margin-left: 6px;">1 Lot = Rp1.012.500</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-12">
+              <!-- Chart Card with Mandatory TradingView Attribution -->
+              <div class="card col-8">
+                <div class="card-head" style="flex-wrap: wrap;">
+                  <span class="card-title" data-i18n="detail.chartTitle">Grafik Harga &amp; Rentang Historis</span>
+                  <div class="chip-row" role="group" aria-label="Rentang waktu grafik">
+                    <button type="button" class="chip tf-btn" aria-pressed="false">15m</button>
+                    <button type="button" class="chip tf-btn" aria-pressed="false">1J</button>
+                    <button type="button" class="chip tf-btn" aria-pressed="true">1H</button>
+                    <button type="button" class="chip tf-btn" aria-pressed="false">1M</button>
+                    <button type="button" class="chip tf-btn" aria-pressed="false">MAX</button>
+                  </div>
+                </div>
+
+                <div class="chart-box">
+                  <svg viewBox="0 0 680 230" width="100%" height="220" role="img" aria-label="Contoh grafik candlestick BBCA dengan rentang support dan resistance">
+                    <line x1="0" y1="45" x2="680" y2="45" stroke="var(--border-subtle)" stroke-dasharray="4 4"/>
+                    <line x1="0" y1="115" x2="680" y2="115" stroke="var(--border-subtle)" stroke-dasharray="4 4"/>
+                    <line x1="0" y1="185" x2="680" y2="185" stroke="var(--border-subtle)" stroke-dasharray="4 4"/>
+                    <!-- Candlesticks (Sample visual) -->
+                    <g stroke-width="2">
+                      <line x1="50" y1="150" x2="50" y2="190" stroke="var(--down)"/><rect x="42" y="160" width="16" height="20" fill="var(--down)" rx="2"/>
+                      <line x1="110" y1="138" x2="110" y2="180" stroke="var(--up)"/><rect x="102" y="145" width="16" height="24" fill="var(--up)" rx="2"/>
+                      <line x1="170" y1="125" x2="170" y2="165" stroke="var(--up)"/><rect x="162" y="132" width="16" height="22" fill="var(--up)" rx="2"/>
+                      <line x1="230" y1="130" x2="230" y2="170" stroke="var(--down)"/><rect x="222" y="138" width="16" height="18" fill="var(--down)" rx="2"/>
+                      <line x1="290" y1="110" x2="290" y2="152" stroke="var(--up)"/><rect x="282" y="118" width="16" height="25" fill="var(--up)" rx="2"/>
+                      <line x1="350" y1="95" x2="350" y2="135" stroke="var(--up)"/><rect x="342" y="102" width="16" height="20" fill="var(--up)" rx="2"/>
+                      <line x1="410" y1="100" x2="410" y2="140" stroke="var(--down)"/><rect x="402" y="108" width="16" height="19" fill="var(--down)" rx="2"/>
+                      <line x1="470" y1="80" x2="470" y2="122" stroke="var(--up)"/><rect x="462" y="88" width="16" height="24" fill="var(--up)" rx="2"/>
+                      <line x1="530" y1="68" x2="530" y2="108" stroke="var(--up)"/><rect x="522" y="76" width="16" height="20" fill="var(--up)" rx="2"/>
+                      <line x1="590" y1="54" x2="590" y2="96" stroke="var(--up)"/><rect x="582" y="62" width="16" height="24" fill="var(--up)" rx="2"/>
+                    </g>
+                    <text x="612" y="42" fill="var(--text-secondary)" font-family="IBM Plex Mono, monospace" font-size="11">Rp10.350</text>
+                    <text x="612" y="74" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">Rp10.125</text>
+                    <text x="612" y="182" fill="var(--text-secondary)" font-family="IBM Plex Mono, monospace" font-size="11">Rp9.650</text>
+                  </svg>
+
+                  <!-- Mandatory TradingView Attribution -->
+                  <div class="tv-attrib">
+                    <span>Charting powered by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" class="tv-link">TradingView</a> · Atribusi resmi tetap tampil di setiap grafik</span>
+                    <span class="mono">BBCA.JK · Sample Mockup</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3-Horizon Sentiment & Mandatory Inline Disclaimer -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="sent.title">Suasana &amp; Bukti Data</span>
+                  <span class="group-tag">Bullish</span>
+                </div>
+                <p style="font-size: 13.5px; color: var(--text-secondary);" data-i18n="sent.explain">
+                  Ringkasan suasana berita, laporan keuangan (F-Score 7/9), dan tren relatif pasar — bukan sinyal beli atau jual.
+                </p>
+
+                <div style="margin-top: 14px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600;">
+                    <span data-i18n="sent.medium">Jangka Menengah (1–3 Bulan)</span>
+                    <span>Bullish (4/5) <span class="sample-tag">sample</span></span>
+                  </div>
+                  <div class="sentiment-meter" aria-label="Skala sentimen 5 tingkat: tingkat 4 Bullish">
+                    <div class="meter-seg"></div>
+                    <div class="meter-seg"></div>
+                    <div class="meter-seg"></div>
+                    <div class="meter-seg active-bull"></div>
+                    <div class="meter-seg"></div>
+                  </div>
+                  <div class="meter-labels">
+                    <span>Strong Bearish</span>
+                    <span>Neutral</span>
+                    <span>Strong Bullish</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 14px; padding: 10px 12px; border-radius: 9px; background: var(--bg-subtle); font-size: 12px; color: var(--text-secondary);" data-i18n="sent.disclaimer">
+                  <strong>Catatan wajib:</strong> Informasi dan edukasi saja, bukan saran investasi pribadi.
+                </div>
+              </div>
+
+              <!-- Stock Story & Ex-Dividend History -->
+              <div class="card col-6">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="story.title">Cerita Saham &amp; Riwayat Dividen</span>
+                  <span class="card-meta">5 Tahun (sample)</span>
+                </div>
+                <ul style="padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
+                  <li data-i18n="story.p1">Penurunan terdalam 5 tahun terakhir tercatat −18,4% (sample) dan pulih ke puncak lama dalam 64 hari bursa.</li>
+                  <li data-i18n="story.p2">Rutin membagi dividen tunai setiap tahun; pada ex-date terakhir (Rp227/lembar sample), harga turun Rp190 lalu kembali dalam 14 hari bursa.</li>
+                </ul>
+              </div>
+
+              <!-- Monte Carlo Range (Zeroed Drift Rule!) -->
+              <div class="card col-6">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="mc.title">Simulasi Kemungkinan Rentang (Monte Carlo)</span>
+                  <span class="card-meta">3 Bulan · 2.000 jalur</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px;">
+                  <div style="padding: 10px; border-radius: 8px; background: var(--bg-subtle);">
+                    <div class="card-meta">Batas Bawah (P5)</div>
+                    <div class="mono" style="font-weight: 600; margin-top: 2px;">Rp9.150 <span class="sample-tag">sample</span></div>
+                  </div>
+                  <div style="padding: 10px; border-radius: 8px; background: var(--bg-subtle);">
+                    <div class="card-meta">Tengah (P50)</div>
+                    <div class="mono" style="font-weight: 600; margin-top: 2px;">Rp10.100 <span class="sample-tag">sample</span></div>
+                  </div>
+                  <div style="padding: 10px; border-radius: 8px; background: var(--bg-subtle);">
+                    <div class="card-meta">Batas Atas (P95)</div>
+                    <div class="mono" style="font-weight: 600; margin-top: 2px;">Rp11.180 <span class="sample-tag">sample</span></div>
+                  </div>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary);" data-i18n="mc.note">
+                  Bukan ramalan: tren keuntungan masa lalu sengaja dinolkan agar murni mengukur guncangan historis, bukan janji untung.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================
+               SCREEN 3: KITCHEN RADAR & REAL ECONOMY ("DAPUR & EKONOMI")
+               ================================================================ -->
+          <section class="screen" id="screen-kitchen" aria-labelledby="title-kitchen">
+            <div class="page-head">
+              <div>
+                <div class="eyebrow" data-i18n="kitchen.eyebrow"> Pasar Tradisional PIHPS &amp; Makro Indonesia </div>
+                <h1 class="page-title" id="title-kitchen" data-i18n="kitchen.title">Radar Dapur &amp; Ekonomi Nyata</h1>
+                <p class="page-sub" data-i18n="kitchen.sub">Pantau harga 21 bahan pokok per provinsi, pola menjelang Lebaran, dan kaitannya dengan inflasi serta suku bunga.</p>
+              </div>
+              <div class="chip-row" role="group" aria-label="Pilih provinsi">
+                <button type="button" class="chip prov-btn" aria-pressed="true">Nasional</button>
+                <button type="button" class="chip prov-btn" aria-pressed="false">DKI Jakarta</button>
+                <button type="button" class="chip prov-btn" aria-pressed="false">Jawa Barat</button>
+                <button type="button" class="chip prov-btn" aria-pressed="false">Jawa Timur</button>
+              </div>
+            </div>
+
+            <div class="grid-12">
+              <!-- Weekly Kitchen Summary + Personal Basket -->
+              <div class="card brief-card col-7">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="kitchen.weekTitle">Minggu Ini di Pasar Tradisional</span>
+                  <span class="delta up">+1,8% Keranjang Saya (sample)</span>
+                </div>
+                <p class="brief-lead" data-i18n="kitchen.weekLead">
+                  4 dari 21 bahan pokok bergerak lebih dari 5% minggu ini. Kenaikan dipimpin cabai rawit merah dan telur ayam ras, sementara beras medium cenderung tenang.
+                </p>
+                <div style="font-size: 12px; color: var(--text-secondary);">
+                  Peta batas wilayah Indonesia: © OpenStreetMap contributors &amp; geoBoundaries (ODbL) · Sumber harga: PIHPS.
+                </div>
+              </div>
+
+              <!-- Macro & SBN Bridge Card -->
+              <div class="card col-5">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="kitchen.macroBridge">Jembatan Ekonomi Indonesia</span>
+                  <span class="group-tag">Makro &amp; SBN</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                  <div style="padding: 10px; border-radius: 8px; background: var(--bg-subtle);">
+                    <div class="card-meta">BI-Rate</div>
+                    <div class="mono" style="font-size: 16px; font-weight: 600;">6,00% <span class="sample-tag">sample</span></div>
+                  </div>
+                  <div style="padding: 10px; border-radius: 8px; background: var(--bg-subtle);">
+                    <div class="card-meta">Inflasi Pangan (y/y)</div>
+                    <div class="mono" style="font-size: 16px; font-weight: 600;">3,42% <span class="sample-tag">sample</span></div>
+                  </div>
+                </div>
+                <p style="font-size: 12.5px; color: var(--text-secondary); margin-top: 10px;" data-i18n="kitchen.sbnNote">
+                  Penawaran SBN Ritel <strong>ST013</strong> (kupon mengambang batas bawah 6,40% sample) masih dibuka 2 hari lagi.
+                </p>
+              </div>
+
+              <!-- Staple 1: Cabai Rawit Merah -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Cabai Rawit Merah</div>
+                    <div class="card-meta">Per kg · Rata-rata pasar</div>
+                  </div>
+                  <span class="delta down" title="Harga dapur naik berdampak biaya belanja lebih mahal">+11,4% ▲</span>
+                </div>
+                <div class="mono" style="font-size: 22px; font-weight: 600;">
+                  Rp64.500 <span class="sample-tag">sample</span>
+                </div>
+                <div class="staple-why" data-i18n="kitchen.chiliWhy">
+                  <strong>Kenapa bergerak?</strong> Curah hujan tinggi di sentra Jawa Timur mengganggu petik harian sehingga pasokan ke pasar induk berkurang.
+                </div>
+                <div style="margin-top: 10px;">
+                  <div class="card-meta" data-i18n="kitchen.seasonLabel">Pola musiman 12 bulan (kuning = puncak jelang Lebaran)</div>
+                  <div class="season-bar" aria-hidden="true">
+                    <div class="season-cell normal"></div><div class="season-cell normal"></div><div class="season-cell peak"></div><div class="season-cell peak"></div>
+                    <div class="season-cell normal"></div><div class="season-cell"></div><div class="season-cell"></div><div class="season-cell"></div>
+                    <div class="season-cell"></div><div class="season-cell normal"></div><div class="season-cell normal"></div><div class="season-cell peak"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Staple 2: Telur Ayam Ras -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Telur Ayam Ras</div>
+                    <div class="card-meta">Per kg · Rata-rata pasar</div>
+                  </div>
+                  <span class="delta down">+4,2% ▲</span>
+                </div>
+                <div class="mono" style="font-size: 22px; font-weight: 600;">
+                  Rp30.200 <span class="sample-tag">sample</span>
+                </div>
+                <div class="staple-why" data-i18n="kitchen.eggWhy">
+                  <strong>Kenapa bergerak?</strong> Permintaan dapur sekolah &amp; biaya pakan jagung meningkat tipis dibanding bulan lalu.
+                </div>
+              </div>
+
+              <!-- Staple 3: Beras Medium + One-Day Data Glitch Warning -->
+              <div class="card col-4">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Beras Kualitas Medium</div>
+                    <div class="card-meta">Per kg · Rata-rata pasar</div>
+                  </div>
+                  <span class="delta flat">+0,3% ▲</span>
+                </div>
+                <div class="mono" style="font-size: 22px; font-weight: 600;">
+                  Rp14.850 <span class="sample-tag">sample</span>
+                </div>
+                <div class="staple-why" style="border-left: 3px solid var(--warn-border);" data-i18n="kitchen.anomalyNote">
+                  <strong>Catatan kualitas data:</strong> Lonjakan sehari di 1 kota yang langsung kembali keesokan harinya ditandai sebagai <em>kemungkinan salah input data</em>, bukan kenaikan nyata.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================
+               SCREEN 4: PORTFOLIO, ANTAM GOLD & JOURNAL ("MILIKKU")
+               ================================================================ -->
+          <section class="screen" id="screen-portfolio" aria-labelledby="title-portfolio">
+            <div class="page-head">
+              <div>
+                <div class="eyebrow" data-i18n="port.eyebrow">Tersinkron Pribadi · Portofolio, Emas Antam &amp; Jurnal</div>
+                <h1 class="page-title" id="title-portfolio" data-i18n="port.title">Investasi &amp; Catatan Keputusan Saya</h1>
+                <p class="page-sub" data-i18n="port.sub">Rekap aset nyata, harga buyback emas Antam manual, biaya transaksi tercatat, dan evaluasi jujur catatan masa lalu.</p>
+              </div>
+              <div class="chip-row">
+                <button type="button" class="pill-btn" data-i18n="port.exportBtn">⇩ Ekspor Semua Data (.json)</button>
+              </div>
+            </div>
+
+            <div class="grid-12">
+              <!-- Total Value & Concentration -->
+              <div class="card col-7">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="port.summaryTitle">Nilai Portofolio Saat Ini</span>
+                  <span class="delta up">TWR +8,40% ▲ (sample)</span>
+                </div>
+                <div class="mono" style="font-size: 30px; font-weight: 600;">
+                  Rp148.500.000 <span class="sample-tag">sample</span>
+                </div>
+
+                <div style="margin-top: 16px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span data-i18n="port.concLabel"><strong>Tingkat Konsentrasi:</strong> Cukup Terdiversifikasi (HHI 0,19 sample)</span>
+                    <span class="card-meta" data-i18n="port.concSub">Tanpa saran bobot target</span>
+                  </div>
+                  <div class="conc-bar" aria-label="Proporsi aset: Saham BEI 46%, SBN 28%, Emas 16%, Crypto 10%">
+                    <div style="width: 46%; background: var(--accent);"></div>
+                    <div style="width: 28%; background: var(--info);"></div>
+                    <div style="width: 16%; background: var(--warn-border);"></div>
+                    <div style="width: 10%; background: var(--up);"></div>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-secondary);">
+                    <span>● Saham BEI 46%</span>
+                    <span>● SBN Ritel 28%</span>
+                    <span>● Emas Antam 16%</span>
+                    <span>● Crypto 10%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Antam Gold Manual Buyback + Recorded Transaction Costs -->
+              <div class="card col-5">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="port.antamTitle">Emas Antam &amp; Biaya Tercatat</span>
+                  <span class="group-tag">4 hari lalu</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary);" data-i18n="port.antamDesc">
+                  Situs resmi memblokir pengambilan otomatis, sehingga nilai dihitung dari harga buyback resmi yang Anda catat sendiri:
+                </p>
+                <div class="mono" style="font-size: 17px; font-weight: 600; margin: 8px 0 14px;">
+                  Buyback: Rp1.392.000 / gram <span class="sample-tag">sample</span>
+                </div>
+                <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); font-size: 13px;">
+                  <strong data-i18n="port.feesTitle">Biaya transaksi tercatat tahun ini (dipisah per mata uang):</strong>
+                  <div class="mono" style="margin-top: 4px;">IDR: Rp185.000 (0,18%) · USD: US$4,20 (0,12%) <span class="sample-tag">sample</span></div>
+                </div>
+              </div>
+
+              <!-- Decision Journal Card -->
+              <div class="card col-12">
+                <div class="card-head">
+                  <span class="card-title" data-i18n="journal.title">Jurnal Keputusan &amp; Evaluasi Otomatis</span>
+                  <span class="card-meta" data-i18n="journal.sub">Catatan tersimpan pribadi di perangkat &amp; sinkronisasi Anda</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+                  <div style="padding: 14px; border-radius: 10px; background: var(--bg-subtle);">
+                    <div style="display: flex; justify-content: space-between; font-size: 12.5px;">
+                      <span class="mono"><strong>BBCA.JK</strong> · 30 hari lalu</span>
+                      <span class="delta up">Sejak catatan: +3,8% ▲ (sample)</span>
+                    </div>
+                    <p style="font-size: 13.5px; margin-top: 8px;" data-i18n="journal.note1">
+                      "Menambah 2 lot saat koreksi pasca laporan kuartal karena ROE dan arus kas tetap sehat."
+                    </p>
+                  </div>
+                  <div style="padding: 14px; border-radius: 10px; background: var(--bg-subtle);">
+                    <div style="display: flex; justify-content: space-between; font-size: 12.5px;">
+                      <span class="mono"><strong>Simulasi Nabung (DCA) &amp; Paper</strong></span>
+                      <span class="group-tag">Uang Pura-Pura</span>
+                    </div>
+                    <p style="font-size: 13.5px; margin-top: 8px;" data-i18n="journal.note2">
+                      Ingin menguji ide baru tanpa uang asli? Buka tab Latihan Paper Trading (akun Rp100 juta pura-pura) atau Simulator Nabung Bulanan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================
+               SCREEN 5: TERMINAL FOCUS MODE ("MODE TERMINAL >_")
+               ================================================================ -->
+          <section class="screen" id="screen-terminal" aria-labelledby="title-terminal">
+            <div class="page-head">
+              <div>
+                <div class="eyebrow">Bloomberg-Style Compact Workspace</div>
+                <h1 class="page-title" id="title-terminal">Terminal Mode</h1>
+              </div>
+              <button type="button" class="pill-btn" data-nav="radar">← Kembali ke Mode Koran Pagi</button>
+            </div>
+
+            <div class="terminal-panel">
+              <div class="term-cmd">
+                <span>COMMAND &gt;</span>
+                <span style="color: #38BDF8;">BBCA GP</span>
+                <span style="margin-left: auto; color: #94A3B8;">BEI OPEN · 10:42:18 WIB · SAMPLE</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+                <div style="border: 1px solid #1E293B; padding: 10px; border-radius: 6px;">
+                  <div style="color: #FBBF24; margin-bottom: 6px;">[1] MONITOR (SAMPLE)</div>
+                  <div>BBCA.JK   10,125   <span style="color: #34D399;">+1.50% ▲</span></div>
+                  <div>BBRI.JK    4,680   <span style="color: #F87171;">-0.85% ▼</span></div>
+                  <div>BTC/USD   91,420   <span style="color: #34D399;">+2.35% ▲</span></div>
+                  <div>USD/IDR   15,845   <span style="color: #F87171;">-0.18% ▼</span></div>
+                  <div>CNY/IDR   UNAVAIL  <span style="color: #FBBF24;">[RETRY]</span></div>
+                </div>
+                <div style="border: 1px solid #1E293B; padding: 10px; border-radius: 6px;">
+                  <div style="color: #FBBF24; margin-bottom: 6px;">[2] CORRELATION 30D (SAMPLE)</div>
+                  <div>BTC vs SPX : +0.42</div>
+                  <div>JCI vs USD : -0.58</div>
+                  <div>XAU vs USD : -0.36</div>
+                  <div style="color: #94A3B8; margin-top: 6px; font-size: 11px;">Korelasi bukan hubungan sebab-akibat.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+        <!-- MANDATORY FOOTER ON EVERY PAGE -->
+        <footer class="app-footer">
+          <span data-i18n="footer.left">Informasi dan edukasi saja — bukan saran investasi, bukan ajakan beli/jual, dan tanpa janji keuntungan.</span>
+          <span>AssetRadar Personal · Chart attribution: TradingView® · Mockup Sample</span>
+        </footer>
+
+        <!-- MOBILE 375px BOTTOM NAVIGATION (4 Core Tabs + "Lainnya" Sheet) -->
+        <nav class="bottom-nav" aria-label="Menu bawah HP">
+          <button type="button" class="bnav-btn" data-nav="radar" aria-current="page">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <span data-i18n="bnav.radar">Hari Ini</span>
+          </button>
+          <button type="button" class="bnav-btn" data-nav="detail">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+            <span data-i18n="bnav.explore">Pasar</span>
+          </button>
+          <button type="button" class="bnav-btn" data-nav="kitchen">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
+            <span data-i18n="bnav.kitchen">Dapur</span>
+          </button>
+          <button type="button" class="bnav-btn" data-nav="portfolio">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01"/></svg>
+            <span data-i18n="bnav.mine">Milikku</span>
+          </button>
+          <button type="button" class="bnav-btn" id="btnMoreMobile" aria-haspopup="dialog" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+            <span data-i18n="bnav.more">Lainnya</span>
+          </button>
+        </nav>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MOBILE "MORE" SHEET -->
+  <div class="more-sheet-backdrop" id="moreBackdrop" role="dialog" aria-modal="true" aria-label="Menu lainnya">
+    <div class="more-sheet">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <strong data-i18n="sheet.title">Menu Lainnya &amp; Pengaturan Cepat</strong>
+        <button type="button" class="pill-btn" id="closeSheetBtn">✕</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <button type="button" class="pill-btn" data-nav="terminal">&gt;_ Mode Terminal</button>
+        <button type="button" class="pill-btn" id="sheetThemeBtn">☀ / ☾ Ganti Tema</button>
+        <button type="button" class="pill-btn" id="sheetLangBtn">ID / EN Bahasa</button>
+        <button type="button" class="pill-btn" data-nav="portfolio">🔔 Pengingat &amp; Sinkron</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       SELF-CONTAINED INTERACTIVITY (Tabs, Theme, EN/ID, 375px Preview, Retry)
+       ======================================================================== -->
+  <script>
+    (function () {
+      const DICT = {
+        id: {
+          'proto.badge': 'MOCKUP DESAIN BARU · SEMUA ANGKA ADALAH CONTOH (SAMPLE)',
+          'brand.sub': 'Koran Pagi & Catatan Pasar',
+          'nav.heading': 'Ruang Utama',
+          'nav.radar': 'Hari Ini & Radar',
+          'nav.explore': 'Pasar & Riset Aset',
+          'nav.kitchen': 'Dapur & Ekonomi',
+          'nav.mine': 'Milikku & Jurnal',
+          'nav.toolsHeading': 'Mode Fokus',
+          'fresh.ok': 'Kesegaran Data: Aman',
+          'fresh.sub': 'Harga streaming · Dapur 2j lalu · Sinkron aktif',
+          'search.placeholder': 'Cari BBCA, BTC, Emas, Cabai...',
+          'top.theme': 'Tema',
+          'edu.banner': 'Informasi & edukasi saja — bukan saran beli/jual dan bukan janji keuntungan. Semua angka di halaman contoh ini bertanda (sample).',
+          'radar.eyebrow': 'Rabu Pagi · Ringkasan Pasar & Pantauan',
+          'radar.title': 'Hari Ini di Radar Anda',
+          'radar.sub': 'Pantau gerak pasar utama, aset simpanan Anda, dan berita penting tanpa kebisingan.',
+          'radar.viewTable': 'Daftar Rapi',
+          'radar.viewHeat': 'Peta Panas',
+          'brief.title': 'Ringkasan Pagi · 07:35 WIB',
+          'brief.calm': 'Geopolitik: Tenang',
+          'brief.lead': 'IHSG dibuka menguat tipis mengikuti perbankan besar, sementara emas dunia bertahan tinggi dan kurs Rupiah stabil di kisaran Rp15.840 per dolar AS.',
+          'brief.sbnLabel': 'SBN Ritel Aktif',
+          'visit.title': 'Sejak Kunjungan Terakhir',
+          'visit.ago': '6 jam lalu',
+          'visit.alertNote': '1 pengingat tercapai: masa penawaran ST013 ditutup 2 hari lagi.',
+          'unavail.title': 'Sebagian sumber belum merespons: Kurs CNY/IDR',
+          'unavail.desc': 'Data tidak tersedia saat ini (bukan Rp0). Terakhir berhasil diperbarui pukul 06:45 WIB — klik Coba lagi untuk memuat ulang.',
+          'common.retry': 'Coba lagi',
+          'radar.marketTitle': 'Pantauan Pasar Utama',
+          'radar.clickHint': 'Klik baris untuk membuka grafik & cerita aset',
+          'filter.all': 'Semua',
+          'filter.idx': 'Saham BEI',
+          'filter.gold': 'Emas & Kurs',
+          'col.asset': 'Aset',
+          'col.group': 'Kelompok',
+          'col.trend': 'Tren 7H',
+          'col.price': 'Harga (Sample)',
+          'col.change': '24 Jam',
+          'news.title': 'Berita Pasar (Bahasa Asli)',
+          'news.openKitchen': 'Lihat di Radar Dapur →',
+          'detail.back': '← Kembali ke Radar',
+          'detail.storyLead': 'Bergerak tenang di paruh atas rentang 52 minggu; volume hari ini 1,2× rata-rata 20 hari bursa (sedikit lebih ramai dari biasanya).',
+          'detail.chartTitle': 'Grafik Harga & Rentang Historis',
+          'sent.title': 'Suasana & Bukti Data',
+          'sent.explain': 'Ringkasan suasana berita, laporan keuangan (F-Score 7/9), dan tren relatif pasar — bukan sinyal beli atau jual.',
+          'sent.medium': 'Jangka Menengah (1–3 Bulan)',
+          'sent.disclaimer': 'Catatan wajib: Informasi dan edukasi saja, bukan saran investasi pribadi.',
+          'story.title': 'Cerita Saham & Riwayat Dividen',
+          'story.p1': 'Penurunan terdalam 5 tahun terakhir tercatat −18,4% (sample) dan pulih ke puncak lama dalam 64 hari bursa.',
+          'story.p2': 'Rutin membagi dividen tunai setiap tahun; pada ex-date terakhir (Rp227/lembar sample), harga turun Rp190 lalu kembali dalam 14 hari bursa.',
+          'mc.title': 'Simulasi Kemungkinan Rentang (Monte Carlo)',
+          'mc.note': 'Bukan ramalan: tren keuntungan masa lalu sengaja dinolkan agar murni mengukur guncangan historis, bukan janji untung.',
+          'kitchen.eyebrow': 'Pasar Tradisional PIHPS & Makro Indonesia',
+          'kitchen.title': 'Radar Dapur & Ekonomi Nyata',
+          'kitchen.sub': 'Pantau harga 21 bahan pokok per provinsi, pola menjelang Lebaran, dan kaitannya dengan inflasi serta suku bunga.',
+          'kitchen.weekTitle': 'Minggu Ini di Pasar Tradisional',
+          'kitchen.weekLead': '4 dari 21 bahan pokok bergerak lebih dari 5% minggu ini. Kenaikan dipimpin cabai rawit merah dan telur ayam ras, sementara beras medium cenderung tenang.',
+          'kitchen.macroBridge': 'Jembatan Ekonomi Indonesia',
+          'kitchen.sbnNote': 'Penawaran SBN Ritel ST013 (kupon mengambang batas bawah 6,40% sample) masih dibuka 2 hari lagi.',
+          'kitchen.chiliWhy': 'Kenapa bergerak? Curah hujan tinggi di sentra Jawa Timur mengganggu petik harian sehingga pasokan ke pasar induk berkurang.',
+          'kitchen.seasonLabel': 'Pola musiman 12 bulan (kuning = puncak jelang Lebaran)',
+          'kitchen.eggWhy': 'Kenapa bergerak? Permintaan dapur sekolah & biaya pakan jagung meningkat tipis dibanding bulan lalu.',
+          'kitchen.anomalyNote': 'Catatan kualitas data: Lonjakan sehari di 1 kota yang langsung kembali keesokan harinya ditandai sebagai kemungkinan salah input data, bukan kenaikan nyata.',
+          'port.eyebrow': 'Tersinkron Pribadi · Portofolio, Emas Antam & Jurnal',
+          'port.title': 'Investasi & Catatan Keputusan Saya',
+          'port.sub': 'Rekap aset nyata, harga buyback emas Antam manual, biaya transaksi tercatat, dan evaluasi jujur catatan masa lalu.',
+          'port.exportBtn': '⇩ Ekspor Semua Data (.json)',
+          'port.summaryTitle': 'Nilai Portofolio Saat Ini',
+          'port.concLabel': 'Tingkat Konsentrasi: Cukup Terdiversifikasi (HHI 0,19 sample)',
+          'port.concSub': 'Tanpa saran bobot target',
+          'port.antamTitle': 'Emas Antam & Biaya Tercatat',
+          'port.antamDesc': 'Situs resmi memblokir pengambilan otomatis, sehingga nilai dihitung dari harga buyback resmi yang Anda catat sendiri:',
+          'port.feesTitle': 'Biaya transaksi tercatat tahun ini (dipisah per mata uang):',
+          'journal.title': 'Jurnal Keputusan & Evaluasi Otomatis',
+          'journal.sub': 'Catatan tersimpan pribadi di perangkat & sinkronisasi Anda',
+          'journal.note1': '"Menambah 2 lot saat koreksi pasca laporan kuartal karena ROE dan arus kas tetap sehat."',
+          'journal.note2': 'Ingin menguji ide baru tanpa uang asli? Buka tab Latihan Paper Trading (akun Rp100 juta pura-pura) atau Simulator Nabung Bulanan.',
+          'footer.left': 'Informasi dan edukasi saja — bukan saran investasi, bukan ajakan beli/jual, dan tanpa janji keuntungan.',
+          'bnav.radar': 'Hari Ini',
+          'bnav.explore': 'Pasar',
+          'bnav.kitchen': 'Dapur',
+          'bnav.mine': 'Milikku',
+          'bnav.more': 'Lainnya',
+          'sheet.title': 'Menu Lainnya & Pengaturan Cepat'
+        },
+        en: {
+          'proto.badge': 'FRESH UI MOCKUP · ALL NUMBERS ARE LABELLED SAMPLE DATA',
+          'brand.sub': 'Morning Ledger & Market Notes',
+          'nav.heading': 'Main Spaces',
+          'nav.radar': 'Today & Radar',
+          'nav.explore': 'Markets & Research',
+          'nav.kitchen': 'Kitchen & Economy',
+          'nav.mine': 'My Space & Journal',
+          'nav.toolsHeading': 'Focus Mode',
+          'fresh.ok': 'Data Freshness: Healthy',
+          'fresh.sub': 'Streaming prices · Kitchen 2h ago · Sync on',
+          'search.placeholder': 'Search BBCA, BTC, Gold, Chili...',
+          'top.theme': 'Theme',
+          'edu.banner': 'Information and education only — not investment advice and no profit promises. Every figure in this mockup is labelled (sample).',
+          'radar.eyebrow': 'Wednesday Morning · Market Pulse & Watchlist',
+          'radar.title': 'Today on Your Radar',
+          'radar.sub': 'Follow key global and Indonesian markets, your tracked assets, and verified headlines calmly.',
+          'radar.viewTable': 'Clean List',
+          'radar.viewHeat': 'Heatmap',
+          'brief.title': 'Morning Brief · 07:35 WIB',
+          'brief.calm': 'Geopolitics: Calm',
+          'brief.lead': 'Jakarta equities opened slightly higher led by major banks, while spot gold held firm and the Rupiah stayed steady near Rp15,840 per US dollar.',
+          'brief.sbnLabel': 'Open Retail Bond (SBN)',
+          'visit.title': 'Since Your Last Visit',
+          'visit.ago': '6 hours ago',
+          'visit.alertNote': '1 alert triggered: ST013 retail bond offer closes in 2 days.',
+          'unavail.title': 'Upstream feed unavailable: CNY/IDR Exchange Rate',
+          'unavail.desc': 'Data unavailable right now (never shown as Rp0). Last updated at 06:45 WIB — click Retry to request again.',
+          'common.retry': 'Retry',
+          'radar.marketTitle': 'Core Market Watch',
+          'radar.clickHint': 'Click any row to open its chart & plain-language story',
+          'filter.all': 'All',
+          'filter.idx': 'IDX Stocks',
+          'filter.gold': 'Gold & FX',
+          'col.asset': 'Asset',
+          'col.group': 'Group',
+          'col.trend': '7D Trend',
+          'col.price': 'Price (Sample)',
+          'col.change': '24h Move',
+          'news.title': 'Market Headlines (Original Language)',
+          'news.openKitchen': 'Open in Kitchen Radar →',
+          'detail.back': '← Back to Radar',
+          'detail.storyLead': 'Trading calmly in the upper half of its 52-week range; today’s volume is 1.2× its 20-session median (slightly busier than usual).',
+          'detail.chartTitle': 'Price Chart & Historical Ranges',
+          'sent.title': 'Sentiment & Evidence',
+          'sent.explain': 'Summarises news tone, financial health (F-Score 7/9), and relative trend — never a buy or sell signal.',
+          'sent.medium': 'Medium Horizon (1–3 Months)',
+          'sent.disclaimer': 'Mandatory notice: Information and education only, not personal investment advice.',
+          'story.title': 'Stock Story & Ex-Dividend History',
+          'story.p1': 'Deepest 5-year drawdown reached −18.4% (sample) and recovered to its prior peak in 64 trading sessions.',
+          'story.p2': 'Pays annual cash dividends; on the latest ex-date (Rp227/share sample), price dropped Rp190 and recovered within 14 sessions.',
+          'mc.title': 'Monte Carlo Range Simulation',
+          'mc.note': 'Not a forecast: historical upward drift is deliberately zeroed so this measures historical volatility only, never a profit promise.',
+          'kitchen.eyebrow': 'Traditional Markets (PIHPS) & Indonesia Macro',
+          'kitchen.title': 'Kitchen Radar & Real Economy',
+          'kitchen.sub': 'Track 21 staple food prices across 34 provinces, Lebaran seasonal patterns, and how macro rates touch daily groceries.',
+          'kitchen.weekTitle': 'This Week in Traditional Markets',
+          'kitchen.weekLead': '4 of 21 staples moved more than 5% this week, led by red bird’s-eye chili and eggs, while medium-grade rice stayed steady.',
+          'kitchen.macroBridge': 'Indonesia Macro Bridge',
+          'kitchen.sbnNote': 'Retail SBN series ST013 (6.40% sample floating-with-floor coupon) closes in 2 days.',
+          'kitchen.chiliWhy': 'Why is it moving? Heavy rain in East Java growing areas slowed daily harvests, tightening wholesale market supply.',
+          'kitchen.seasonLabel': '12-month seasonal pattern (amber = pre-Lebaran peak)',
+          'kitchen.eggWhy': 'Why is it moving? School meal kitchen demand and corn feed costs edged up versus last month.',
+          'kitchen.anomalyNote': 'Data quality note: A single-day spike in 1 city that immediately reverted the next day is flagged as a likely data entry glitch.',
+          'port.eyebrow': 'Privately Synced · Portfolio, Antam Gold & Journal',
+          'port.title': 'My Holdings & Decision Journal',
+          'port.sub': 'Your real holdings, manual Antam gold buyback price, recorded fees by currency, and honest review of past notes.',
+          'port.exportBtn': '⇩ Export All Data (.json)',
+          'port.summaryTitle': 'Current Portfolio Value',
+          'port.concLabel': 'Concentration: Moderately Diversified (HHI 0.19 sample)',
+          'port.concSub': 'No target-weight advice',
+          'port.antamTitle': 'Antam Gold & Recorded Fees',
+          'port.antamDesc': 'Official site blocks automated scraping, so gold bars are valued using your manually entered official buyback price:',
+          'port.feesTitle': 'Recorded transaction fees this year (kept in original currency):',
+          'journal.title': 'Decision Journal & Automatic Review',
+          'journal.sub': 'Stored privately on your device and encrypted owner sync',
+          'journal.note1': '"Added 2 lots after quarterly earnings dip as ROE and operating cash flow remained solid."',
+          'journal.note2': 'Want to test an idea risk-free? Switch to Paper Trading (Rp100M virtual cash) or the Monthly DCA Simulator.',
+          'footer.left': 'Information and education only — not investment advice, no buy/sell recommendations, and no profit promises.',
+          'bnav.radar': 'Today',
+          'bnav.explore': 'Markets',
+          'bnav.kitchen': 'Kitchen',
+          'bnav.mine': 'My Space',
+          'bnav.more': 'More',
+          'sheet.title': 'More Spaces & Quick Settings'
+        }
+      };
+
+      let lang = 'id';
+      let theme = 'light';
+
+      function showScreen(id) {
+        document.querySelectorAll('.screen').forEach((el) => {
+          el.classList.toggle('active', el.id === 'screen-' + id);
+        });
+        document.querySelectorAll('[data-nav]').forEach((btn) => {
+          if (btn.classList.contains('nav-item') || btn.classList.contains('bnav-btn')) {
+            if (btn.getAttribute('data-nav') === id) {
+              btn.setAttribute('aria-current', 'page');
+            } else {
+              btn.removeAttribute('aria-current');
+            }
+          }
+          if (btn.classList.contains('terminal-trigger')) {
+            btn.setAttribute('aria-pressed', String(id === 'terminal'));
+          }
+        });
+        document.querySelectorAll('[data-go]').forEach((btn) => {
+          btn.setAttribute('aria-pressed', String(btn.getAttribute('data-go') === id));
+        });
+        document.getElementById('moreBackdrop').classList.remove('open');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function toggleTheme() {
+        theme = theme === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.getElementById('themeIcon').textContent = theme === 'light' ? '☾' : '☀';
+        document.getElementById('btnTheme').setAttribute('aria-pressed', String(theme === 'dark'));
+      }
+
+      function toggleLang() {
+        lang = lang === 'id' ? 'en' : 'id';
+        document.documentElement.lang = lang;
+        document.getElementById('langLabel').textContent = lang.toUpperCase();
+        const dict = DICT[lang];
+        document.querySelectorAll('[data-i18n]').forEach((el) => {
+          const key = el.getAttribute('data-i18n');
+          if (dict[key]) el.textContent = dict[key];
+        });
+        document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+          const key = el.getAttribute('data-i18n-placeholder');
+          if (dict[key]) el.setAttribute('placeholder', dict[key]);
+        });
+      }
+
+      // Navigation bindings
+      document.querySelectorAll('[data-nav]').forEach((btn) => {
+        btn.addEventListener('click', () => showScreen(btn.getAttribute('data-nav')));
+      });
+      document.querySelectorAll('[data-go]').forEach((btn) => {
+        btn.addEventListener('click', () => showScreen(btn.getAttribute('data-go')));
+      });
+      document.querySelectorAll('[data-open-detail]').forEach((row) => {
+        row.addEventListener('click', () => showScreen('detail'));
+      });
+
+      // Viewport preview (Desktop 1440px vs Phone 375px)
+      document.getElementById('vpDesktop').addEventListener('click', () => {
+        document.body.setAttribute('data-viewport', 'desktop');
+        document.getElementById('vpDesktop').setAttribute('aria-pressed', 'true');
+        document.getElementById('vpPhone').setAttribute('aria-pressed', 'false');
+      });
+      document.getElementById('vpPhone').addEventListener('click', () => {
+        document.body.setAttribute('data-viewport', 'phone');
+        document.getElementById('vpPhone').setAttribute('aria-pressed', 'true');
+        document.getElementById('vpDesktop').setAttribute('aria-pressed', 'false');
+      });
+
+      // Theme & Language toggles
+      document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+      document.getElementById('appThemeBtn').addEventListener('click', toggleTheme);
+      document.getElementById('sheetThemeBtn').addEventListener('click', toggleTheme);
+      document.getElementById('btnLang').addEventListener('click', toggleLang);
+      document.getElementById('appLangBtn').addEventListener('click', toggleLang);
+      document.getElementById('sheetLangBtn').addEventListener('click', toggleLang);
+
+      // Table vs Heatmap switcher
+      document.getElementById('viewTableBtn').addEventListener('click', () => {
+        document.getElementById('radarTableWrap').style.display = 'flex';
+        document.getElementById('radarHeatWrap').style.display = 'none';
+        document.getElementById('viewTableBtn').setAttribute('aria-pressed', 'true');
+        document.getElementById('viewHeatBtn').setAttribute('aria-pressed', 'false');
+      });
+      document.getElementById('viewHeatBtn').addEventListener('click', () => {
+        document.getElementById('radarTableWrap').style.display = 'none';
+        document.getElementById('radarHeatWrap').style.display = 'grid';
+        document.getElementById('viewHeatBtn').setAttribute('aria-pressed', 'true');
+        document.getElementById('viewTableBtn').setAttribute('aria-pressed', 'false');
+      });
+
+      // Interactive Timeframe & Province pills
+      document.querySelectorAll('.tf-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tf-btn').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+          btn.setAttribute('aria-pressed', 'true');
+        });
+      });
+      document.querySelectorAll('.prov-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.prov-btn').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+          btn.setAttribute('aria-pressed', 'true');
+        });
+      });
+
+      // Retry Demo on Unavailable State
+      document.getElementById('btnRetryDemo').addEventListener('click', () => {
+        const txt = document.getElementById('retryStatusText');
+        txt.textContent = lang === 'id'
+          ? 'Mencoba menghubungi sumber resmi... (Contoh mockup: tetap tidak menampilkan angka palsu bila sumber gagal).'
+          : 'Retrying upstream feed... (Mockup demo: still never shows fake numbers when upstream is down).';
+      });
+
+      // Mobile More Sheet
+      const backdrop = document.getElementById('moreBackdrop');
+      document.getElementById('btnMoreMobile').addEventListener('click', () => {
+        backdrop.classList.add('open');
+      });
+      document.getElementById('closeSheetBtn').addEventListener('click', () => {
+        backdrop.classList.remove('open');
+      });
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) backdrop.classList.remove('open');
+      });
+    })();
+  </script>
+</body>
+</html>

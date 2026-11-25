@@ -5151,8 +5151,9 @@ async function runTick(): Promise<Record<string, unknown>> {
     ['backup', (until) => backupStep(store, until)],
   ];
   for (let i = 0; i < steps.length; i++) {
-    // One share stays for the results below; the IDX trace (first) may use half the tick
-    const share = i === 0 ? left() / 2 : left() / (steps.length - i + 1);
+    // One share stays for the results below; the IDX trace (first) may use a third of the tick
+    // (a half left the later steps under the 10 s floor at 120 s ticks, so the scans never ran overnight)
+    const share = i === 0 ? left() / 3 : left() / (steps.length - i + 1);
     out[steps[i][0]] = share < 10_000 ? 'no time left' : await steps[i][1](Date.now() + share).catch(failed);
   }
   for (const m of ['idx', 'us', 'crypto'] as const) {
@@ -5230,6 +5231,13 @@ export async function createApp(): Promise<express.Express> {
   // before that yesterday's; ?date=YYYY-MM-DD for a stored one
   app.get('/api/brief', async (req, res) => {
     const lang = parseLang(req.query.lang);
+    // The brief is built from the owner's synced watchlist/portfolio: strangers get it without those marks
+    const briefFor = (pair: BriefPair, l: AppLang): MorningBrief => {
+      const b = pickBrief(pair, l);
+      if (ownerAuth.isOwner(req)) return b;
+      const sections = b.sections.map((s) => ({ ...s, lines: s.lines.map((line) => line.replace(/^★ /, '')) }));
+      return { ...b, weekly: undefined, sections };
+    };
     try {
       await loadJobState();
       const asked = String(req.query.date || '');
@@ -5243,7 +5251,7 @@ export async function createApp(): Promise<express.Express> {
           res.status(404).json({ error: 'No brief saved for that date' });
           return;
         }
-        res.json({ brief: pickBrief(b, lang), preview: false });
+        res.json({ brief: briefFor(b, lang), preview: false });
         return;
       }
       const { date, ready } = briefDateFor(Date.now());
@@ -5253,11 +5261,11 @@ export async function createApp(): Promise<express.Express> {
         brief = await storedBrief(date);
       }
       if (brief) {
-        res.json({ brief: pickBrief(brief, lang), preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+        res.json({ brief: briefFor(brief, lang), preview: false, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
         return;
       }
       // Nothing saved yet (e.g. before 07:30 after a restart): a live preview, not stored
-      res.json({ brief: pickBrief(await generateBrief(date), lang), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
+      res.json({ brief: briefFor(await generateBrief(date), lang), preview: true, nextAt: `${BRIEF_TIME} WIB`, telegram: telegramConfigured(), persistent: store.persistent });
     } catch (err) {
       console.warn('[Brief] failed:', err instanceof Error ? err.message : err);
       res.status(502).json({ error: 'Brief unavailable' });
