@@ -40,6 +40,9 @@ export const FOMC_MEETINGS: FomcMeeting[] = [
   // 2026 schedule: outcomes are inferred from market data once they happen
   { date: '2026-01-28' }, { date: '2026-03-18' }, { date: '2026-04-29' }, { date: '2026-06-17' },
   { date: '2026-07-29' }, { date: '2026-09-16' }, { date: '2026-10-28' }, { date: '2026-12-09' },
+  // 2027 (Fed revision of 12 Nov 2026): October is strategy-only (no decision), December moved to November
+  { date: '2027-01-27' }, { date: '2027-03-17' }, { date: '2027-04-28' }, { date: '2027-06-09' },
+  { date: '2027-07-28' }, { date: '2027-09-15' }, { date: '2027-11-17' },
 ];
 
 export interface ResolvedMeeting {

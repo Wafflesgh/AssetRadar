@@ -79,6 +79,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (STREAMS.includes(url.pathname) || request.headers.get('accept')?.includes('text/event-stream')) return;
+  // Owner-only answers must not outlive a logout in the offline cache
+  if (request.headers.has('authorization')) return;
 
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirstApi(request));

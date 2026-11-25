@@ -1105,6 +1105,8 @@ function streamFeeds() {
 }
 
 async function streamTick(): Promise<void> {
+  // Serverless has no background minute timer: reload the alert edits from here while a stream is open
+  if (priceStream.clients.size > 0 && Date.now() - serverAlerts.refreshedAt > 60_000) await refreshServerAlerts().catch(() => {});
   // The loop also runs without viewers while the server checks alerts for web push
   if (priceStream.running || (priceStream.clients.size === 0 && !serverAlerts.active)) return;
   if (priceStream.clients.size === 0 && Date.now() - serverAlerts.lastCheckAt < 15_000) return;
@@ -4898,6 +4900,7 @@ const serverAlerts = {
   sentAt: [] as number[],
   lastCheckAt: 0,
   lastSavedAt: 0,
+  refreshedAt: 0,
 };
 
 function serverAlertsReady(): boolean {
@@ -4906,6 +4909,7 @@ function serverAlertsReady(): boolean {
 
 /** Reloads the synced alert definitions every minute (alerts are edited on the devices). */
 async function refreshServerAlerts(): Promise<void> {
+  serverAlerts.refreshedAt = Date.now();
   if (!serverAlertsReady()) {
     serverAlerts.active = false;
     priceStream.focus.delete('server-alerts');

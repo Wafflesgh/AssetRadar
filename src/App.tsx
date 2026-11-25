@@ -532,6 +532,7 @@ export default function App() {
             effectiveTheme={effectiveTheme}
             isWatchlisted={watchlist.includes(currentAsset.symbol)}
             onToggleWatchlist={handleToggleWatchlist}
+            onRetrySymbol={handleRetrySymbol}
             ticks={ticks}
             onCompare={(symbol) => handleCompare(compareSymbols.includes(symbol) ? compareSymbols : [...compareSymbols, symbol].slice(-4))}
           />

@@ -59,6 +59,8 @@ interface AssetDetailViewProps {
   /** Adds this asset to the Compare page and opens it. */
   onCompare?: (symbol: string) => void;
   onToggleWatchlist: (symbol: string) => void;
+  /** Re-fetches a symbol whose feed failed. */
+  onRetrySymbol?: (symbol: string) => void;
 }
 
 export function AssetDetailView({
@@ -73,6 +75,7 @@ export function AssetDetailView({
   ticks = {},
   onCompare,
   onToggleWatchlist,
+  onRetrySymbol,
 }: AssetDetailViewProps) {
   // A primary symbol rejected by the TradingView widget switches straight to the fallback symbol
   const [useFallbackSymbol, setUseFallbackSymbol] = useState(Boolean(asset.tvWidgetUnsupported));
@@ -95,6 +98,25 @@ export function AssetDetailView({
   const isGold = asset.symbol === 'XAU/USD';
   const isStock = asset.group === 'idStock' || asset.group === 'usStock' || asset.group === 'globalStock';
   const isLoaded = tick !== undefined && tick.status !== 'error' && Number.isFinite(tick.price);
+  // A failed feed says so with a retry button instead of loading forever
+  const pending =
+    tick?.status === 'error' ? (
+      <span className="inline-flex flex-wrap items-center gap-2 text-sm font-sans font-normal">
+        <span style={{ color: 'var(--color-down)' }}>{t('common.dataUnavailable')}</span>
+        {onRetrySymbol && (
+          <button
+            type="button"
+            onClick={() => onRetrySymbol(asset.symbol)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold"
+            style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+          >
+            <RefreshCw className="w-3 h-3" /> {t('common.tryAgain')}
+          </button>
+        )}
+      </span>
+    ) : (
+      t('common.loading')
+    );
 
   const formatVal = (val: number | undefined) => {
     if (val === undefined || !Number.isFinite(val)) return '—';
@@ -274,7 +296,7 @@ export function AssetDetailView({
                   className="text-2xl font-mono-num font-bold tabular-nums mt-0.5 block"
                   style={{ color: 'var(--color-gold)' }}
                 >
-                  {isLoaded && tick ? formatUsdPerOz(tick.price) : t('common.loading')}
+                  {isLoaded && tick ? formatUsdPerOz(tick.price) : pending}
                 </span>
                 <span
                   className="text-[11px]"
@@ -296,7 +318,7 @@ export function AssetDetailView({
                 >
                   {isLoaded && tick?.priceIdrPerGram
                     ? `${formatRupiah(tick.priceIdrPerGram, 0)}/gr`
-                    : t('common.loading')}
+                    : pending}
                 </span>
                 <span
                   className="text-[11px]"
@@ -325,7 +347,7 @@ export function AssetDetailView({
                 data-testid="detail-price-primary"
                 className="text-2xl md:text-3xl font-mono-num font-bold tabular-nums mt-0.5 block"
               >
-                {isLoaded && tick ? formatTickPrice(tick, asset) : t('common.loading')}
+                {isLoaded && tick ? formatTickPrice(tick, asset) : pending}
               </span>
               {isLoaded && tick && showsCryptoInUsd(asset) && (
                 <span className="text-[11px] block font-mono-num" style={{ color: 'var(--text-secondary)' }}>
